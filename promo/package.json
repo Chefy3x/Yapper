@@ -1,0 +1,25 @@
+{
+  "name": "yapper-promo",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "remotion studio",
+    "render": "remotion render YapperPromo out/yapper-promo.mp4",
+    "render:walkaway": "remotion render YapperWalkaway out/yapper-walkaway.mp4",
+    "render:side-a": "remotion render YapperSideA out/yapper-side-a.mp4",
+    "still": "remotion still YapperPromo"
+  },
+  "dependencies": {
+    "@remotion/cli": "^4.0.0",
+    "@remotion/fonts": "^4.0.485",
+    "@remotion/google-fonts": "^4.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "remotion": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^5.5.4"
+  }
+}

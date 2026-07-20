@@ -1,0 +1,869 @@
+<title>Yapper — reads your AI out loud</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Yapper is a macOS menu-bar tape deck that reads Claude, ChatGPT, Codex — or anything you highlight — out loud in a real voice.">
+<style>
+/* ============================================================
+   YAPPER — bootleg mixtape landing page
+   palette + art sampled from the app's own cassette deck.
+   Permanent Marker (c) Font Diner — Apache License 2.0, embedded.
+   ============================================================ */
+@font-face{
+  font-family:'Permanent Marker';
+  src:url(data:font/truetype;base64,__FONT__) format('truetype');
+  font-display:swap;
+}
+:root{
+  --deckw:min(660px,94vw);   /* rendered deck width — px-true scaling for deck chrome */
+  --void:#0f0d0b;
+  --panel:#161310;
+  --panel2:#1c1814;
+  --cream:#ece3cb;
+  --dust:rgba(236,227,203,.60);
+  --faint:rgba(236,227,203,.34);
+  --paper:#ddc98b;
+  --paper-hi:#eadfae;
+  --paper-lo:#c9b06a;
+  --ink:#181206;
+  --ink-soft:rgba(24,18,6,.72);
+  --red:#a53a2e;
+  --red-hot:#c74537;
+  --acid:#a8c636;
+  --line:rgba(236,227,203,.14);
+  --impact:'Anton',Impact,Haettenschweiler,'Franklin Gothic Medium','Arial Narrow',sans-serif;
+  --marker:'Permanent Marker','Marker Felt','Segoe Print','Comic Sans MS',cursive;
+  --mono:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;
+}
+*,*::before,*::after{box-sizing:border-box}
+html{scroll-behavior:smooth;overflow-x:clip}
+@supports not (overflow-x:clip){html{overflow-x:hidden}}
+body{
+  margin:0;
+  background:var(--void);
+  color:var(--cream);
+  font-family:var(--mono);
+  font-size:13.5px;
+  line-height:1.8;
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+}
+/* film grain over everything */
+body::after{
+  content:"";position:fixed;inset:-40px;z-index:2147483000;pointer-events:none;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='260' height='260'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='.5'/></svg>");
+  opacity:.13;mix-blend-mode:overlay;
+}
+/* faint tungsten pool behind the hero */
+.stage{
+  position:relative;
+  background:
+    radial-gradient(1100px 520px at 50% 300px, rgba(217,193,120,.075), transparent 66%);
+}
+a{color:inherit}
+img{max-width:100%;display:block}
+::selection{background:var(--paper);color:var(--ink)}
+
+.wrap{max-width:1060px;margin:0 auto;padding:0 22px}
+
+/* ---------- type voices ---------- */
+.shout{
+  font-family:var(--impact);
+  font-weight:400;
+  text-transform:uppercase;
+  letter-spacing:.015em;
+  line-height:.94;
+  margin:0;
+}
+.marker{font-family:var(--marker);font-weight:400}
+.small{font-size:11.5px;letter-spacing:.04em}
+.up{text-transform:uppercase;letter-spacing:.14em}
+
+/* ---------- chips, stickers, kbd ---------- */
+.chip{
+  display:inline-flex;align-items:center;gap:7px;
+  font:700 10.5px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;
+  color:var(--ink);background:var(--paper);
+  padding:7px 11px 6px;border:2px solid var(--ink);
+  border-radius:2px;
+  box-shadow:2px 3px 0 rgba(0,0,0,.55);
+  white-space:nowrap;
+}
+.chip .dot{width:7px;height:7px;border-radius:50%;background:var(--red);display:inline-block}
+.chip--ghost{background:transparent;color:var(--dust);border-color:var(--line);box-shadow:none}
+/* label + value pill — the app's About-pane treatment (VERSION 0.1.0) */
+.pill{
+  display:inline-flex;align-items:baseline;gap:8px;
+  font:700 11px/1 var(--mono);letter-spacing:.06em;text-transform:uppercase;
+  color:var(--ink);background:var(--paper);
+  padding:7px 11px 6px;border:2px solid var(--ink);border-radius:2px;
+  box-shadow:2px 3px 0 rgba(0,0,0,.55);white-space:nowrap;
+}
+.pill b{font-weight:700;font-size:9px;letter-spacing:.18em;color:rgba(24,18,6,.62)}
+.pill--ghost{background:transparent;color:var(--dust);border-color:var(--line);box-shadow:none}
+.pill--ghost b{color:var(--faint)}
+kbd{
+  font:700 11.5px/1 var(--mono);letter-spacing:.06em;
+  color:var(--cream);
+  background:linear-gradient(#2d2a25,#1a1815 70%);
+  border:1px solid #000;border-radius:5px;
+  padding:5px 8px 4px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.16),inset 0 -2px 0 rgba(0,0,0,.6),0 2px 3px rgba(0,0,0,.5);
+  white-space:nowrap;
+}
+.advisory{
+  display:inline-block;background:#f4efe2;color:#111;
+  border:3px solid #111;padding:7px 10px 6px;
+  font-family:var(--impact);text-transform:uppercase;text-align:center;line-height:1;
+  box-shadow:0 4px 10px rgba(0,0,0,.5);
+}
+.advisory b{display:block;font-size:15px;letter-spacing:.03em;font-weight:400}
+.advisory i{display:block;font-style:normal;font-size:8.5px;letter-spacing:.2em;margin-top:3px;border-top:2px solid #111;padding-top:3px}
+
+/* ---------- paper cards ---------- */
+.paper-card{
+  position:relative;color:var(--ink);
+  background:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='p'><feTurbulence type='fractalNoise' baseFrequency='0.55' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='100%25' height='100%25' filter='url(%23p)' opacity='.16'/></svg>"),
+    linear-gradient(158deg,var(--paper-hi),var(--paper) 46%,var(--paper-lo));
+  background-blend-mode:multiply,normal;
+  clip-path:polygon(.6% 1.8%,12% .3%,28% 1.4%,47% .2%,66% 1.6%,84% .4%,99.4% 1.9%,99.8% 22%,98.9% 46%,99.7% 71%,99% 98.2%,82% 99.6%,60% 98.6%,38% 99.7%,17% 98.5%,.4% 99.4%,1% 74%,.2% 49%,1.1% 24%);
+  box-shadow:0 18px 34px rgba(0,0,0,.5);
+  padding:26px 26px 24px;
+}
+.tape-strip{
+  position:absolute;width:104px;height:25px;
+  background:rgba(238,229,196,.82);
+  box-shadow:0 2px 5px rgba(0,0,0,.30);
+  clip-path:polygon(3% 0,97% 4%,100% 28%,98% 62%,100% 100%,4% 96%,0 70%,2% 30%);
+  mix-blend-mode:screen;opacity:.85;pointer-events:none;
+}
+
+/* =========================================================
+   HERO
+   ========================================================= */
+.topbar{
+  display:flex;justify-content:space-between;align-items:center;gap:14px;
+  padding:20px 0 0;flex-wrap:wrap;
+}
+.brandline{font-family:var(--marker);font-size:16px;color:var(--dust);transform:rotate(-1.1deg)}
+.brandline b{color:var(--paper);font-weight:400}
+.topbar .chips{display:flex;gap:9px;flex-wrap:wrap}
+
+.hero{padding:64px 0 24px;text-align:center;position:relative}
+.hero-eyebrow{
+  font-family:var(--marker);font-size:clamp(15px,2vw,19px);color:var(--paper);
+  transform:rotate(-1.4deg);display:inline-block;margin-bottom:18px;
+}
+h1.shout{
+  font-size:clamp(52px,10.5vw,124px);
+  text-wrap:balance;
+  text-shadow:0 0 26px rgba(236,227,203,.16),0 4px 0 rgba(0,0,0,.6);
+}
+h1 .l1{display:inline-block;transform:rotate(-.7deg)}
+h1 .l2{display:inline-block;transform:rotate(.5deg);color:var(--paper)}
+.hero-hook{
+  font-family:var(--marker);
+  font-size:clamp(19px,3vw,27px);
+  color:var(--cream);
+  transform:rotate(-1.6deg);
+  margin:20px auto 0;
+}
+.hero-hook .strike{position:relative;white-space:nowrap}
+.hero-hook .strike::after{
+  content:"";position:absolute;left:-3%;right:-3%;top:54%;height:3px;
+  background:var(--red-hot);transform:rotate(-2deg);border-radius:2px;
+}
+.hero-sub{
+  max-width:64ch;margin:26px auto 0;color:var(--dust);
+  font-size:13.5px;
+}
+.hero-sub b{color:var(--cream);font-weight:700}
+
+/* ---------- the deck ---------- */
+.deck-zone{position:relative;margin:44px auto 0;width:var(--deckw)}
+.deck-note{
+  position:absolute;z-index:6;left:-30px;top:-34px;
+  font-family:var(--marker);font-size:19px;color:var(--paper);
+  transform:rotate(-7deg);text-align:left;line-height:1.25;
+  pointer-events:none;
+}
+.deck-note svg{display:block;margin:2px auto 0 46px}
+.sticker-skull{
+  position:absolute;z-index:6;right:-18px;top:-24px;width:78px;height:78px;
+  transform:rotate(12deg);filter:drop-shadow(0 5px 8px rgba(0,0,0,.45));
+  pointer-events:none;
+}
+.sticker-advisory{
+  position:absolute;z-index:6;right:-8px;bottom:-18px;transform:rotate(4deg);
+  pointer-events:none;
+}
+.deck{
+  position:relative;width:100%;aspect-ratio:1064/656;
+  filter:drop-shadow(0 34px 44px rgba(0,0,0,.62));
+  user-select:none;-webkit-user-select:none;
+}
+.deck-img{position:absolute;inset:0;width:100%;height:100%}
+.reel{position:absolute;transform:translate(-50%,-50%);pointer-events:none}
+.reel .backing{
+  position:absolute;left:50%;top:50%;width:92%;height:92%;
+  transform:translate(-50%,-50%);border-radius:50%;background:#0d0d0d;
+}
+.reel img{position:relative;width:100%;height:100%;will-change:transform}
+.reel--l{left:35.15%;top:47.56%;width:9.4%;aspect-ratio:1}
+.reel--r{left:66.92%;top:47.33%;width:9.68%;aspect-ratio:1}
+
+/* transport caps — the app's registered sprites (CassettePlayerView.capSprites),
+   pixel-aligned over the baked caps so they're invisible at rest. A press sinks the
+   cap into a dark recess with a slight shrink and shade, exactly like the app. */
+.cap{position:absolute;transform:translate(-50%,-50%);pointer-events:none}
+.cap .recess{
+  position:absolute;inset:1px;border-radius:calc(var(--deckw)*.009);
+  background:#09090a;opacity:0;transition:opacity .08s ease-out;
+}
+.cap img{
+  position:relative;width:100%;height:100%;
+  transition:transform .08s ease-out,filter .08s ease-out;
+}
+.cap[data-i="0"]{left:31.02%;top:90.78%;width:9.96%;height:13.26%}
+.cap[data-i="1"]{left:40.74%;top:91.08%;width:10.43%;height:13.57%}
+.cap[data-i="2"]{left:50.80%;top:90.93%;width:10.62%;height:13.26%}
+.cap[data-i="3"]{left:60.86%;top:90.85%;width:10.43%;height:13.11%}
+.cap[data-i="4"]{left:71.24%;top:90.85%;width:9.96%;height:13.11%}
+.cap.held img,
+.deck.is-playing .cap[data-i="1"] img,
+.deck.is-rec .cap[data-i="4"] img{
+  transform:translateY(calc(var(--deckw)*.0076)) scale(.96);
+  filter:brightness(.92);
+}
+.cap.held .recess,
+.deck.is-playing .cap[data-i="1"] .recess,
+.deck.is-rec .cap[data-i="4"] .recess{opacity:1}
+
+/* invisible-but-focusable transport hotspots (CassettePlayerView.btnXs/btnY) */
+.hot{
+  position:absolute;transform:translate(-50%,-50%);
+  width:8.5%;height:12%;top:88.4%;
+  background:transparent;border:0;padding:0;margin:0;
+  cursor:pointer;border-radius:6px;
+  -webkit-tap-highlight-color:transparent;
+}
+.hot:focus{outline:none}
+.hot:focus-visible{outline:2px dashed var(--cream);outline-offset:4px}
+.hot[data-i="0"]{left:30.90%}
+.hot[data-i="1"]{left:41.00%}
+.hot[data-i="2"]{left:51.00%}
+.hot[data-i="3"]{left:61.10%}
+.hot[data-i="4"]{left:71.30%}
+
+/* speed marking printed on the shell's TDK line, bottom-right — same treatment as the
+   app: white like TAPE I at 1×, tape yellow once changed; hidden at 1× until the pointer
+   is over the deck (exactly when it's clickable), persistent once off default. */
+.speed-mark{
+  position:absolute;left:75.7%;top:66%;transform:translate(-50%,-50%);
+  width:13%;text-align:right;
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+  font-weight:900;font-size:max(8px,calc(var(--deckw)*.0235));line-height:1;
+  color:rgba(255,255,255,.85);
+  text-shadow:0 .5px .5px rgba(0,0,0,.4);
+  background:none;border:0;padding:5px 0;margin:0;cursor:pointer;
+  opacity:0;pointer-events:none;transition:opacity .15s ease-out;
+  -webkit-tap-highlight-color:transparent;
+}
+.deck:hover .speed-mark,.speed-mark:focus-visible{opacity:1;pointer-events:auto}
+.speed-mark.off1x{opacity:1;pointer-events:auto;color:rgba(221,201,139,.92)}
+.speed-mark:focus{outline:none}
+.speed-mark:focus-visible{outline:2px dashed var(--cream);outline-offset:3px}
+@media (hover:none){.speed-mark{opacity:1;pointer-events:auto}}
+
+/* tape counter / status */
+.counter{
+  margin:20px auto 0;display:inline-flex;align-items:center;gap:12px;
+  font:700 11px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;
+  color:var(--paper);
+  background:rgba(0,0,0,.5);border:1px solid var(--line);border-radius:3px;
+  padding:10px 16px;
+  box-shadow:inset 0 2px 8px rgba(0,0,0,.7);
+  max-width:94vw;
+}
+.counter .led{width:8px;height:8px;border-radius:50%;background:#3a352b;flex:none}
+.counter.playing .led{background:var(--acid);box-shadow:0 0 8px var(--acid)}
+.counter.rec .led{background:var(--red-hot);box-shadow:0 0 8px var(--red-hot);animation:blink 1.1s steps(2,start) infinite}
+.counter .txt{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@keyframes blink{to{opacity:.35}}
+.deck-caption{
+  margin-top:14px;color:var(--faint);font-size:11px;letter-spacing:.06em;
+}
+.hero-chips{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:30px}
+
+/* =========================================================
+   RIBBON MARQUEE
+   ========================================================= */
+.ribbon{
+  margin:70px 0 0;transform:rotate(-1.5deg) scale(1.02);
+  background:var(--paper);color:var(--ink);
+  border-top:3px solid var(--ink);border-bottom:3px solid var(--ink);
+  overflow:hidden;white-space:nowrap;
+  box-shadow:0 12px 30px rgba(0,0,0,.45);
+}
+.ribbon-track{
+  display:inline-flex;gap:0;
+  animation:slide 30s linear infinite;
+  will-change:transform;
+}
+.ribbon span{
+  font-family:var(--impact);font-size:20px;letter-spacing:.06em;text-transform:uppercase;
+  padding:10px 0 8px;
+}
+.ribbon b{color:var(--red);padding:0 14px;font-weight:400}
+@keyframes slide{to{transform:translateX(-50%)}}
+
+/* =========================================================
+   SECTIONS
+   ========================================================= */
+.sect{padding:84px 0 0}
+.sect-head{margin-bottom:34px}
+.sect-eyebrow{
+  font-family:var(--marker);font-size:18px;color:var(--paper);
+  display:inline-block;transform:rotate(-1.2deg);margin:0 0 8px;
+}
+.sect-title{font-size:clamp(34px,5.4vw,58px);text-shadow:0 3px 0 rgba(0,0,0,.55)}
+.sect-kicker{color:var(--dust);max-width:62ch;margin:14px 0 0}
+
+/* --- big three --- */
+.trio{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;align-items:stretch}
+.trio .paper-card{display:flex;flex-direction:column;gap:10px}
+.trio .paper-card:nth-child(1){transform:rotate(-.7deg)}
+.trio .paper-card:nth-child(2){transform:rotate(.5deg)}
+.trio .paper-card:nth-child(3){transform:rotate(-.4deg)}
+.card-combo{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.card-combo kbd{background:linear-gradient(#efe6c8,#d8c48c);color:var(--ink);border-color:var(--ink);box-shadow:inset 0 1px 0 rgba(255,255,255,.5),0 2px 0 var(--ink)}
+.card-title{font-size:26px;letter-spacing:.02em;color:var(--ink)}
+.card-body{color:var(--ink-soft);font-size:12.5px;line-height:1.75;margin:0}
+.card-tag{
+  margin-top:auto;padding-top:10px;
+  font-family:var(--marker);font-size:15px;color:var(--red);
+  transform:rotate(-1deg);
+}
+.rec-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--red-hot);margin-right:7px;box-shadow:0 0 7px rgba(199,69,55,.8);animation:blink 1.2s steps(2,start) infinite}
+
+/* --- tracklist --- */
+.tl-wrap{position:relative;max-width:860px;margin:0 auto}
+.tracklist-card{transform:rotate(-.5deg);padding:34px 36px 30px}
+.tl-head{
+  display:flex;justify-content:space-between;align-items:baseline;gap:14px;
+  border-bottom:3px solid var(--ink);padding-bottom:10px;margin-bottom:8px;flex-wrap:wrap;
+}
+.tl-head .shout{font-size:30px;color:var(--ink)}
+.tl-head .marker{font-size:16px;color:var(--red);transform:rotate(-1deg)}
+.track{display:flex;align-items:baseline;gap:12px;padding:9px 0;border-bottom:1px solid rgba(24,18,6,.16)}
+.track:last-of-type{border-bottom:0}
+.track .no{font-family:var(--marker);font-size:14px;color:var(--red);min-width:30px}
+.track .t{font-family:var(--impact);font-size:16.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink);white-space:nowrap}
+.track .d{color:var(--ink-soft);font-size:11.5px;letter-spacing:.02em}
+.track .lead{flex:1;border-bottom:2px dotted rgba(24,18,6,.38);transform:translateY(-4px);min-width:24px}
+.track .spec{font:700 11.5px/1.4 var(--mono);color:var(--ink);white-space:nowrap;font-variant-numeric:tabular-nums}
+.tl-foot{
+  margin-top:16px;padding-top:12px;border-top:3px solid var(--ink);
+  display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;
+  font:700 10.5px/1.6 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-soft);
+}
+
+/* --- hotkey contract --- */
+.contract{
+  max-width:760px;margin:0 auto;
+  background:linear-gradient(180deg,var(--panel2),var(--panel));
+  border:1px solid var(--line);border-radius:4px;
+  box-shadow:0 24px 44px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.05);
+  padding:10px 28px;
+}
+.hk-row{
+  display:flex;align-items:center;gap:18px;
+  padding:17px 0;border-bottom:1px dashed var(--line);
+}
+.hk-row:last-child{border-bottom:0}
+.hk-keys{display:flex;align-items:center;gap:7px;min-width:196px;flex-wrap:wrap}
+.hk-plus{color:var(--faint);font-weight:700}
+.hk-does{color:var(--dust);font-size:12.5px}
+.hk-does b{color:var(--cream)}
+.contract-note{
+  max-width:760px;margin:22px auto 0;text-align:center;
+  font-family:var(--marker);font-size:17px;color:var(--paper);transform:rotate(-.8deg);
+}
+
+/* --- liner notes --- */
+.liner{
+  max-width:860px;margin:0 auto;
+  columns:2;column-gap:42px;
+  color:var(--dust);font-size:12px;line-height:1.85;
+}
+.liner p{break-inside:avoid;margin:0 0 16px;padding-left:16px;position:relative}
+.liner p::before{content:"▸";position:absolute;left:0;color:var(--paper)}
+.liner b{color:var(--cream);letter-spacing:.05em}
+
+/* --- side B / CTA --- */
+.sideb{text-align:center;padding-bottom:20px}
+.stamp{
+  display:inline-block;margin-top:8px;
+  font-family:var(--impact);font-size:clamp(26px,4.6vw,44px);text-transform:uppercase;letter-spacing:.05em;
+  color:var(--red-hot);border:5px solid var(--red-hot);border-radius:8px;
+  padding:12px 26px 8px;transform:rotate(-5deg);
+  mask-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='r'><feTurbulence type='fractalNoise' baseFrequency='0.16' numOctaves='3' stitchTiles='stitch'/><feColorMatrix type='matrix' values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .9 .22'/></filter><rect width='100%25' height='100%25' filter='url(%23r)'/></svg>");
+  -webkit-mask-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='r'><feTurbulence type='fractalNoise' baseFrequency='0.16' numOctaves='3' stitchTiles='stitch'/><feColorMatrix type='matrix' values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .9 .22'/></filter><rect width='100%25' height='100%25' filter='url(%23r)'/></svg>");
+}
+.sideb-copy{max-width:56ch;margin:26px auto 0;color:var(--dust)}
+.sideb-copy b{color:var(--cream)}
+.sideb .chips{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:26px}
+
+/* --- footer --- */
+footer{
+  margin-top:90px;border-top:1px solid var(--line);
+  padding:26px 0 34px;
+}
+.foot-inner{
+  display:flex;justify-content:space-between;align-items:center;gap:18px;flex-wrap:wrap;
+  font:700 10px/1.7 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--faint);
+}
+.barcode{
+  width:120px;height:34px;flex:none;
+  background:repeating-linear-gradient(90deg,var(--cream) 0 2px,transparent 2px 4px,var(--cream) 4px 7px,transparent 7px 9px,var(--cream) 9px 10px,transparent 10px 14px);
+  opacity:.75;
+}
+.foot-tagline{color:var(--dust)}
+
+/* ---------- responsive ---------- */
+@media (max-width:900px){
+  .trio{grid-template-columns:1fr;max-width:520px;margin:0 auto}
+  .liner{columns:1}
+}
+@media (max-width:640px){
+  .hero{padding-top:44px}
+  .deck-note{left:2px;top:-44px;font-size:16px}
+  .sticker-skull{width:56px;height:56px;right:-4px;top:-20px}
+  .sticker-advisory{right:0;bottom:-14px;transform:rotate(3deg) scale(.85)}
+  .tracklist-card{padding:24px 18px 22px}
+  .track .t{white-space:normal}
+  .track .d{display:none}
+  .hk-row{flex-direction:column;align-items:flex-start;gap:8px;padding:14px 0}
+  .hk-keys{min-width:0}
+  .contract{padding:6px 18px}
+}
+@media (prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  .ribbon-track{animation:none}
+  .counter.rec .led,.rec-dot{animation:none}
+  .reel img{transition:none!important}
+  .cap img,.cap .recess,.speed-mark{transition:none!important}
+}
+</style>
+
+<div class="stage">
+<div class="wrap">
+
+  <!-- ======================= top bar ======================= -->
+  <div class="topbar">
+    <div class="brandline"><b>YAPPER</b> tape co. — recorded on a Mac, 2026</div>
+    <div class="chips">
+      <span class="pill pill--ghost"><b>platform</b>macOS 26+</span>
+      <span class="pill pill--ghost"><b>version</b>0.1.0 · side A</span>
+    </div>
+  </div>
+
+  <!-- ======================= hero ======================= -->
+  <header class="hero">
+    <span class="hero-eyebrow">a menu-bar tape deck for macOS</span>
+    <h1 class="shout"><span class="l1">Your AI won't</span><br><span class="l2">shut up.</span></h1>
+    <div class="hero-hook">good — <span class="strike">stop reading</span> &nbsp;start listening.</div>
+    <p class="hero-sub">Yapper reads <b>Claude, ChatGPT, Codex</b> — or anything you highlight — out loud
+    in a real voice. Tap <b>Right ⌘</b> and walk away: the answer follows you across the room
+    while the screen stays where it belongs.</p>
+
+    <!-- the working deck -->
+    <div class="deck-zone">
+      <div class="deck-note" id="deckNote">this page talks —<br>press play
+        <svg width="46" height="34" viewBox="0 0 46 34" fill="none" aria-hidden="true">
+          <path d="M6 2 C 14 16, 26 24, 40 27" stroke="#ddc98b" stroke-width="2.6" stroke-linecap="round"/>
+          <path d="M32 28.5 L 41 27.6 L 35.5 20.5" stroke="#ddc98b" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        </svg>
+      </div>
+
+      <div class="deck" id="deck" role="group" aria-label="Yapper cassette transport — plays a spoken tour of this page">
+        <img class="deck-img" src="__DECK__" alt="Yapper cassette deck — a black lo-fi tape player with a hand-labeled YAPPER cassette" draggable="false">
+        <div class="reel reel--l"><div class="backing"></div><img id="reelL" src="__REELL__" alt="" draggable="false"></div>
+        <div class="reel reel--r"><div class="backing"></div><img id="reelR" src="__REELR__" alt="" draggable="false"></div>
+        <div class="cap" data-i="0"><span class="recess"></span><img src="__CAPREW__"  alt="" draggable="false"></div>
+        <div class="cap" data-i="1"><span class="recess"></span><img src="__CAPPLAY__" alt="" draggable="false"></div>
+        <div class="cap" data-i="2"><span class="recess"></span><img src="__CAPSTOP__" alt="" draggable="false"></div>
+        <div class="cap" data-i="3"><span class="recess"></span><img src="__CAPFF__"   alt="" draggable="false"></div>
+        <div class="cap" data-i="4"><span class="recess"></span><img src="__CAPREC__"  alt="" draggable="false"></div>
+        <button class="hot" data-i="0" aria-label="Rewind — previous track"    title="Rewind — previous track"></button>
+        <button class="hot" data-i="1" aria-label="Play / pause"               title="Play / pause"></button>
+        <button class="hot" data-i="2" aria-label="Stop"                       title="Stop"></button>
+        <button class="hot" data-i="3" aria-label="Fast-forward — next track"  title="Fast-forward — next track"></button>
+        <button class="hot" data-i="4" aria-label="Record — conversation mode" title="REC — conversation mode"></button>
+        <button class="speed-mark" id="speedMark" aria-label="Cycle playback speed" title="Playback speed">1×</button>
+      </div>
+
+      <div class="sticker-advisory advisory"><b>AI Advisory</b><i>synthetic voices</i></div>
+    </div>
+
+    <div class="counter" id="counter" aria-live="polite"><span class="led"></span><span class="txt" id="counterTxt">TRK 1/9 · ■ STOPPED — PRESS ▶</span></div>
+    <p class="deck-caption">in the app, REW/FF seek ±10 s — here they skip tracks. artistic license.<br>
+    the real thing speaks ElevenLabs; this demo borrows your browser's voice. be kind to the understudy.</p>
+
+    <div class="hero-chips">
+      <span class="pill"><b>engine</b>ElevenLabs</span>
+      <span class="pill"><b>offline</b>built-in fallback</span>
+      <span class="pill"><b>code blocks</b>never read</span>
+    </div>
+  </header>
+</div>
+
+<!-- ======================= ribbon ======================= -->
+<div class="ribbon" aria-hidden="true">
+  <div class="ribbon-track" id="ribbonTrack">
+    <span>voice in<b>◦</b>voice out<b>◦</b>reads Claude<b>◦</b>reads ChatGPT<b>◦</b>reads Codex<b>◦</b>reads whatever you highlight<b>◦</b>no cloud middleman<b>◦</b>pauses like a walkman<b>◦</b></span><span>voice in<b>◦</b>voice out<b>◦</b>reads Claude<b>◦</b>reads ChatGPT<b>◦</b>reads Codex<b>◦</b>reads whatever you highlight<b>◦</b>no cloud middleman<b>◦</b>pauses like a walkman<b>◦</b></span>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <!-- ======================= big three ======================= -->
+  <section class="sect">
+    <div class="sect-head">
+      <span class="sect-eyebrow">what's on the tape</span>
+      <h2 class="shout sect-title">Three moves. That's the manual.</h2>
+    </div>
+    <div class="trio">
+      <div class="paper-card">
+        <span class="tape-strip" style="top:-12px;left:22px;transform:rotate(-5deg)"></span>
+        <div class="card-combo"><kbd>Right ⌘</kbd><span class="hk-plus marker" style="color:var(--red)">tap</span></div>
+        <h3 class="shout card-title">Read latest</h3>
+        <p class="card-body">One tap pulls the newest reply out of the focused chat and starts talking.
+        Tap again to pause, again to resume. Double-tap to force-read whatever chat is in front —
+        it supersedes anything already playing.</p>
+        <div class="card-tag">works while you make coffee</div>
+      </div>
+      <div class="paper-card">
+        <span class="tape-strip" style="top:-12px;right:26px;transform:rotate(4deg)"></span>
+        <div class="card-combo"><kbd>Right ⌘</kbd><span class="hk-plus">+</span><kbd>S</kbd></div>
+        <h3 class="shout card-title">Read selection</h3>
+        <p class="card-body">Highlight anything, anywhere — an email, a doc, a 40-page changelog —
+        and it's audio. Works in any app that can select text, browsers and terminals included.</p>
+        <div class="card-tag">every article is a podcast now</div>
+      </div>
+      <div class="paper-card">
+        <span class="tape-strip" style="top:-12px;left:38%;transform:rotate(-3deg)"></span>
+        <div class="card-combo"><kbd>Right ⌘</kbd><span class="hk-plus">+</span><kbd>⏎</kbd></div>
+        <h3 class="shout card-title"><span class="rec-dot"></span>Conversation mode</h3>
+        <p class="card-body">Press REC and every new AI reply auto-plays the moment it finishes
+        generating. Replies queue in order and never talk over each other; skip ahead with
+        <b>Right ⌘ + →</b>. Toggle off, the queue clears.</p>
+        <div class="card-tag">stay hands-off all session</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================= tracklist ======================= -->
+  <section class="sect">
+    <div class="sect-head" style="text-align:center">
+      <span class="sect-eyebrow">liner notes</span>
+      <h2 class="shout sect-title">Side A — full track list</h2>
+    </div>
+    <div class="tl-wrap">
+      <svg class="sticker-skull" viewBox="0 0 80 80" aria-hidden="true">
+        <circle cx="40" cy="40" r="37" fill="#a8c636"/>
+        <circle cx="40" cy="40" r="37" fill="none" stroke="#7f9722" stroke-width="2"/>
+        <path d="M40 18c-11 0-18 7.5-18 17 0 6 3 10 7 12v7c0 2 1.5 3.5 3.5 3.5h15c2 0 3.5-1.5 3.5-3.5v-7c4-2 7-6 7-12 0-9.5-7-17-18-17z" fill="#141406"/>
+        <circle cx="32" cy="36" r="5" fill="#a8c636"/>
+        <circle cx="48" cy="36" r="5" fill="#a8c636"/>
+        <path d="M40 42l-3 6h6z" fill="#a8c636"/>
+        <rect x="34" y="52" width="3" height="5" rx="1" fill="#a8c636"/>
+        <rect x="39" y="52" width="3" height="5" rx="1" fill="#a8c636"/>
+        <rect x="44" y="52" width="3" height="5" rx="1" fill="#a8c636"/>
+      </svg>
+      <div class="paper-card tracklist-card">
+      <div class="tl-head">
+        <span class="shout">YAPPER · C-90</span>
+        <span class="marker">rec: '26 · mix 1 · lo-fi</span>
+      </div>
+      <div class="track"><span class="no">A1</span><span class="t">Real voices</span><span class="d">ElevenLabs Flash v2.5 &amp; Multilingual v2 — presets or any voice ID you own</span><span class="lead"></span><span class="spec">~75 ms to first sound</span></div>
+      <div class="track"><span class="no">A2</span><span class="t">Sentence streaming</span><span class="d">first sentence synthesized alone, the rest batched behind it</span><span class="lead"></span><span class="spec">talks before it's done thinking</span></div>
+      <div class="track"><span class="no">A3</span><span class="t">Markdown cleanup</span><span class="d">headers, lists, links stripped to prose; paragraph pauses kept</span><span class="lead"></span><span class="spec">prose in, prose out</span></div>
+      <div class="track"><span class="no">A4</span><span class="t">Code block skip</span><span class="d">fenced code is never read, never announced</span><span class="lead"></span><span class="spec">silence &gt; syntax</span></div>
+      <div class="track"><span class="no">A5</span><span class="t">The scrubber</span><span class="d">seek anywhere in a read; transport nudges ±10 s</span><span class="lead"></span><span class="spec">re-hear that one sentence</span></div>
+      <div class="track"><span class="no">A6</span><span class="t">Speed</span><span class="d">cycle the marking printed on the shell — hover the tape, it's under C-90</span><span class="lead"></span><span class="spec">1× → 2×</span></div>
+      <div class="track"><span class="no">A7</span><span class="t">History</span><span class="d">every read replayable from cached audio, re-synthesized if it expired</span><span class="lead"></span><span class="spec">1 h – 7 d, then the tape burns</span></div>
+      <div class="track"><span class="no">A8</span><span class="t">Two shells</span><span class="d">Minimal floating bar, or the cassette you're looking at</span><span class="lead"></span><span class="spec">same engine, your call</span></div>
+      <div class="track"><span class="no">A9</span><span class="t">Offline fallback</span><span class="d">network dies mid-sentence? the built-in macOS voice takes the mic</span><span class="lead"></span><span class="spec">never fails silent</span></div>
+      <div class="track"><span class="no">A10</span><span class="t">Menu bar home</span><span class="d">a waveform that only moves when something's speaking</span><span class="lead"></span><span class="spec">no dock icon, no clutter</span></div>
+      <div class="tl-foot">
+        <span>total running time: your whole workday</span>
+        <span>recorded live · no overdubs</span>
+      </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================= hotkey contract ======================= -->
+  <section class="sect">
+    <div class="sect-head" style="text-align:center">
+      <span class="sect-eyebrow">the right ⌘ contract</span>
+      <h2 class="shout sect-title">One key. Five moves.</h2>
+      <p class="sect-kicker" style="margin-left:auto;margin-right:auto">The right Command key — the one your thumb already rests on.
+      No two-hand chords, no collisions with app shortcuts.</p>
+    </div>
+    <div class="contract">
+      <div class="hk-row"><span class="hk-keys"><kbd>Right ⌘</kbd></span><span class="hk-does"><b>Read latest</b> — or pause / resume whatever's playing</span></div>
+      <div class="hk-row"><span class="hk-keys"><kbd>Right ⌘</kbd><span class="hk-plus">×2</span></span><span class="hk-does"><b>Force-read</b> the focused chat, superseding current audio</span></div>
+      <div class="hk-row"><span class="hk-keys"><kbd>Right ⌘</kbd><span class="hk-plus">+</span><kbd>S</kbd></span><span class="hk-does"><b>Read selection</b> — any highlighted text, any app</span></div>
+      <div class="hk-row"><span class="hk-keys"><kbd>Right ⌘</kbd><span class="hk-plus">+</span><kbd>⏎</kbd></span><span class="hk-does"><b>Conversation Mode</b> on / off</span></div>
+      <div class="hk-row"><span class="hk-keys"><kbd>Right ⌘</kbd><span class="hk-plus">+</span><kbd>→</kbd></span><span class="hk-does"><b>Skip</b> to the next queued reply</span></div>
+    </div>
+    <p class="contract-note">hold it and click, type, ⌘-tab, whatever — it's still a normal command key.
+    everything passes straight through.</p>
+  </section>
+
+  <!-- ======================= liner notes / fine print ======================= -->
+  <section class="sect">
+    <div class="sect-head" style="text-align:center">
+      <span class="sect-eyebrow">the fine print</span>
+      <h2 class="shout sect-title">Recorded locally.</h2>
+    </div>
+    <div class="liner">
+      <p><b>NO CLOUD MIDDLEMAN.</b> Your ElevenLabs key lives in the macOS Keychain. The only thing that
+      ever leaves the machine is the cleaned text, sent straight to ElevenLabs with your key. No relay
+      server, no accounts, no telemetry.</p>
+      <p><b>YOUR WORDS EXPIRE.</b> Spoken text exists only in local history — purged on your schedule,
+      one hour to seven days, enforced hourly. No other transcript ever touches the disk.</p>
+      <p><b>CLIPBOARD SACRED.</b> Conversation Mode captures a reply by pressing the app's own Copy
+      button, then restores your clipboard byte-for-byte — images and files included.</p>
+      <p><b>NO TRUNCATED TAPES.</b> Audio is published to the cache only when complete. A stopped or
+      failed read can never come back to haunt a replay.</p>
+      <p><b>ONE PERMISSION, ONCE.</b> Yapper asks for macOS Accessibility so it can see the chat on your
+      screen — granted once, live immediately, no relaunch.</p>
+      <p><b>41 TESTS STAND GUARD.</b> The markdown cleaner, sentence segmentation, the conversation state
+      machine, and history retention are all pinned down by a logic suite that runs on every build.</p>
+    </div>
+  </section>
+
+  <!-- ======================= side B ======================= -->
+  <section class="sect sideb">
+    <span class="sect-eyebrow" style="font-size:22px">side B</span><br>
+    <div class="stamp">Coming soon</div>
+    <p class="sideb-copy"><b>v0.1.0 is in daily-driver testing</b> — glued to its maker's menu bar right now.
+    Public release is TBD: open source or shrink-wrap, the tape keeps rolling either way.
+    Bring your own ElevenLabs key; the Mac voice rides free.</p>
+    <div class="chips">
+      <span class="chip">an independent production</span>
+      <span class="chip chip--ghost">reads aloud · stays out of your way</span>
+    </div>
+  </section>
+
+  <!-- ======================= footer ======================= -->
+  <footer>
+    <div class="foot-inner">
+      <span>YAPPER · C-90 · POSITION A</span>
+      <span class="foot-tagline">© 2026 Yapper · made for macOS · this page contains no cloud</span>
+      <span class="barcode" aria-hidden="true"></span>
+    </div>
+  </footer>
+
+</div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  /* ---------- the tape: what the deck says ---------- */
+  var LINES = [
+    "Hi. I'm Yapper — a tape deck that lives in your Mac's menu bar.",
+    "When Claude, ChatGPT, or Codex finishes a reply, I read it out loud. You go make coffee.",
+    "Tap the right Command key: the newest reply, spoken. Tap again to pause. That's the whole manual.",
+    "Highlight anything, anywhere — right Command plus S — and congratulations, it's a podcast now.",
+    "Press record, and every new reply auto-plays the moment it lands. They queue. They never talk over each other.",
+    "Code blocks? Skipped. Markdown? Stripped. You hear prose, not punctuation.",
+    "In the real app I speak with ElevenLabs voices. This browser voice is my understudy. Be kind.",
+    "If the network dies, I fall back to the Mac's built-in voice and keep rolling.",
+    "That's Side A. Side B is coming. Yapper — reads aloud, stays out of your way."
+  ];
+  var N = LINES.length;
+
+  var deck = document.getElementById("deck");
+  var counter = document.getElementById("counter");
+  var counterTxt = document.getElementById("counterTxt");
+  var reelL = document.getElementById("reelL");
+  var reelR = document.getElementById("reelR");
+  var speedMark = document.getElementById("speedMark");
+  var deckNote = document.getElementById("deckNote");
+
+  var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var hasSpeech = "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
+
+  var SPEEDS = [1, 1.25, 1.5, 1.75, 2];
+  var state = {
+    idx: 0,          // current track
+    speaking: false, // engine busy (incl. paused)
+    paused: false,
+    rec: false,      // conversation mode latch
+    speed: 0,        // index into SPEEDS
+    intra: 0         // 0..1 progress within current track
+  };
+
+  /* ---------- voice pick: prefer the app's own fallback voice ---------- */
+  var voice = null;
+  function pickVoice(){
+    if(!hasSpeech) return;
+    var vs = window.speechSynthesis.getVoices();
+    if(!vs.length) return;
+    voice = vs.find(function(v){return /samantha/i.test(v.name);}) ||
+            vs.find(function(v){return /^en[-_]/i.test(v.lang) && v.default;}) ||
+            vs.find(function(v){return /^en[-_]/i.test(v.lang);}) || vs[0];
+  }
+  if(hasSpeech){
+    pickVoice();
+    window.speechSynthesis.onvoiceschanged = pickVoice;
+    window.addEventListener("pagehide", function(){ window.speechSynthesis.cancel(); });
+  }
+
+  /* ---------- reel physics — transliterated from CassettePlayerView.swift ---------- */
+  var supplyAngle = 0, takeupAngle = 0, lastTick = null, rafId = null;
+  function woundRadius(f){ var c=0.42; f=Math.min(Math.max(f,0),1); return Math.sqrt(c*c + f*(1-c*c)); }
+  function omegas(p){
+    var norm = woundRadius(0.5);
+    return { sup: norm/woundRadius(1-p), tak: norm/woundRadius(p) };
+  }
+  function tapeProgress(){ return Math.min(1, (state.idx + state.intra) / N); }
+  function tick(now){
+    rafId = requestAnimationFrame(tick);
+    if(lastTick == null){ lastTick = now; return; }
+    var dt = (now - lastTick)/1000; lastTick = now;
+    if(dt <= 0 || dt > 0.5) return;
+    var base = 100, r = SPEEDS[state.speed], o = omegas(tapeProgress());
+    supplyAngle = (supplyAngle + base*r*o.sup*dt) % 360;
+    takeupAngle = (takeupAngle + base*r*o.tak*dt) % 360;
+    reelL.style.transform = "rotate(" + supplyAngle.toFixed(2) + "deg)";
+    reelR.style.transform = "rotate(" + takeupAngle.toFixed(2) + "deg)";
+  }
+  function spin(on){
+    if(reduceMotion) return;
+    if(on && rafId == null){ lastTick = null; rafId = requestAnimationFrame(tick); }
+    if(!on && rafId != null){ cancelAnimationFrame(rafId); rafId = null; }
+  }
+
+  /* ---------- status line ---------- */
+  function setStatus(){
+    var trk = "TRK " + (state.idx + 1) + "/" + N;
+    var txt, cls = "counter";
+    if(!hasSpeech){
+      txt = trk + " · NO SPEECH ENGINE HERE — REELS STILL SPIN";
+      if(state.speaking) cls += " playing";
+    } else if(state.speaking && !state.paused){
+      txt = (state.rec ? "● REC · " : "▶ ") + trk + " — " + (state.rec ? "AUTO-PLAYING THE QUEUE" : "PLAYING");
+      cls += state.rec ? " rec" : " playing";
+    } else if(state.paused){
+      txt = "❚❚ " + trk + " — PAUSED" + (state.rec ? " · REC ARMED" : "");
+      cls += state.rec ? " rec" : "";
+    } else {
+      txt = trk + " · ■ STOPPED" + (state.rec ? " · ● REC ARMED — PRESS ▶" : " — PRESS ▶");
+      cls += state.rec ? " rec" : "";
+    }
+    counter.className = cls;
+    counterTxt.textContent = txt;
+  }
+
+  /* ---------- deck visual state ---------- */
+  function paint(){
+    deck.classList.toggle("is-playing", state.speaking && !state.paused);
+    deck.classList.toggle("is-rec", state.rec);
+    spin(state.speaking && !state.paused);
+    setStatus();
+  }
+
+  /* ---------- speech driver ---------- */
+  function speak(i){
+    if(!hasSpeech){ // visual-only fallback: "play" ~7s per track
+      state.idx = i; state.intra = 0; state.speaking = true; state.paused = false; paint();
+      clearTimeout(speak._t);
+      speak._t = setTimeout(function(){
+        if(state.rec && state.idx < N-1){ speak(state.idx+1); }
+        else { state.speaking = false; state.idx = Math.min(state.idx+1, N-1) % N; paint(); }
+      }, 7000 / SPEEDS[state.speed]);
+      return;
+    }
+    window.speechSynthesis.cancel();
+    state.idx = i; state.intra = 0; state.speaking = true; state.paused = false;
+    var u = new SpeechSynthesisUtterance(LINES[i]);
+    if(voice) u.voice = voice;
+    u.rate = SPEEDS[state.speed];
+    u.pitch = 1;
+    u.onboundary = function(e){
+      if(e.charIndex != null) state.intra = Math.min(1, e.charIndex / LINES[i].length);
+    };
+    u.onend = function(){
+      if(!state.speaking) return;             // was cancelled by stop()
+      state.intra = 0;
+      if(state.rec && state.idx < N-1){       // conversation mode: play the queue
+        speak(state.idx + 1);
+      } else {
+        state.speaking = false; state.paused = false;
+        state.idx = (state.idx + 1) % N;      // arm the next track
+        paint();
+      }
+    };
+    u.onerror = function(){ state.speaking = false; state.paused = false; paint(); };
+    window.speechSynthesis.speak(u);
+    paint();
+  }
+  function stop(){
+    state.speaking = false; state.paused = false; state.intra = 0;
+    if(hasSpeech) window.speechSynthesis.cancel();
+    clearTimeout(speak._t);
+    paint();
+  }
+  function playPause(){
+    if(!state.speaking){ speak(state.idx); hideNote(); return; }
+    if(!hasSpeech) { stop(); return; }
+    if(state.paused){ window.speechSynthesis.resume(); state.paused = false; }
+    else { window.speechSynthesis.pause(); state.paused = true; }
+    paint();
+  }
+  function skip(dir){
+    var was = state.speaking && !state.paused;
+    var next = Math.min(N-1, Math.max(0, state.idx + dir));
+    if(was){ speak(next); }
+    else { stop(); state.idx = next; paint(); }
+  }
+  function toggleRec(){
+    state.rec = !state.rec;
+    if(state.rec && !state.speaking){ speak(state.idx); hideNote(); }
+    else paint();
+  }
+  function cycleSpeed(){
+    state.speed = (state.speed + 1) % SPEEDS.length;
+    speedMark.textContent = SPEEDS[state.speed] + "×";
+    speedMark.classList.toggle("off1x", SPEEDS[state.speed] !== 1);
+    if(state.speaking && !state.paused) speak(state.idx);   // restart track at new rate
+    else paint();
+  }
+  var noteHidden = false;
+  function hideNote(){
+    if(noteHidden) return; noteHidden = true;
+    deckNote.style.transition = "opacity .6s"; deckNote.style.opacity = "0";
+  }
+
+  /* ---------- wire the transport ---------- */
+  var ACTS = [function(){skip(-1);}, playPause, stop, function(){skip(1);}, toggleRec];
+  Array.prototype.forEach.call(document.querySelectorAll(".hot"), function(btn){
+    var i = +btn.dataset.i;
+    var cap = deck.querySelector('.cap[data-i="'+i+'"]');
+    btn.addEventListener("pointerdown", function(){ cap.classList.add("held"); });
+    function release(){ cap.classList.remove("held"); }
+    btn.addEventListener("pointerup", release);
+    btn.addEventListener("pointerleave", release);
+    btn.addEventListener("blur", release);
+    btn.addEventListener("click", function(){ ACTS[i](); });
+  });
+  speedMark.addEventListener("click", cycleSpeed);
+
+  paint();
+})();
+</script>

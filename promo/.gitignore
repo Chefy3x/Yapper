@@ -1,0 +1,6 @@
+node_modules/
+out/
+stills/
+verify/
+render.log
+.DS_Store

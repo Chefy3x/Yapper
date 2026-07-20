@@ -1,0 +1,181 @@
+import Foundation
+import Combine
+
+/// User defaults wrapped in published properties. Sensitive material (API keys) lives in Keychain.
+final class SettingsStore: ObservableObject {
+    private let defaults = UserDefaults.standard
+
+    enum Key: String {
+        case activeVoiceID
+        case conversationDefaultOn
+        case conversationAllowlist
+        case launchAtLogin
+        case miniPlayerCornerX
+        case miniPlayerCornerY
+        case miniPlayerDefaultCorner
+        case historyRetentionHours
+        case fallbackOrder
+        case useNativeVoiceOffline
+        case elevenLabsModelID
+        case customVoicesJSON
+        case playbackRate
+        case miniPlayerTheme
+        case cassetteScale
+    }
+
+    @Published var activeVoiceID: String {
+        didSet { defaults.set(activeVoiceID, forKey: Key.activeVoiceID.rawValue) }
+    }
+    @Published var conversationDefaultOn: Bool {
+        didSet { defaults.set(conversationDefaultOn, forKey: Key.conversationDefaultOn.rawValue) }
+    }
+    /// Bundle IDs of apps Conversation Mode watches for new assistant responses.
+    @Published var conversationAllowlist: [String] {
+        didSet {
+            if let data = try? JSONEncoder().encode(conversationAllowlist) {
+                defaults.set(data, forKey: Key.conversationAllowlist.rawValue)
+            }
+        }
+    }
+    @Published var historyRetentionHours: Int {
+        didSet { defaults.set(historyRetentionHours, forKey: Key.historyRetentionHours.rawValue) }
+    }
+    @Published var useNativeVoiceOffline: Bool {
+        didSet { defaults.set(useNativeVoiceOffline, forKey: Key.useNativeVoiceOffline.rawValue) }
+    }
+    @Published var elevenLabsModelID: String {
+        didSet { defaults.set(elevenLabsModelID, forKey: Key.elevenLabsModelID.rawValue) }
+    }
+    /// Last-used mini-player playback speed (1.0 = normal). Persists so a chosen speed sticks
+    /// across reads instead of resetting to 1× every time.
+    @Published var playbackRate: Double {
+        didSet { defaults.set(playbackRate, forKey: Key.playbackRate.rawValue) }
+    }
+    @Published var customVoices: [VoicePreset] {
+        didSet {
+            if let data = try? JSONEncoder().encode(customVoices) {
+                defaults.set(data, forKey: Key.customVoicesJSON.rawValue)
+            }
+        }
+    }
+    @Published var miniPlayerDefaultCorner: MiniPlayerCorner {
+        didSet { defaults.set(miniPlayerDefaultCorner.rawValue, forKey: Key.miniPlayerDefaultCorner.rawValue) }
+    }
+    @Published var miniPlayerTheme: MiniPlayerTheme {
+        didSet { defaults.set(miniPlayerTheme.rawValue, forKey: Key.miniPlayerTheme.rawValue) }
+    }
+    /// Bounds for the cassette deck size multiplier — one source of truth shared by the
+    /// Settings slider, the pinch gesture, and window edge-resizing. The 0.75 floor keeps the
+    /// deck from shrinking narrower than the minimal player (~336pt) — below that the transport
+    /// and scrubber get too small to hit and the window feels stuck.
+    static let cassetteScaleRange: ClosedRange<Double> = 0.75...1.6
+    /// Cassette deck size multiplier (1.0 = the 446pt-wide design size). Set from the Settings
+    /// slider, by pinching the deck, or by dragging the deck's edges like a regular window.
+    @Published var cassetteScale: Double {
+        didSet { defaults.set(cassetteScale, forKey: Key.cassetteScale.rawValue) }
+    }
+    @Published var launchAtLogin: Bool {
+        didSet { defaults.set(launchAtLogin, forKey: Key.launchAtLogin.rawValue) }
+    }
+    @Published var settingsDesign: SettingsDesign {
+        didSet { defaults.set(settingsDesign.rawValue, forKey: "settingsDesign") }
+    }
+
+    init() {
+        self.activeVoiceID = defaults.string(forKey: Key.activeVoiceID.rawValue) ?? VoicePreset.defaultPreset.id
+        self.conversationDefaultOn = defaults.bool(forKey: Key.conversationDefaultOn.rawValue)
+        if let data = defaults.data(forKey: Key.conversationAllowlist.rawValue),
+           let decoded = try? JSONDecoder().decode([String].self, from: data) {
+            self.conversationAllowlist = decoded
+        } else {
+            // Default to the apps with the most reliable, bespoke read strategies.
+            self.conversationAllowlist = ["com.anthropic.claudefordesktop"]
+        }
+        self.historyRetentionHours = defaults.object(forKey: Key.historyRetentionHours.rawValue) as? Int ?? 24
+        self.useNativeVoiceOffline = defaults.object(forKey: Key.useNativeVoiceOffline.rawValue) as? Bool ?? true
+        let storedModel = defaults.string(forKey: Key.elevenLabsModelID.rawValue)
+        // Migrate deprecated turbo_v2_5 → flash_v2_5
+        if storedModel == "eleven_turbo_v2_5" {
+            defaults.set(ElevenLabsModel.flashV25.id, forKey: Key.elevenLabsModelID.rawValue)
+            self.elevenLabsModelID = ElevenLabsModel.flashV25.id
+        } else {
+            self.elevenLabsModelID = storedModel ?? ElevenLabsModel.defaultModel.id
+        }
+
+        if let data = defaults.data(forKey: Key.customVoicesJSON.rawValue),
+           let decoded = try? JSONDecoder().decode([VoicePreset].self, from: data) {
+            self.customVoices = decoded
+        } else {
+            self.customVoices = []
+        }
+
+        self.playbackRate = defaults.object(forKey: Key.playbackRate.rawValue) as? Double ?? 1.0
+
+        let cornerRaw = defaults.string(forKey: Key.miniPlayerDefaultCorner.rawValue) ?? MiniPlayerCorner.bottomRight.rawValue
+        self.miniPlayerDefaultCorner = MiniPlayerCorner(rawValue: cornerRaw) ?? .bottomRight
+        let themeRaw = defaults.string(forKey: Key.miniPlayerTheme.rawValue) ?? MiniPlayerTheme.minimal.rawValue
+        self.miniPlayerTheme = MiniPlayerTheme(rawValue: themeRaw) ?? .minimal
+        let storedScale = defaults.object(forKey: Key.cassetteScale.rawValue) as? Double ?? 1.0
+        self.cassetteScale = min(max(storedScale, Self.cassetteScaleRange.lowerBound),
+                                 Self.cassetteScaleRange.upperBound)
+        self.launchAtLogin = defaults.bool(forKey: Key.launchAtLogin.rawValue)
+        let designRaw = defaults.string(forKey: "settingsDesign") ?? SettingsDesign.systemStyle.rawValue
+        self.settingsDesign = SettingsDesign(rawValue: designRaw) ?? .systemStyle
+    }
+}
+
+enum SettingsDesign: String, CaseIterable, Identifiable {
+    case systemStyle, minimal
+    var id: String { rawValue }
+    var displayName: String {
+        switch self {
+        case .systemStyle: "System Settings"
+        case .minimal:     "Minimal"
+        }
+    }
+}
+
+enum MiniPlayerTheme: String, CaseIterable, Identifiable {
+    case minimal, cassette
+    var id: String { rawValue }
+    var displayName: String {
+        switch self {
+        case .minimal:  "Minimal"
+        case .cassette: "Cassette"
+        }
+    }
+}
+
+enum MiniPlayerCorner: String, CaseIterable, Identifiable {
+    case bottomRight, bottomLeft, topRight, topLeft
+    var id: String { rawValue }
+    var displayName: String {
+        switch self {
+        case .bottomRight: "Bottom Right"
+        case .bottomLeft:  "Bottom Left"
+        case .topRight:    "Top Right"
+        case .topLeft:     "Top Left"
+        }
+    }
+}
+
+enum ElevenLabsModel: String, CaseIterable, Identifiable {
+    case flashV25 = "eleven_flash_v2_5"
+    case multilingualV2 = "eleven_multilingual_v2"
+
+    var id: String { rawValue }
+    var displayName: String {
+        switch self {
+        case .flashV25:        "Flash v2.5 (faster, ~75ms)"
+        case .multilingualV2:  "Multilingual v2 (higher fidelity)"
+        }
+    }
+    /// Max input character count per request, per ElevenLabs.
+    var characterLimit: Int {
+        switch self {
+        case .flashV25:        40_000
+        case .multilingualV2:  10_000
+        }
+    }
+    static let defaultModel: ElevenLabsModel = .flashV25
+}

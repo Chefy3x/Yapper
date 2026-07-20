@@ -1,0 +1,95 @@
+import SwiftUI
+
+struct MenuBarContent: View {
+    @EnvironmentObject private var state: AppState
+    @Environment(\.openSettings) private var openSettings
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: "person.wave.2.fill")
+                    .foregroundStyle(.tint)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("Voice").font(.caption).foregroundStyle(.secondary)
+                    Text(state.activeVoice.displayName).font(.headline)
+                }
+                Spacer()
+                Circle()
+                    .fill(state.hasAccessibilityPermission ? Color.green : Color.orange)
+                    .frame(width: 8, height: 8)
+                    .help(state.hasAccessibilityPermission ? "Accessibility granted" : "Accessibility NOT granted — hotkeys won't work")
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 8)
+            .onAppear { state.refreshPermissionState() }
+
+            Divider()
+
+            Toggle(isOn: $state.conversationModeEnabled) {
+                Label("Conversation Mode", systemImage: "bubble.left.and.bubble.right")
+            }
+            .toggleStyle(.switch)
+            .padding(.horizontal, 12)
+
+            if !state.hasAccessibilityPermission {
+                Divider()
+                Button {
+                    // Bootstrap already registered Yapper in the Accessibility list (the system
+                    // prompt fires once); deep-linking to the pane is the reliable repeat action.
+                    // The poller picks up the grant within seconds — no relaunch needed.
+                    AccessibilityPermission.openSystemSettings()
+                } label: {
+                    Label("Grant Accessibility Permission", systemImage: "exclamationmark.shield")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 12)
+            }
+
+            if !state.lastEvent.isEmpty {
+                Divider()
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Last event").font(.caption2).foregroundStyle(.secondary)
+                    Text(state.lastEvent).font(.callout)
+                }
+                .padding(.horizontal, 12)
+            }
+
+            Divider()
+
+            Button {
+                state.pendingHistoryOpen = true
+                openSettings()
+                NSApp.activate(ignoringOtherApps: true)
+            } label: {
+                Label("History", systemImage: "clock.arrow.circlepath")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 12)
+
+            Button {
+                openSettings()
+                NSApp.activate(ignoringOtherApps: true)
+            } label: {
+                Label("Settings…", systemImage: "gearshape")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 12)
+
+            Divider()
+
+            Button(role: .destructive) {
+                NSApp.terminate(nil)
+            } label: {
+                Label("Quit Yapper", systemImage: "power")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 12)
+            .padding(.bottom, 8)
+        }
+        .frame(width: 260)
+    }
+}

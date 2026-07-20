@@ -1,0 +1,40 @@
+# Xcode
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+DerivedData/
+build/
+.build/
+
+# Swift Package Manager
+.swiftpm/
+Packages/
+Package.pins
+Package.resolved
+.netrc
+
+# CocoaPods (not used, but in case)
+Pods/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*~
+
+# Generated
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Machine-local xcodegen overrides (signing identity — keep out of the public repo)
+project-local.yml
+
+# Local agent instructions — never commit
+CLAUDE.local.md

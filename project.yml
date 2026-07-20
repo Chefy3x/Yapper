@@ -1,0 +1,86 @@
+name: Yapper
+# Code-signing identity/team live in project-local.yml (gitignored, optional).
+# Without it, Xcode falls back to automatic "Sign to Run Locally" signing.
+include:
+  - path: project-local.yml
+    optional: true
+options:
+  bundleIdPrefix: app.yapper
+  deploymentTarget:
+    macOS: "26.0"
+  createIntermediateGroups: true
+  defaultConfig: Debug
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    ENABLE_HARDENED_RUNTIME: YES
+    ARCHS: arm64
+    ONLY_ACTIVE_ARCH: YES
+    EXCLUDED_ARCHS[sdk=*]: x86_64
+schemes:
+  Yapper:
+    build:
+      targets:
+        Yapper: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - YapperTests
+targets:
+  Yapper:
+    type: application
+    platform: macOS
+    sources:
+      - path: Yapper
+    resources:
+      - path: Yapper/Resources
+        optional: true
+    info:
+      path: Yapper/Info.plist
+      properties:
+        CFBundleDisplayName: Yapper
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSUIElement: YES
+        LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
+        NSAccessibilityUsageDescription: "Yapper reads AI responses from the focused window so it can speak them aloud."
+        NSAppleEventsUsageDescription: "Yapper inspects the focused window to find the latest AI response."
+        NSHumanReadableCopyright: "Copyright © 2026 KeepCo. All rights reserved."
+    entitlements:
+      path: Yapper/Yapper.entitlements
+      properties:
+        com.apple.security.app-sandbox: false
+        com.apple.security.automation.apple-events: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.yapper.Yapper
+        PRODUCT_NAME: Yapper
+        GENERATE_INFOPLIST_FILE: NO
+        ENABLE_PREVIEWS: YES
+        SWIFT_EMIT_LOC_STRINGS: YES
+        COMBINE_HIDPI_IMAGES: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+  # Standalone logic tests: compiles the app sources (minus @main) into the test bundle instead
+  # of test-hosting Yapper.app — so running tests never launches the app, installs its event tap,
+  # or triggers permission prompts.
+  YapperTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: YapperTests
+      - path: Yapper
+        excludes:
+          - "YapperApp.swift"
+          - "Info.plist"
+          - "Yapper.entitlements"
+          - "Resources/**"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.yapper.YapperTests
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_IDENTITY: "-"
+        ENABLE_HARDENED_RUNTIME: NO
