@@ -3,7 +3,11 @@
 
 Edit template.html (copy, styles, script), then:  python3 site/src/build.py
 Assets (deck/reel/cap WebPs, Permanent Marker TTF) are inlined as data URIs so the
-output is a single self-contained file — host it anywhere, no build pipeline.
+output is a self-contained file — host it anywhere, no build pipeline. Exception:
+the demo-deck voice clips ship as sibling files in site/audio/ (river-1..9.mp3,
+River preset via ElevenLabs) and are fetched lazily on Play, not inlined — deploy
+that folder alongside index.html. Regenerate them with site/src/gen_river.py when
+the template's LINES text changes (no rebuild needed — they aren't inlined here).
 
 Deck geometry (reel centers, cap sprite rects, hotspots, speed marking) lives in
 template.html's CSS, transcribed from Yapper/UI/CassettePlayerView.swift — the app

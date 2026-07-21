@@ -417,34 +417,6 @@ h1 .l2{display:inline-block;transform:rotate(.5deg);color:var(--paper)}
 .sideb-copy{max-width:56ch;margin:26px auto 0;color:var(--dust)}
 .sideb-copy b{color:var(--cream)}
 .sideb .chips{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:26px}
-.dl-zone{margin-top:46px;text-align:center}
-.dl-row{display:flex;gap:18px;justify-content:center;align-items:center;flex-wrap:wrap}
-.btn-dl{
-  display:inline-block;
-  font:700 13px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;
-  color:var(--ink);background:var(--paper);
-  padding:15px 22px 13px;border:2px solid var(--ink);border-radius:2px;
-  box-shadow:3px 4px 0 rgba(0,0,0,.55);text-decoration:none;
-  transition:transform .12s ease,box-shadow .12s ease;
-}
-.btn-dl:hover{transform:translate(-1px,-1px);box-shadow:4px 5px 0 rgba(0,0,0,.55)}
-.btn-dl--primary{
-  position:relative;
-  font-family:var(--impact);font-weight:400;font-size:clamp(18px,2.6vw,23px);
-  letter-spacing:.07em;line-height:1;
-  padding:21px 36px 17px;border-width:3px;
-  transform:rotate(-1.2deg);
-  box-shadow:5px 7px 0 rgba(0,0,0,.55);
-}
-.btn-dl--primary:hover{transform:rotate(0deg) translate(-1px,-2px);box-shadow:7px 9px 0 rgba(0,0,0,.55)}
-.btn-dl--primary .tape-strip{width:68px;height:19px}
-.btn-dl--ghost{background:transparent;color:var(--dust);border-color:var(--line);box-shadow:none}
-.btn-dl--ghost:hover{color:var(--cream);border-color:var(--dust);transform:none;box-shadow:none}
-.dl-note{margin-top:14px;font:700 10px/1.7 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--faint)}
-/* side B roadmap — same J-card, opposite tilt, pencilled-in ink */
-.tracklist-card--b{transform:rotate(.6deg)}
-.tracklist-card--b .track .t{color:var(--ink-soft)}
-.roadmap-chips{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:34px}
 
 /* --- footer --- */
 footer{
@@ -499,7 +471,6 @@ footer{
     <div class="chips">
       <span class="pill pill--ghost"><b>platform</b>macOS 26+</span>
       <span class="pill pill--ghost"><b>version</b>0.1.0 · side A</span>
-      <a class="pill" href="https://github.com/Chefy3x/Yapper/releases/latest/download/Yapper.dmg" style="text-decoration:none"><b>get</b>download ⬇</a>
     </div>
   </div>
 
@@ -543,24 +514,12 @@ footer{
 
     <div class="counter" id="counter" aria-live="polite"><span class="led"></span><span class="txt" id="counterTxt">TRK 1/9 · ■ STOPPED — PRESS ▶</span></div>
     <p class="deck-caption">in the app, REW/FF seek ±10 s — here they skip tracks. artistic license.<br>
-    the real thing speaks ElevenLabs; this demo borrows your browser's voice. be kind to the understudy.</p>
+    yes, that's the real voice: ElevenLabs River, the preset Yapper ships. no network? your browser's voice steps in.</p>
 
     <div class="hero-chips">
       <span class="pill"><b>engine</b>ElevenLabs</span>
       <span class="pill"><b>offline</b>built-in fallback</span>
       <span class="pill"><b>code blocks</b>never read</span>
-    </div>
-
-    <div class="dl-zone" id="download">
-      <div class="dl-row">
-        <a class="btn-dl btn-dl--primary" href="https://github.com/Chefy3x/Yapper/releases/latest/download/Yapper.dmg">
-          <span class="tape-strip" style="top:-10px;left:-18px;transform:rotate(-45deg)"></span>
-          <span class="tape-strip" style="bottom:-9px;right:-18px;transform:rotate(-45deg)"></span>
-          ⬇ Download for macOS
-        </a>
-        <a class="btn-dl btn-dl--ghost" href="https://github.com/Chefy3x/Yapper">Source on GitHub</a>
-      </div>
-      <p class="dl-note">free &amp; open source · macOS 26+ · Apple silicon · notarized by Apple</p>
     </div>
   </header>
 </div>
@@ -694,54 +653,15 @@ footer{
   </section>
 
   <!-- ======================= side B ======================= -->
-  <section class="sect">
-    <div class="sect-head" style="text-align:center">
-      <span class="sect-eyebrow" style="font-size:22px">side B</span>
-      <h2 class="shout sect-title">Not yet recorded.</h2>
-      <p class="sect-kicker" style="margin-left:auto;margin-right:auto">The pencil side of the J-card.
-      Tracks get cut in the order they earn it — no dates, no promises, updates arrive on their own.</p>
-    </div>
-    <div class="tl-wrap">
-      <div class="paper-card tracklist-card tracklist-card--b">
-      <div class="tl-head">
-        <span class="shout">YAPPER · C-90 · SIDE B</span>
-        <span class="marker">rec: TBD · demos only</span>
-      </div>
-      <div class="track"><span class="no">B1</span><span class="t">Headphone buttons</span><span class="d">your AirPods' pause button, wired straight to the tape</span><span class="lead"></span><span class="spec">pause from the couch</span></div>
-      <div class="track"><span class="no">B2</span><span class="t">Sentence skip</span><span class="d">step back one sentence, not ten seconds</span><span class="lead"></span><span class="spec">±1 sentence</span></div>
-      <div class="track"><span class="no">B3</span><span class="t">History search</span><span class="d">type three words, find the reply</span><span class="lead"></span><span class="spec">grep for the tape</span></div>
-      <div class="track"><span class="no">B4</span><span class="t">Rebindable hotkeys</span><span class="d">the Right ⌘ contract, remappable — if demand shows up</span><span class="lead"></span><span class="spec">your key, your rules</span></div>
-      <div class="track"><span class="no">B5</span><span class="t">Third voice tier</span><span class="d">OpenAI TTS slotted between ElevenLabs and the Mac voice</span><span class="lead"></span><span class="spec">three voices deep</span></div>
-      <div class="track"><span class="no">B6</span><span class="t">Sleep manners</span><span class="d">lid closes, tape pauses; wake up, it resumes</span><span class="lead"></span><span class="spec">naps politely</span></div>
-      <div class="track"><span class="no">B7</span><span class="t">Voice in</span><span class="d">talk back — the other half of the loop</span><span class="lead"></span><span class="spec">voice in · voice out</span></div>
-      <div class="tl-foot">
-        <span>total running time: unknown</span>
-        <span>pencilled in · order may shuffle</span>
-      </div>
-      </div>
-    </div>
-    <div class="roadmap-chips">
+  <section class="sect sideb">
+    <span class="sect-eyebrow" style="font-size:22px">side B</span><br>
+    <div class="stamp">Coming soon</div>
+    <p class="sideb-copy"><b>v0.1.0 is in daily-driver testing</b> — glued to its maker's menu bar right now.
+    Public release is TBD: open source or shrink-wrap, the tape keeps rolling either way.
+    Bring your own ElevenLabs key; the Mac voice rides free.</p>
+    <div class="chips">
       <span class="chip">an independent production</span>
       <span class="chip chip--ghost">reads aloud · stays out of your way</span>
-    </div>
-  </section>
-
-  <!-- ======================= bottom CTA ======================= -->
-  <section class="sect">
-    <div class="sect-head" style="text-align:center">
-      <span class="sect-eyebrow">end of the reel</span>
-      <h2 class="shout sect-title">Take the tape home.</h2>
-    </div>
-    <div class="dl-zone" style="margin-top:0">
-      <div class="dl-row">
-        <a class="btn-dl btn-dl--primary" href="https://github.com/Chefy3x/Yapper/releases/latest/download/Yapper.dmg">
-          <span class="tape-strip" style="top:-10px;left:-18px;transform:rotate(-45deg)"></span>
-          <span class="tape-strip" style="bottom:-9px;right:-18px;transform:rotate(-45deg)"></span>
-          ⬇ Download for macOS
-        </a>
-        <a class="btn-dl btn-dl--ghost" href="https://github.com/Chefy3x/Yapper">Source on GitHub</a>
-      </div>
-      <p class="dl-note">free &amp; open source · macOS 26+ · Apple silicon · notarized by Apple</p>
     </div>
   </section>
 
@@ -768,7 +688,7 @@ footer{
     "Highlight anything, anywhere — right Command plus S — and congratulations, it's a podcast now.",
     "Press record, and every new reply auto-plays the moment it lands. They queue. They never talk over each other.",
     "Code blocks? Skipped. Markdown? Stripped. You hear prose, not punctuation.",
-    "In the real app I speak with ElevenLabs voices. This browser voice is my understudy. Be kind.",
+    "What you're hearing is my real voice — ElevenLabs, the River preset. The same one Yapper ships.",
     "If the network dies, I fall back to the Mac's built-in voice and keep rolling.",
     "That's Side A. Side B is coming. Yapper — reads aloud, stays out of your way."
   ];
@@ -795,7 +715,16 @@ footer{
     intra: 0         // 0..1 progress within current track
   };
 
-  /* ---------- voice pick: prefer the app's own fallback voice ---------- */
+  /* ---------- the real voice: River clips, ElevenLabs (lazy — fetched on Play) ---------- */
+  var AUDIO_SRC = [];
+  for(var ai = 1; ai <= N; ai++) AUDIO_SRC.push("audio/river-" + ai + ".mp3");
+  var audioReady = "Audio" in window;
+  var audioEl = audioReady ? new Audio() : null;
+  if(audioEl) audioEl.preload = "none";
+  var usingAudioFor = -1;   // track index currently driven by real audio, else -1
+  var gen = 0;              // bumped on every (re)start; stale async callbacks check it
+
+  /* ---------- browser voice: the offline understudy (fallback only) ---------- */
   var voice = null;
   function pickVoice(){
     if(!hasSpeech) return;
@@ -808,8 +737,11 @@ footer{
   if(hasSpeech){
     pickVoice();
     window.speechSynthesis.onvoiceschanged = pickVoice;
-    window.addEventListener("pagehide", function(){ window.speechSynthesis.cancel(); });
   }
+  window.addEventListener("pagehide", function(){
+    if(audioEl) audioEl.pause();
+    if(hasSpeech) window.speechSynthesis.cancel();
+  });
 
   /* ---------- reel physics — transliterated from CassettePlayerView.swift ---------- */
   var supplyAngle = 0, takeupAngle = 0, lastTick = null, rafId = null;
@@ -840,8 +772,8 @@ footer{
   function setStatus(){
     var trk = "TRK " + (state.idx + 1) + "/" + N;
     var txt, cls = "counter";
-    if(!hasSpeech){
-      txt = trk + " · NO SPEECH ENGINE HERE — REELS STILL SPIN";
+    if(!audioReady && !hasSpeech){
+      txt = trk + " · NO AUDIO ENGINE HERE — REELS STILL SPIN";
       if(state.speaking) cls += " playing";
     } else if(state.speaking && !state.paused){
       txt = (state.rec ? "● REC · " : "▶ ") + trk + " — " + (state.rec ? "AUTO-PLAYING THE QUEUE" : "PLAYING");
@@ -865,70 +797,107 @@ footer{
     setStatus();
   }
 
-  /* ---------- speech driver ---------- */
-  function speak(i){
-    if(!hasSpeech){ // visual-only fallback: "play" ~7s per track
-      state.idx = i; state.intra = 0; state.speaking = true; state.paused = false; paint();
-      clearTimeout(speak._t);
-      speak._t = setTimeout(function(){
-        if(state.rec && state.idx < N-1){ speak(state.idx+1); }
-        else { state.speaking = false; state.idx = Math.min(state.idx+1, N-1) % N; paint(); }
-      }, 7000 / SPEEDS[state.speed]);
-      return;
-    }
-    window.speechSynthesis.cancel();
+  /* ---------- transport driver: real audio first, browser voice as understudy ---------- */
+  var visualT = null;
+
+  function play(i){
+    var myGen = ++gen;                        // this run owns the transport now
     state.idx = i; state.intra = 0; state.speaking = true; state.paused = false;
+    if(hasSpeech) window.speechSynthesis.cancel();
+    if(audioEl) audioEl.pause();
+    clearTimeout(visualT);
+    if(audioReady) startAudio(i, myGen);
+    else startSpeech(i, myGen);
+    paint();
+  }
+
+  function startAudio(i, myGen){
+    usingAudioFor = i;
+    audioEl.onended = function(){ if(myGen === gen) advance(myGen); };
+    audioEl.ontimeupdate = function(){
+      if(myGen === gen && audioEl.duration) state.intra = Math.min(1, audioEl.currentTime / audioEl.duration);
+    };
+    audioEl.onerror = function(){ if(myGen === gen) startSpeech(i, myGen); };   // clip missing/offline → understudy
+    try {
+      audioEl.src = AUDIO_SRC[i];
+      audioEl.playbackRate = SPEEDS[state.speed];
+      var p = audioEl.play();
+      if(p && p.catch) p.catch(function(){ if(myGen === gen) startSpeech(i, myGen); });
+    } catch(e){ if(myGen === gen) startSpeech(i, myGen); }
+  }
+
+  function startSpeech(i, myGen){              // the browser understudy (no clip / no network)
+    usingAudioFor = -1;
+    if(!hasSpeech){ startVisual(i, myGen); return; }
+    window.speechSynthesis.cancel();
     var u = new SpeechSynthesisUtterance(LINES[i]);
     if(voice) u.voice = voice;
-    u.rate = SPEEDS[state.speed];
-    u.pitch = 1;
+    u.rate = SPEEDS[state.speed]; u.pitch = 1;
     u.onboundary = function(e){
-      if(e.charIndex != null) state.intra = Math.min(1, e.charIndex / LINES[i].length);
+      if(myGen === gen && e.charIndex != null) state.intra = Math.min(1, e.charIndex / LINES[i].length);
     };
-    u.onend = function(){
-      if(!state.speaking) return;             // was cancelled by stop()
-      state.intra = 0;
-      if(state.rec && state.idx < N-1){       // conversation mode: play the queue
-        speak(state.idx + 1);
-      } else {
-        state.speaking = false; state.paused = false;
-        state.idx = (state.idx + 1) % N;      // arm the next track
-        paint();
-      }
-    };
-    u.onerror = function(){ state.speaking = false; state.paused = false; paint(); };
+    u.onend = function(){ if(myGen === gen) advance(myGen); };
+    u.onerror = function(){ if(myGen === gen){ state.speaking = false; state.paused = false; paint(); } };
     window.speechSynthesis.speak(u);
-    paint();
   }
+
+  function startVisual(i, myGen){              // no engine at all: "play" ~7 s, reels still spin
+    clearTimeout(visualT);
+    visualT = setTimeout(function(){ if(myGen === gen) advance(myGen); }, 7000 / SPEEDS[state.speed]);
+  }
+
+  function advance(myGen){                     // a track finished cleanly
+    if(myGen !== gen || !state.speaking) return;
+    state.intra = 0;
+    if(state.rec && state.idx < N-1){ play(state.idx + 1); }   // conversation mode: roll the queue
+    else { state.speaking = false; state.paused = false; state.idx = (state.idx + 1) % N; paint(); }
+  }
+
   function stop(){
+    gen++;                                     // orphan any in-flight callbacks
     state.speaking = false; state.paused = false; state.intra = 0;
+    if(audioEl) audioEl.pause();
     if(hasSpeech) window.speechSynthesis.cancel();
-    clearTimeout(speak._t);
+    clearTimeout(visualT);
+    usingAudioFor = -1;
     paint();
   }
+
   function playPause(){
-    if(!state.speaking){ speak(state.idx); hideNote(); return; }
-    if(!hasSpeech) { stop(); return; }
-    if(state.paused){ window.speechSynthesis.resume(); state.paused = false; }
-    else { window.speechSynthesis.pause(); state.paused = true; }
+    if(!state.speaking){ play(state.idx); hideNote(); return; }
+    if(state.paused){                                                 // resume
+      if(usingAudioFor === state.idx){ var p = audioEl.play(); if(p && p.catch) p.catch(function(){}); }
+      else if(hasSpeech){ window.speechSynthesis.resume(); }
+      else { play(state.idx); return; }
+      state.paused = false;
+    } else {                                                          // pause
+      if(usingAudioFor === state.idx){ audioEl.pause(); }
+      else if(hasSpeech){ window.speechSynthesis.pause(); }
+      else { stop(); return; }
+      state.paused = true;
+    }
     paint();
   }
+
   function skip(dir){
     var was = state.speaking && !state.paused;
     var next = Math.min(N-1, Math.max(0, state.idx + dir));
-    if(was){ speak(next); }
+    if(was){ play(next); }
     else { stop(); state.idx = next; paint(); }
   }
+
   function toggleRec(){
     state.rec = !state.rec;
-    if(state.rec && !state.speaking){ speak(state.idx); hideNote(); }
+    if(state.rec && !state.speaking){ play(state.idx); hideNote(); }
     else paint();
   }
+
   function cycleSpeed(){
     state.speed = (state.speed + 1) % SPEEDS.length;
     speedMark.textContent = SPEEDS[state.speed] + "×";
     speedMark.classList.toggle("off1x", SPEEDS[state.speed] !== 1);
-    if(state.speaking && !state.paused) speak(state.idx);   // restart track at new rate
+    if(usingAudioFor === state.idx && state.speaking){ audioEl.playbackRate = SPEEDS[state.speed]; }  // real audio: scrub speed live
+    else if(state.speaking && !state.paused){ play(state.idx); }                                      // understudy: restart at new rate
     else paint();
   }
   var noteHidden = false;

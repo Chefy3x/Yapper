@@ -507,7 +507,7 @@ footer{
 
     <div class="counter" id="counter" aria-live="polite"><span class="led"></span><span class="txt" id="counterTxt">TRK 1/9 · ■ STOPPED — PRESS ▶</span></div>
     <p class="deck-caption">in the app, REW/FF seek ±10 s — here they skip tracks. artistic license.<br>
-    the real thing speaks ElevenLabs; this demo borrows your browser's voice. be kind to the understudy.</p>
+    yes, that's the real voice: ElevenLabs River, the preset Yapper ships. no network? your browser's voice steps in.</p>
 
     <div class="hero-chips">
       <span class="pill"><b>engine</b>ElevenLabs</span>
@@ -681,7 +681,7 @@ footer{
     "Highlight anything, anywhere — right Command plus S — and congratulations, it's a podcast now.",
     "Press record, and every new reply auto-plays the moment it lands. They queue. They never talk over each other.",
     "Code blocks? Skipped. Markdown? Stripped. You hear prose, not punctuation.",
-    "In the real app I speak with ElevenLabs voices. This browser voice is my understudy. Be kind.",
+    "What you're hearing is my real voice — ElevenLabs, the River preset. The same one Yapper ships.",
     "If the network dies, I fall back to the Mac's built-in voice and keep rolling.",
     "That's Side A. Side B is coming. Yapper — reads aloud, stays out of your way."
   ];
@@ -708,7 +708,16 @@ footer{
     intra: 0         // 0..1 progress within current track
   };
 
-  /* ---------- voice pick: prefer the app's own fallback voice ---------- */
+  /* ---------- the real voice: River clips, ElevenLabs (lazy — fetched on Play) ---------- */
+  var AUDIO_SRC = [];
+  for(var ai = 1; ai <= N; ai++) AUDIO_SRC.push("audio/river-" + ai + ".mp3");
+  var audioReady = "Audio" in window;
+  var audioEl = audioReady ? new Audio() : null;
+  if(audioEl) audioEl.preload = "none";
+  var usingAudioFor = -1;   // track index currently driven by real audio, else -1
+  var gen = 0;              // bumped on every (re)start; stale async callbacks check it
+
+  /* ---------- browser voice: the offline understudy (fallback only) ---------- */
   var voice = null;
   function pickVoice(){
     if(!hasSpeech) return;
@@ -721,8 +730,11 @@ footer{
   if(hasSpeech){
     pickVoice();
     window.speechSynthesis.onvoiceschanged = pickVoice;
-    window.addEventListener("pagehide", function(){ window.speechSynthesis.cancel(); });
   }
+  window.addEventListener("pagehide", function(){
+    if(audioEl) audioEl.pause();
+    if(hasSpeech) window.speechSynthesis.cancel();
+  });
 
   /* ---------- reel physics — transliterated from CassettePlayerView.swift ---------- */
   var supplyAngle = 0, takeupAngle = 0, lastTick = null, rafId = null;
@@ -753,8 +765,8 @@ footer{
   function setStatus(){
     var trk = "TRK " + (state.idx + 1) + "/" + N;
     var txt, cls = "counter";
-    if(!hasSpeech){
-      txt = trk + " · NO SPEECH ENGINE HERE — REELS STILL SPIN";
+    if(!audioReady && !hasSpeech){
+      txt = trk + " · NO AUDIO ENGINE HERE — REELS STILL SPIN";
       if(state.speaking) cls += " playing";
     } else if(state.speaking && !state.paused){
       txt = (state.rec ? "● REC · " : "▶ ") + trk + " — " + (state.rec ? "AUTO-PLAYING THE QUEUE" : "PLAYING");
@@ -778,70 +790,107 @@ footer{
     setStatus();
   }
 
-  /* ---------- speech driver ---------- */
-  function speak(i){
-    if(!hasSpeech){ // visual-only fallback: "play" ~7s per track
-      state.idx = i; state.intra = 0; state.speaking = true; state.paused = false; paint();
-      clearTimeout(speak._t);
-      speak._t = setTimeout(function(){
-        if(state.rec && state.idx < N-1){ speak(state.idx+1); }
-        else { state.speaking = false; state.idx = Math.min(state.idx+1, N-1) % N; paint(); }
-      }, 7000 / SPEEDS[state.speed]);
-      return;
-    }
-    window.speechSynthesis.cancel();
+  /* ---------- transport driver: real audio first, browser voice as understudy ---------- */
+  var visualT = null;
+
+  function play(i){
+    var myGen = ++gen;                        // this run owns the transport now
     state.idx = i; state.intra = 0; state.speaking = true; state.paused = false;
+    if(hasSpeech) window.speechSynthesis.cancel();
+    if(audioEl) audioEl.pause();
+    clearTimeout(visualT);
+    if(audioReady) startAudio(i, myGen);
+    else startSpeech(i, myGen);
+    paint();
+  }
+
+  function startAudio(i, myGen){
+    usingAudioFor = i;
+    audioEl.onended = function(){ if(myGen === gen) advance(myGen); };
+    audioEl.ontimeupdate = function(){
+      if(myGen === gen && audioEl.duration) state.intra = Math.min(1, audioEl.currentTime / audioEl.duration);
+    };
+    audioEl.onerror = function(){ if(myGen === gen) startSpeech(i, myGen); };   // clip missing/offline → understudy
+    try {
+      audioEl.src = AUDIO_SRC[i];
+      audioEl.playbackRate = SPEEDS[state.speed];
+      var p = audioEl.play();
+      if(p && p.catch) p.catch(function(){ if(myGen === gen) startSpeech(i, myGen); });
+    } catch(e){ if(myGen === gen) startSpeech(i, myGen); }
+  }
+
+  function startSpeech(i, myGen){              // the browser understudy (no clip / no network)
+    usingAudioFor = -1;
+    if(!hasSpeech){ startVisual(i, myGen); return; }
+    window.speechSynthesis.cancel();
     var u = new SpeechSynthesisUtterance(LINES[i]);
     if(voice) u.voice = voice;
-    u.rate = SPEEDS[state.speed];
-    u.pitch = 1;
+    u.rate = SPEEDS[state.speed]; u.pitch = 1;
     u.onboundary = function(e){
-      if(e.charIndex != null) state.intra = Math.min(1, e.charIndex / LINES[i].length);
+      if(myGen === gen && e.charIndex != null) state.intra = Math.min(1, e.charIndex / LINES[i].length);
     };
-    u.onend = function(){
-      if(!state.speaking) return;             // was cancelled by stop()
-      state.intra = 0;
-      if(state.rec && state.idx < N-1){       // conversation mode: play the queue
-        speak(state.idx + 1);
-      } else {
-        state.speaking = false; state.paused = false;
-        state.idx = (state.idx + 1) % N;      // arm the next track
-        paint();
-      }
-    };
-    u.onerror = function(){ state.speaking = false; state.paused = false; paint(); };
+    u.onend = function(){ if(myGen === gen) advance(myGen); };
+    u.onerror = function(){ if(myGen === gen){ state.speaking = false; state.paused = false; paint(); } };
     window.speechSynthesis.speak(u);
-    paint();
   }
+
+  function startVisual(i, myGen){              // no engine at all: "play" ~7 s, reels still spin
+    clearTimeout(visualT);
+    visualT = setTimeout(function(){ if(myGen === gen) advance(myGen); }, 7000 / SPEEDS[state.speed]);
+  }
+
+  function advance(myGen){                     // a track finished cleanly
+    if(myGen !== gen || !state.speaking) return;
+    state.intra = 0;
+    if(state.rec && state.idx < N-1){ play(state.idx + 1); }   // conversation mode: roll the queue
+    else { state.speaking = false; state.paused = false; state.idx = (state.idx + 1) % N; paint(); }
+  }
+
   function stop(){
+    gen++;                                     // orphan any in-flight callbacks
     state.speaking = false; state.paused = false; state.intra = 0;
+    if(audioEl) audioEl.pause();
     if(hasSpeech) window.speechSynthesis.cancel();
-    clearTimeout(speak._t);
+    clearTimeout(visualT);
+    usingAudioFor = -1;
     paint();
   }
+
   function playPause(){
-    if(!state.speaking){ speak(state.idx); hideNote(); return; }
-    if(!hasSpeech) { stop(); return; }
-    if(state.paused){ window.speechSynthesis.resume(); state.paused = false; }
-    else { window.speechSynthesis.pause(); state.paused = true; }
+    if(!state.speaking){ play(state.idx); hideNote(); return; }
+    if(state.paused){                                                 // resume
+      if(usingAudioFor === state.idx){ var p = audioEl.play(); if(p && p.catch) p.catch(function(){}); }
+      else if(hasSpeech){ window.speechSynthesis.resume(); }
+      else { play(state.idx); return; }
+      state.paused = false;
+    } else {                                                          // pause
+      if(usingAudioFor === state.idx){ audioEl.pause(); }
+      else if(hasSpeech){ window.speechSynthesis.pause(); }
+      else { stop(); return; }
+      state.paused = true;
+    }
     paint();
   }
+
   function skip(dir){
     var was = state.speaking && !state.paused;
     var next = Math.min(N-1, Math.max(0, state.idx + dir));
-    if(was){ speak(next); }
+    if(was){ play(next); }
     else { stop(); state.idx = next; paint(); }
   }
+
   function toggleRec(){
     state.rec = !state.rec;
-    if(state.rec && !state.speaking){ speak(state.idx); hideNote(); }
+    if(state.rec && !state.speaking){ play(state.idx); hideNote(); }
     else paint();
   }
+
   function cycleSpeed(){
     state.speed = (state.speed + 1) % SPEEDS.length;
     speedMark.textContent = SPEEDS[state.speed] + "×";
     speedMark.classList.toggle("off1x", SPEEDS[state.speed] !== 1);
-    if(state.speaking && !state.paused) speak(state.idx);   // restart track at new rate
+    if(usingAudioFor === state.idx && state.speaking){ audioEl.playbackRate = SPEEDS[state.speed]; }  // real audio: scrub speed live
+    else if(state.speaking && !state.paused){ play(state.idx); }                                      // understudy: restart at new rate
     else paint();
   }
   var noteHidden = false;
