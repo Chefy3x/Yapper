@@ -34,5 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
         AppState.shared.bootstrap()
         miniPlayer = MiniPlayerController(state: AppState.shared)
+        // Start Sparkle's scheduled update checks.
+        _ = UpdaterService.shared
     }
 }

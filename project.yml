@@ -19,6 +19,10 @@ settings:
     ARCHS: arm64
     ONLY_ACTIVE_ARCH: YES
     EXCLUDED_ARCHS[sdk=*]: x86_64
+packages:
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: "2.9.4"
 schemes:
   Yapper:
     build:
@@ -50,6 +54,11 @@ targets:
         NSAccessibilityUsageDescription: "Yapper reads AI responses from the focused window so it can speak them aloud."
         NSAppleEventsUsageDescription: "Yapper inspects the focused window to find the latest AI response."
         NSHumanReadableCopyright: "Copyright © 2026 KeepCo. All rights reserved."
+        # Sparkle auto-updates: feed lives in the repo so the URL never moves.
+        SUFeedURL: https://raw.githubusercontent.com/Chefy3x/Yapper/main/site/appcast.xml
+        SUPublicEDKey: Jj6vPCQLIQ/YNSDVq7T2bu/mgpfyWoy57hcpTbKFz5g=
+    dependencies:
+      - package: Sparkle
     entitlements:
       path: Yapper/Yapper.entitlements
       properties:
@@ -78,6 +87,9 @@ targets:
           - "Info.plist"
           - "Yapper.entitlements"
           - "Resources/**"
+    dependencies:
+      # App sources reference Sparkle (UpdaterService), so the test bundle links it too.
+      - package: Sparkle
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.yapper.YapperTests

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MenuBarContent: View {
     @EnvironmentObject private var state: AppState
+    @ObservedObject private var updater = UpdaterService.shared
     @Environment(\.openSettings) private var openSettings
 
     var body: some View {
@@ -76,6 +77,16 @@ struct MenuBarContent: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .buttonStyle(.plain)
+            .padding(.horizontal, 12)
+
+            Button {
+                updater.checkForUpdates()
+            } label: {
+                Label("Check for Updates…", systemImage: "arrow.triangle.2.circlepath")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+            .disabled(!updater.canCheckForUpdates)
             .padding(.horizontal, 12)
 
             Divider()

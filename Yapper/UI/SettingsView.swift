@@ -236,7 +236,7 @@ private struct SidebarRail: View {
                 if skin == .tape {
                     TapeBarcode(height: 14)
                 }
-                Text(skin == .tape ? "V0.1.0 · SIDE A" : "Version 0.1.0")
+                Text(skin == .tape ? "V\(appVersion) · SIDE A" : "Version \(appVersion)")
                     .font(skin.body(10, .medium))
                     .tracking(skin == .tape ? 1.2 : 0)
                     .foregroundStyle(.tertiary)
@@ -1580,6 +1580,10 @@ private struct RetentionSlider: View {
 
 // MARK: - About
 
+/// Marketing version from the bundle so release bumps (scripts/release.sh) propagate
+/// everywhere the version is shown without touching this file.
+let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
+
 private struct AboutPanel: View {
     @Environment(\.settingsSkin) private var skin
 
@@ -1619,7 +1623,7 @@ private struct AboutPanel: View {
                 }
 
                 HStack(spacing: 10) {
-                    InfoPill(label: "VERSION", value: "0.1.0")
+                    InfoPill(label: "VERSION", value: appVersion)
                     InfoPill(label: "PLATFORM", value: "macOS 26")
                     if skin == .tape {
                         InfoPill(label: "POSITION", value: "SIDE A")

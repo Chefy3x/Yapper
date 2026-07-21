@@ -417,6 +417,34 @@ h1 .l2{display:inline-block;transform:rotate(.5deg);color:var(--paper)}
 .sideb-copy{max-width:56ch;margin:26px auto 0;color:var(--dust)}
 .sideb-copy b{color:var(--cream)}
 .sideb .chips{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:26px}
+.dl-zone{margin-top:46px;text-align:center}
+.dl-row{display:flex;gap:18px;justify-content:center;align-items:center;flex-wrap:wrap}
+.btn-dl{
+  display:inline-block;
+  font:700 13px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;
+  color:var(--ink);background:var(--paper);
+  padding:15px 22px 13px;border:2px solid var(--ink);border-radius:2px;
+  box-shadow:3px 4px 0 rgba(0,0,0,.55);text-decoration:none;
+  transition:transform .12s ease,box-shadow .12s ease;
+}
+.btn-dl:hover{transform:translate(-1px,-1px);box-shadow:4px 5px 0 rgba(0,0,0,.55)}
+.btn-dl--primary{
+  position:relative;
+  font-family:var(--impact);font-weight:400;font-size:clamp(18px,2.6vw,23px);
+  letter-spacing:.07em;line-height:1;
+  padding:21px 36px 17px;border-width:3px;
+  transform:rotate(-1.2deg);
+  box-shadow:5px 7px 0 rgba(0,0,0,.55);
+}
+.btn-dl--primary:hover{transform:rotate(0deg) translate(-1px,-2px);box-shadow:7px 9px 0 rgba(0,0,0,.55)}
+.btn-dl--primary .tape-strip{width:68px;height:19px}
+.btn-dl--ghost{background:transparent;color:var(--dust);border-color:var(--line);box-shadow:none}
+.btn-dl--ghost:hover{color:var(--cream);border-color:var(--dust);transform:none;box-shadow:none}
+.dl-note{margin-top:14px;font:700 10px/1.7 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--faint)}
+/* side B roadmap — same J-card, opposite tilt, pencilled-in ink */
+.tracklist-card--b{transform:rotate(.6deg)}
+.tracklist-card--b .track .t{color:var(--ink-soft)}
+.roadmap-chips{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:34px}
 
 /* --- footer --- */
 footer{
@@ -471,6 +499,7 @@ footer{
     <div class="chips">
       <span class="pill pill--ghost"><b>platform</b>macOS 26+</span>
       <span class="pill pill--ghost"><b>version</b>0.1.0 · side A</span>
+      <a class="pill" href="https://github.com/Chefy3x/Yapper/releases/latest/download/Yapper.dmg" style="text-decoration:none"><b>get</b>download ⬇</a>
     </div>
   </div>
 
@@ -520,6 +549,18 @@ footer{
       <span class="pill"><b>engine</b>ElevenLabs</span>
       <span class="pill"><b>offline</b>built-in fallback</span>
       <span class="pill"><b>code blocks</b>never read</span>
+    </div>
+
+    <div class="dl-zone" id="download">
+      <div class="dl-row">
+        <a class="btn-dl btn-dl--primary" href="https://github.com/Chefy3x/Yapper/releases/latest/download/Yapper.dmg">
+          <span class="tape-strip" style="top:-10px;left:-18px;transform:rotate(-45deg)"></span>
+          <span class="tape-strip" style="bottom:-9px;right:-18px;transform:rotate(-45deg)"></span>
+          ⬇ Download for macOS
+        </a>
+        <a class="btn-dl btn-dl--ghost" href="https://github.com/Chefy3x/Yapper">Source on GitHub</a>
+      </div>
+      <p class="dl-note">free &amp; open source · macOS 26+ · Apple silicon · notarized by Apple</p>
     </div>
   </header>
 </div>
@@ -653,15 +694,54 @@ footer{
   </section>
 
   <!-- ======================= side B ======================= -->
-  <section class="sect sideb">
-    <span class="sect-eyebrow" style="font-size:22px">side B</span><br>
-    <div class="stamp">Coming soon</div>
-    <p class="sideb-copy"><b>v0.1.0 is in daily-driver testing</b> — glued to its maker's menu bar right now.
-    Public release is TBD: open source or shrink-wrap, the tape keeps rolling either way.
-    Bring your own ElevenLabs key; the Mac voice rides free.</p>
-    <div class="chips">
+  <section class="sect">
+    <div class="sect-head" style="text-align:center">
+      <span class="sect-eyebrow" style="font-size:22px">side B</span>
+      <h2 class="shout sect-title">Not yet recorded.</h2>
+      <p class="sect-kicker" style="margin-left:auto;margin-right:auto">The pencil side of the J-card.
+      Tracks get cut in the order they earn it — no dates, no promises, updates arrive on their own.</p>
+    </div>
+    <div class="tl-wrap">
+      <div class="paper-card tracklist-card tracklist-card--b">
+      <div class="tl-head">
+        <span class="shout">YAPPER · C-90 · SIDE B</span>
+        <span class="marker">rec: TBD · demos only</span>
+      </div>
+      <div class="track"><span class="no">B1</span><span class="t">Headphone buttons</span><span class="d">your AirPods' pause button, wired straight to the tape</span><span class="lead"></span><span class="spec">pause from the couch</span></div>
+      <div class="track"><span class="no">B2</span><span class="t">Sentence skip</span><span class="d">step back one sentence, not ten seconds</span><span class="lead"></span><span class="spec">±1 sentence</span></div>
+      <div class="track"><span class="no">B3</span><span class="t">History search</span><span class="d">type three words, find the reply</span><span class="lead"></span><span class="spec">grep for the tape</span></div>
+      <div class="track"><span class="no">B4</span><span class="t">Rebindable hotkeys</span><span class="d">the Right ⌘ contract, remappable — if demand shows up</span><span class="lead"></span><span class="spec">your key, your rules</span></div>
+      <div class="track"><span class="no">B5</span><span class="t">Third voice tier</span><span class="d">OpenAI TTS slotted between ElevenLabs and the Mac voice</span><span class="lead"></span><span class="spec">three voices deep</span></div>
+      <div class="track"><span class="no">B6</span><span class="t">Sleep manners</span><span class="d">lid closes, tape pauses; wake up, it resumes</span><span class="lead"></span><span class="spec">naps politely</span></div>
+      <div class="track"><span class="no">B7</span><span class="t">Voice in</span><span class="d">talk back — the other half of the loop</span><span class="lead"></span><span class="spec">voice in · voice out</span></div>
+      <div class="tl-foot">
+        <span>total running time: unknown</span>
+        <span>pencilled in · order may shuffle</span>
+      </div>
+      </div>
+    </div>
+    <div class="roadmap-chips">
       <span class="chip">an independent production</span>
       <span class="chip chip--ghost">reads aloud · stays out of your way</span>
+    </div>
+  </section>
+
+  <!-- ======================= bottom CTA ======================= -->
+  <section class="sect">
+    <div class="sect-head" style="text-align:center">
+      <span class="sect-eyebrow">end of the reel</span>
+      <h2 class="shout sect-title">Take the tape home.</h2>
+    </div>
+    <div class="dl-zone" style="margin-top:0">
+      <div class="dl-row">
+        <a class="btn-dl btn-dl--primary" href="https://github.com/Chefy3x/Yapper/releases/latest/download/Yapper.dmg">
+          <span class="tape-strip" style="top:-10px;left:-18px;transform:rotate(-45deg)"></span>
+          <span class="tape-strip" style="bottom:-9px;right:-18px;transform:rotate(-45deg)"></span>
+          ⬇ Download for macOS
+        </a>
+        <a class="btn-dl btn-dl--ghost" href="https://github.com/Chefy3x/Yapper">Source on GitHub</a>
+      </div>
+      <p class="dl-note">free &amp; open source · macOS 26+ · Apple silicon · notarized by Apple</p>
     </div>
   </section>
 
