@@ -4,7 +4,8 @@ struct MenuBarIcon: View {
     @EnvironmentObject private var state: AppState
 
     var body: some View {
-        if state.isReading {
+        // `.symbolEffect` needs macOS 14; on Ventura the icon is static.
+        if state.isReading, #available(macOS 14, *) {
             Image(systemName: "waveform")
                 .symbolEffect(.variableColor.iterative, options: .repeating)
         } else {

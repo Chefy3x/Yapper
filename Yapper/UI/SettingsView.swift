@@ -90,7 +90,7 @@ struct SettingsView: View {
         .onAppear {
             if state.pendingHistoryOpen { selected = .history; state.pendingHistoryOpen = false }
         }
-        .onChange(of: state.pendingHistoryOpen) { _, open in
+        .onChange(of: state.pendingHistoryOpen) { open in
             if open { selected = .history; state.pendingHistoryOpen = false }
         }
     }
@@ -343,7 +343,7 @@ private struct Card<Content: View>: View {
         .padding(20)
         .background(
             RoundedRectangle(cornerRadius: skin == .tape ? 4 : 14, style: .continuous)
-                .fill(skin == .tape ? AnyShapeStyle(Tape.panelGradient) : AnyShapeStyle(.background.secondary))
+                .fill(skin == .tape ? AnyShapeStyle(Tape.panelGradient) : neutralPanelFill)
         )
         .overlay(
             RoundedRectangle(cornerRadius: skin == .tape ? 4 : 14, style: .continuous)
@@ -464,7 +464,7 @@ private struct GeneralPanel: View {
                         .labelsHidden()
                         .toggleStyle(.switch)
                         .tint(skin.accent)
-                        .onChange(of: launchToggle) { _, newValue in
+                        .onChange(of: launchToggle) { newValue in
                             LaunchAtLogin.setEnabled(newValue)
                             settings.launchAtLogin = newValue
                         }
@@ -981,7 +981,7 @@ private struct HotkeyRow: View {
         .padding(.vertical, 12)
         .background(
             RoundedRectangle(cornerRadius: skin == .tape ? 4 : 12, style: .continuous)
-                .fill(skin == .tape ? AnyShapeStyle(Tape.panelGradient) : AnyShapeStyle(.background.secondary))
+                .fill(skin == .tape ? AnyShapeStyle(Tape.panelGradient) : neutralPanelFill)
         )
         .overlay(
             RoundedRectangle(cornerRadius: skin == .tape ? 4 : 12, style: .continuous)
@@ -1361,7 +1361,7 @@ private struct HistoryPanel: View {
                            onReplay: { state.replay($0) },
                            onDelete: { state.history.remove($0) })
         }
-        .onChange(of: settings.historyRetentionHours) { _, hrs in
+        .onChange(of: settings.historyRetentionHours) { hrs in
             state.history.prune(retentionHours: hrs)
         }
     }
@@ -1583,6 +1583,19 @@ private struct RetentionSlider: View {
 /// Marketing version from the bundle so release bumps (scripts/release.sh) propagate
 /// everywhere the version is shown without touching this file.
 let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
+/// The macOS version the app is currently running on, e.g. "macOS 14".
+let platformVersion = "macOS \(ProcessInfo.processInfo.operatingSystemVersion.majorVersion)"
+
+/// Neutral (non-tape) panel fill. `.background.secondary` is a hierarchical
+/// ShapeStyle level that needs macOS 14; on Ventura fall back to the neutral
+/// window background so Settings surfaces stay charcoal.
+var neutralPanelFill: AnyShapeStyle {
+    if #available(macOS 14, *) {
+        return AnyShapeStyle(.background.secondary)
+    } else {
+        return AnyShapeStyle(Color(nsColor: .windowBackgroundColor))
+    }
+}
 
 private struct AboutPanel: View {
     @Environment(\.settingsSkin) private var skin
@@ -1624,7 +1637,7 @@ private struct AboutPanel: View {
 
                 HStack(spacing: 10) {
                     InfoPill(label: "VERSION", value: appVersion)
-                    InfoPill(label: "PLATFORM", value: "macOS 26")
+                    InfoPill(label: "PLATFORM", value: platformVersion)
                     if skin == .tape {
                         InfoPill(label: "POSITION", value: "SIDE A")
                     }
@@ -1655,7 +1668,7 @@ private struct AboutPanel: View {
             .background(
                 ZStack {
                     RoundedRectangle(cornerRadius: skin == .tape ? 4 : 20, style: .continuous)
-                        .fill(skin == .tape ? AnyShapeStyle(Tape.panelGradient) : AnyShapeStyle(.background.secondary))
+                        .fill(skin == .tape ? AnyShapeStyle(Tape.panelGradient) : neutralPanelFill)
                     if skin == .standard {
                         RoundedRectangle(cornerRadius: 20, style: .continuous)
                             .fill(

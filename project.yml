@@ -7,7 +7,7 @@ include:
 options:
   bundleIdPrefix: app.yapper
   deploymentTarget:
-    macOS: "26.0"
+    macOS: "13.0"
   createIntermediateGroups: true
   defaultConfig: Debug
 settings:
@@ -16,9 +16,15 @@ settings:
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
     ENABLE_HARDENED_RUNTIME: YES
-    ARCHS: arm64
-    ONLY_ACTIVE_ARCH: YES
-    EXCLUDED_ARCHS[sdk=*]: x86_64
+    # Universal binary: reach Intel Macs as well as Apple Silicon.
+    ARCHS: "$(ARCHS_STANDARD)"
+  configs:
+    # Debug builds only the active arch for speed; Release archives ship
+    # a universal (arm64 + x86_64) binary.
+    Debug:
+      ONLY_ACTIVE_ARCH: YES
+    Release:
+      ONLY_ACTIVE_ARCH: NO
 packages:
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle

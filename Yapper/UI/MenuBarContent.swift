@@ -3,7 +3,6 @@ import SwiftUI
 struct MenuBarContent: View {
     @EnvironmentObject private var state: AppState
     @ObservedObject private var updater = UpdaterService.shared
-    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -60,7 +59,7 @@ struct MenuBarContent: View {
 
             Button {
                 state.pendingHistoryOpen = true
-                openSettings()
+                openSettingsWindow()
                 NSApp.activate(ignoringOtherApps: true)
             } label: {
                 Label("History", systemImage: "clock.arrow.circlepath")
@@ -70,7 +69,7 @@ struct MenuBarContent: View {
             .padding(.horizontal, 12)
 
             Button {
-                openSettings()
+                openSettingsWindow()
                 NSApp.activate(ignoringOtherApps: true)
             } label: {
                 Label("Settings…", systemImage: "gearshape")
@@ -102,5 +101,12 @@ struct MenuBarContent: View {
             .padding(.bottom, 8)
         }
         .frame(width: 260)
+    }
+
+    /// Opens the Settings scene. `@Environment(\.openSettings)` is macOS 14+,
+    /// so use the AppKit action that works back to Ventura (which renamed
+    /// "Preferences" to "Settings", hence the `showSettingsWindow:` selector).
+    private func openSettingsWindow() {
+        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
     }
 }
