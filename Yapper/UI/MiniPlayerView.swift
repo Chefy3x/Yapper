@@ -17,6 +17,8 @@ struct WindowDragHandle: NSViewRepresentable {
 struct MiniPlayerView: View {
     @ObservedObject var streamer: SentenceStreamPlayer
     @ObservedObject var coordinator: TTSCoordinator
+    /// Observed for the transcript toggle's lit state.
+    @ObservedObject var appState: AppState
     let reading: ReadingItem
     let onPlayPause: () -> Void
     let onClose: () -> Void
@@ -50,6 +52,18 @@ struct MiniPlayerView: View {
                         .help("\(coordinator.queueCount) more queued")
                 }
                 Spacer()
+                if !streamer.transcript.isEmpty {
+                    Button { appState.transcriptVisible.toggle() } label: {
+                        Image(systemName: "text.alignleft")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(appState.transcriptVisible
+                                             ? AnyShapeStyle(Self.accent) : AnyShapeStyle(.secondary))
+                            .padding(4)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help(appState.transcriptVisible ? "Hide transcript" : "Show transcript")
+                }
                 Button(action: onCycleSpeed) {
                     Text(speedLabel)
                         .font(.caption2.weight(.semibold).monospacedDigit())

@@ -9,6 +9,8 @@ import Combine
 final class MiniPlayerController: NSObject {
     private weak var state: AppState?
     private var panel: NSPanel?
+    /// Liner notes, child-windowed to the player so it travels with the deck.
+    private var transcriptPanel: NSPanel?
     private var hostingView: NSView?
     private var cancellables = Set<AnyCancellable>()
     private var stateCancellable: AnyCancellable?    // replaced each show() — never accumulates
@@ -56,11 +58,23 @@ final class MiniPlayerController: NSObject {
             }
             .store(in: &cancellables)
 
+        // Liner notes open/close from the deck's TRANSCRIPT marking, its counter, or the notes'
+        // own close button — all of them just flip this flag.
+        state.$transcriptVisible
+            .removeDuplicates()
+            .sink { [weak self] visible in
+                Task { @MainActor in
+                    if visible { self?.showTranscript() } else { self?.hideTranscript() }
+                }
+            }
+            .store(in: &cancellables)
+
         // If the player is on screen and the user switches theme, rebuild it live.
         state.settings.$miniPlayerTheme
             .dropFirst()
             .sink { [weak self] _ in
                 guard let self, self.panel != nil else { return }
+                self.hideTranscript()          // child of the panel we're about to throw away
                 self.panel?.orderOut(nil)
                 self.panel = nil
                 if let r = self.state?.currentReading,
@@ -151,7 +165,7 @@ final class MiniPlayerController: NSObject {
                 onMagnify: onMagnify, onResizeEnd: onResizeEnd))
         case .minimal:
             content = AnyView(MiniPlayerView(
-                streamer: streamer, coordinator: state.tts, reading: reading,
+                streamer: streamer, coordinator: state.tts, appState: state, reading: reading,
                 onPlayPause: onPlayPause, onClose: onClose, onSeek: onSeek, onCycleSpeed: onCycleSpeed))
         }
 
@@ -178,6 +192,85 @@ final class MiniPlayerController: NSObject {
         }
         ensurePanel(with: content)
         slideIn()
+        // Notes left open when the next queued item starts: rebuild them against the new player
+        // rather than leaving a panel bound to the finished one.
+        if state.transcriptVisible { showTranscript() }
+    }
+
+    // MARK: - Liner notes
+
+    /// Builds the notes fresh each time it opens: the panel is bound to one `SentenceStreamPlayer`,
+    /// and a new read means a new player. Attached as a child window so dragging the deck drags
+    /// the notes with it, and closing the deck closes them.
+    private func showTranscript() {
+        guard let state, let parent = panel, parent.isVisible,
+              case .elevenLabs(let streamer) = state.tts.active else { return }
+
+        let content = AnyView(TranscriptView(
+            streamer: streamer,
+            sourceApp: state.currentReading?.sourceApp ?? "Yapper",
+            onSeek: { [weak state] seconds in
+                if case .elevenLabs(let s)? = state?.tts.active { s.seek(to: seconds) }
+            },
+            onClose: { [weak state] in state?.transcriptVisible = false }))
+
+        hideTranscript()
+
+        let size = transcriptSize(for: parent)
+        let p = NSPanel(contentRect: NSRect(origin: .zero, size: size),
+                        styleMask: [.borderless, .nonactivatingPanel, .fullSizeContentView],
+                        backing: .buffered, defer: false)
+        p.isOpaque = false
+        p.backgroundColor = .clear
+        p.hasShadow = false                  // SwiftUI .shadow provides it
+        p.level = .floating
+        p.hidesOnDeactivate = false
+        p.isMovableByWindowBackground = false
+        p.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
+
+        let hosting = FirstMouseHostingView(rootView: content)
+        hosting.frame = NSRect(origin: .zero, size: size)
+        hosting.autoresizingMask = [.width, .height]
+        p.contentView = hosting
+
+        p.setFrameOrigin(transcriptOrigin(for: parent, size: size))
+        parent.addChildWindow(p, ordered: .above)
+        p.alphaValue = 0
+        p.orderFrontRegardless()
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.15
+            p.animator().alphaValue = 1
+        }
+        transcriptPanel = p
+    }
+
+    private func hideTranscript() {
+        guard let p = transcriptPanel else { return }
+        transcriptPanel = nil
+        p.parent?.removeChildWindow(p)
+        p.orderOut(nil)
+    }
+
+    private func transcriptSize(for parent: NSPanel) -> NSSize {
+        // Track the deck's width so the pair reads as one object, within sane reading limits.
+        let w = min(max(parent.frame.width, 300), 520)
+        let screenH = (parent.screen ?? NSScreen.main)?.visibleFrame.height ?? 800
+        return NSSize(width: w, height: min(380, max(220, screenH * 0.4)))
+    }
+
+    /// Sits above the player, left-aligned with it; flips below when there's no headroom, and is
+    /// clamped on-screen either way.
+    private func transcriptOrigin(for parent: NSPanel, size: NSSize) -> NSPoint {
+        let gap: CGFloat = 8
+        let visible = (parent.screen ?? NSScreen.main)?.visibleFrame
+            ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        var y = parent.frame.maxY + gap
+        if y + size.height > visible.maxY {
+            y = parent.frame.minY - gap - size.height
+        }
+        y = min(max(y, visible.minY), max(visible.maxY - size.height, visible.minY))
+        let x = min(max(parent.frame.minX, visible.minX), max(visible.maxX - size.width, visible.minX))
+        return NSPoint(x: x, y: y)
     }
 
     private func ensurePanel(with content: AnyView) {
@@ -313,6 +406,9 @@ final class MiniPlayerController: NSObject {
     }
 
     private func dismiss(animated: Bool) {
+        // The notes belong to the read that's going away — never outlive the deck.
+        state?.transcriptVisible = false
+        hideTranscript()
         guard let panel else { return }
         if !animated {
             panel.orderOut(nil)

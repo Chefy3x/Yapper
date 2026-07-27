@@ -24,7 +24,8 @@ struct SegmentationTests {
     }
 
     @Test func remainingSentencesBatchUpToLimit() throws {
-        // Five 100-char sentences: first alone, then pairs (201 chars ≤ 280, triples would be 302).
+        // Five 100-char sentences against the second-batch cap of 350: the first rides alone, the
+        // next three batch (299 chars ≤ 350, a fourth would be 399), and the last trails.
         // Capitalized: the .bySentences tokenizer is linguistic and won't split "aaa. aaa." —
         // it needs sentence-like cues such as an uppercase letter after the period.
         let sentence = "A" + String(repeating: "a", count: 98) + "."
@@ -32,8 +33,8 @@ struct SegmentationTests {
         let segments = SentenceStreamPlayer.segments(from: text)
         try #require(segments.count == 3)
         #expect(segments[0] == sentence)
-        #expect(segments[1] == sentence + " " + sentence)
-        #expect(segments[2] == sentence + " " + sentence)
+        #expect(segments[1] == Array(repeating: sentence, count: 3).joined(separator: " "))
+        #expect(segments[2] == sentence)
     }
 
     @Test func noContentIsLostAcrossSegmentation() {

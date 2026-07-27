@@ -19,6 +19,10 @@ final class AppState: ObservableObject {
     @Published var hasAccessibilityPermission: Bool = false
     @Published var lastEvent: String = ""
     @Published var currentReading: ReadingItem?
+    /// Liner notes (the transcript panel) are showing. Lives here rather than in the player view
+    /// because both the deck and the panel controller need it: the deck lights its TRANSCRIPT
+    /// marking from it, the controller shows/hides the panel off it.
+    @Published var transcriptVisible: Bool = false
     /// Set by the menu bar "History" item to deep-link the Settings window to the History tab.
     @Published var pendingHistoryOpen: Bool = false
 
@@ -162,7 +166,7 @@ final class AppState: ObservableObject {
                                cleanedText: entry.cleanedText,
                                rawText: entry.rawText)
         if let fileURL = history.audioURL(for: entry) {
-            tts.replay(fileURL: fileURL)
+            tts.replay(fileURL: fileURL, text: entry.cleanedText)
             currentReading = item
             lastEvent = "Replaying from \(entry.sourceApp)"
         } else {

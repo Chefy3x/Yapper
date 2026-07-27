@@ -34,6 +34,26 @@ final class SentenceStreamPlayer: NSObject, ObservableObject {
     /// on the same scale as `totalDuration`/`seek(to:)` (real durations where known, estimates
     /// otherwise), so the deck can draw them on its ruler and they line up with where scrubs land.
     @Published private(set) var bufferedRanges: [ClosedRange<TimeInterval>] = []
+    /// The read-along transcript: one line per sentence, each carrying the stretch of timeline it
+    /// occupies. Built on the same walk as `seek(to:)`, so clicking a line lands exactly where the
+    /// scrubber would. Timings inside a segment are apportioned by character count — the API gives
+    /// no word alignment, so a line is accurate to its segment and approximate within it.
+    @Published private(set) var transcript: [TranscriptLine] = []
+
+    /// One clickable line of the transcript.
+    struct TranscriptLine: Identifiable, Equatable {
+        let id: Int
+        let text: String
+        let start: TimeInterval
+        let end: TimeInterval
+        /// This line's audio exists — clicking it plays instantly. Otherwise the deck parks there
+        /// and the pipeline synthesizes it next.
+        let isLoaded: Bool
+        /// Its segment failed to synthesize; it will never be spoken.
+        let isFailed: Bool
+
+        func contains(_ t: TimeInterval) -> Bool { t >= start && t < end }
+    }
 
     static let availableRates: [Float] = [1.0, 1.25, 1.5, 1.75, 2.0]
 
@@ -99,12 +119,15 @@ final class SentenceStreamPlayer: NSObject, ObservableObject {
         prepareCacheFile()
         let chars = sentences.reduce(0) { $0 + $1.count }
         totalDuration = max(0.1, Double(chars) * Self.secondsPerChar)
+        recomputeTranscript(perChar: Self.secondsPerChar)   // readable before the first audio lands
     }
 
-    /// Replay init — a single, already-complete MP3 on disk. No synthesis.
-    init(existingFile: URL) {
+    /// Replay init — a single, already-complete MP3 on disk. No synthesis. `text` is the read's
+    /// original text: it never affects playback, it just gives the transcript something to show
+    /// (spread across the clip's real duration by character count).
+    init(existingFile: URL, text: String = "") {
         let data = try? Data(contentsOf: existingFile)
-        self.segments = [Segment(text: "", data: data)]
+        self.segments = [Segment(text: text, data: data)]
         self.voiceID = ""; self.modelID = ""; self.outputFormat = ""; self.apiKey = ""
         self.voiceSettings = .natural
         self.cacheURL = existingFile
@@ -413,6 +436,33 @@ final class SentenceStreamPlayer: NSObject, ObservableObject {
         }
         totalDuration = max(0.1, sum)
         recomputeBufferedRanges(perChar: perChar)
+        recomputeTranscript(perChar: perChar)
+    }
+
+    /// Rebuild the transcript on the same walk `seek(to:)` uses, so a line's `start` is exactly
+    /// the time that seeks into it. Each segment's span is divided among its sentences by
+    /// character count; the last sentence absorbs the rounding so lines stay contiguous.
+    private func recomputeTranscript(perChar: TimeInterval) {
+        var lines: [TranscriptLine] = []
+        var acc: TimeInterval = 0
+        for seg in segments {
+            let span = seg.failed ? 0 : (seg.duration ?? Double(seg.text.count) * perChar)
+            let sentences = Self.sentences(in: seg.text)
+            let chars = max(1, sentences.reduce(0) { $0 + $1.count })
+            var offset: TimeInterval = 0
+            for (k, s) in sentences.enumerated() {
+                let isLast = (k == sentences.count - 1)
+                let start = acc + offset
+                offset += span * Double(s.count) / Double(chars)
+                lines.append(TranscriptLine(id: lines.count, text: s,
+                                            start: start,
+                                            end: isLast ? acc + span : max(acc + offset, start),
+                                            isLoaded: seg.data != nil,
+                                            isFailed: seg.failed))
+            }
+            acc += span
+        }
+        transcript = lines
     }
 
     /// Merge the synthesized segments into contiguous timeline ranges, on the same walk
@@ -500,18 +550,10 @@ final class SentenceStreamPlayer: NSObject, ObservableObject {
     /// progressively larger sentence batches (see the caps above). Fewer, bigger requests plus
     /// request stitching keep the read sounding like one take instead of stitched-together lines.
     static func segments(from text: String) -> [String] {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return [] }
+        let sentences = Self.sentences(in: text)
+        guard let first = sentences.first else { return [] }
 
-        var sentences: [String] = []
-        trimmed.enumerateSubstrings(in: trimmed.startIndex..., options: .bySentences) { sub, _, _, _ in
-            if let s = sub?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty {
-                sentences.append(s)
-            }
-        }
-        guard !sentences.isEmpty else { return [trimmed] }
-
-        var result: [String] = [sentences[0]]
+        var result: [String] = [first]
         var buffer = ""
         for s in sentences.dropFirst() {
             let cap = result.count == 1 ? Self.secondBatchCap : Self.batchCap
@@ -526,6 +568,21 @@ final class SentenceStreamPlayer: NSObject, ObservableObject {
         }
         if !buffer.isEmpty { result.append(buffer) }
         return result
+    }
+
+    /// Sentence split shared by segmentation and the transcript, so every transcript line is a
+    /// whole sentence of exactly the text that was sent for synthesis. Empty in, empty out —
+    /// a replay with no stored text simply has no transcript.
+    static func sentences(in text: String) -> [String] {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+        var out: [String] = []
+        trimmed.enumerateSubstrings(in: trimmed.startIndex..., options: .bySentences) { sub, _, _, _ in
+            if let s = sub?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty {
+                out.append(s)
+            }
+        }
+        return out.isEmpty ? [trimmed] : out
     }
 
     // MARK: - Delegate proxy

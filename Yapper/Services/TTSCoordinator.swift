@@ -130,9 +130,10 @@ final class TTSCoordinator: ObservableObject {
     }
 
     /// Replay an already-synthesized MP3 straight from the History/TTS cache — no network call.
-    func replay(fileURL: URL) {
+    /// `text` is only used to populate the transcript; playback comes entirely from the file.
+    func replay(fileURL: URL, text: String = "") {
         stop()
-        let player = SentenceStreamPlayer(existingFile: fileURL)
+        let player = SentenceStreamPlayer(existingFile: fileURL, text: text)
         player.setRate(Float(settings.playbackRate))
         player.onFinish = { [weak self] in self?.active = nil }
         active = .elevenLabs(player)

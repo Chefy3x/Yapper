@@ -233,18 +233,28 @@ private struct DeckDragSurface: NSViewRepresentable {
                 NSCursor.arrow.set()
                 return
             }
-            let position: NSCursor.FrameResizePosition
-            switch edge {
-            case .left:        position = .left
-            case .right:       position = .right
-            case .top:         position = .top
-            case .bottom:      position = .bottom
-            case .topLeft:     position = .topLeft
-            case .topRight:    position = .topRight
-            case .bottomLeft:  position = .bottomLeft
-            case .bottomRight: position = .bottomRight
+            if #available(macOS 15, *) {
+                let position: NSCursor.FrameResizePosition
+                switch edge {
+                case .left:        position = .left
+                case .right:       position = .right
+                case .top:         position = .top
+                case .bottom:      position = .bottom
+                case .topLeft:     position = .topLeft
+                case .topRight:    position = .topRight
+                case .bottomLeft:  position = .bottomLeft
+                case .bottomRight: position = .bottomRight
+                }
+                NSCursor.frameResize(position: position, directions: .all).set()
+            } else {
+                // Pre-macOS 15 has no directional frame-resize cursor; use the
+                // legacy axis cursors (corners fall back to the arrow).
+                switch edge {
+                case .left, .right: NSCursor.resizeLeftRight.set()
+                case .top, .bottom: NSCursor.resizeUpDown.set()
+                default:            NSCursor.arrow.set()
+                }
             }
-            NSCursor.frameResize(position: position, directions: .all).set()
         }
     }
 }
@@ -286,6 +296,9 @@ struct CassetteDeckView: View {
     var totalDuration: TimeInterval = 0
     /// Stretches of the timeline whose audio already exists (seek lands instantly inside them).
     var bufferedRanges: [ClosedRange<TimeInterval>] = []
+    /// There is text to read along with — hides the transcript affordances when there isn't.
+    var hasTranscript: Bool = false
+    var isTranscriptOpen: Bool = false
 
     var onPlayPause: () -> Void = {}
     var onStop: () -> Void = {}
@@ -297,6 +310,8 @@ struct CassetteDeckView: View {
     var onToggleRecord: () -> Void = {}
     /// Scrub on the tape-position groove — reports the absolute target time.
     var onSeek: (TimeInterval) -> Void = { _ in }
+    /// Show/hide the liner notes (the transcript panel).
+    var onToggleTranscript: () -> Void = {}
     /// Trackpad pinch on the deck body — reports each magnification delta for resizing.
     var onMagnify: ((CGFloat) -> Void)? = nil
     /// A window-style edge/corner drag finished — reports the final deck width for persistence.
@@ -363,6 +378,7 @@ struct CassetteDeckView: View {
                                 })
                 buttonHotspots(w, h)
                 speedPill(w, h)
+                transcriptChip(w, h)
                 tapeTimeline(w, h)
             }
             .frame(width: w, height: h)
@@ -374,12 +390,16 @@ struct CassetteDeckView: View {
     }
 
     /// Unit-square regions the drag surface must NOT claim (fractions of the deck face):
-    /// the padded transport strip, the speed marking under C-90, and the top-left
-    /// close/queue chips. The tape window stays with the drag surface — it scrubs itself.
+    /// the padded transport strip, the speed marking under C-90, the TRANSCRIPT marking
+    /// mirroring it under TAPE I, the top-left close/queue chips, and the elapsed counter on the
+    /// tape window. The rest of the tape window stays with the drag surface — it scrubs itself;
+    /// the counter is carved out of it so tapping the readout can't read as dropping the needle.
     private static let controlZones: [CGRect] = [
         CGRect(x: 0.24, y: 0.80, width: 0.54, height: 0.17),
         CGRect(x: 0.69, y: 0.625, width: 0.14, height: 0.07),
-        CGRect(x: 0.00, y: 0.00, width: 0.30, height: 0.13)
+        CGRect(x: 0.17, y: 0.625, width: 0.14, height: 0.07),
+        CGRect(x: 0.00, y: 0.00, width: 0.30, height: 0.13),
+        CGRect(x: 0.4525, y: 0.4945, width: 0.09, height: 0.055)
     ]
 
     @ViewBuilder
@@ -399,27 +419,28 @@ struct CassetteDeckView: View {
     /// The two spinning reels, driven by a per-frame integrator so motion is buttery and freezes
     /// cleanly on pause. Only the sprites redraw each frame; the deck image is static.
     private func reels(_ w: CGFloat, _ h: CGFloat) -> some View {
-        TimelineView(.animation(paused: !isPlaying)) { tl in
+        TimelineView(.animation(paused: !(isPlaying || isBuffering))) { tl in
             ZStack {
                 reelSprite(CassetteAsset.reelLeft, center: Self.leftReel,
                            diameter: Self.leftReelDia, w, h, angle: reelAngle)
                 reelSprite(CassetteAsset.reelRight, center: Self.rightReel,
                            diameter: Self.rightReelDia, w, h, angle: reelAngle)
             }
-            .onChange(of: tl.date) { _, date in advance(to: date) }
+            .onChange(of: tl.date) { date in advance(to: date) }
         }
     }
 
     /// Integrate elapsed time into the shared reel angle. Rate scales the per-frame delta, so
     /// changing playback speed changes spin speed without any jump — and FF/REW visibly rev the
-    /// reels up and down.
+    /// reels up and down. While buffering the reels creep instead of freezing: the deck is
+    /// waiting on audio, not stopped, and a dead-still deck reads as a hang.
     private func advance(to date: Date) {
         defer { lastTick = date }
-        guard isPlaying, let last = lastTick else { return }
+        guard isPlaying || isBuffering, let last = lastTick else { return }
         let dt = date.timeIntervalSince(last)
         guard dt > 0, dt < 0.5 else { return }          // discard backgrounded gaps / first tick
         let base = 100.0                                 // deg/sec at 1×
-        reelAngle += base * max(0.1, rate) * dt
+        reelAngle += base * (isPlaying ? max(0.1, rate) : 0.22) * dt
     }
 
     /// A real cut-out reel layered over the deck: a dark backing disc hides whatever the body
@@ -517,7 +538,7 @@ struct CassetteDeckView: View {
         let onPressChanged: (Bool) -> Void
         func makeBody(configuration: Configuration) -> some View {
             configuration.label
-                .onChange(of: configuration.isPressed) { _, pressed in onPressChanged(pressed) }
+                .onChange(of: configuration.isPressed) { pressed in onPressChanged(pressed) }
         }
     }
 
@@ -547,6 +568,32 @@ struct CassetteDeckView: View {
         .position(x: 0.757 * w, y: 0.66 * h)
     }
 
+    /// Liner-notes call-out printed on the shell's bottom-left, mirroring the speed marking on the
+    /// right. Same quiet rule as the speed pill: hidden until the pointer is over the deck (which
+    /// is exactly when it's clickable), and lit in tape yellow while the notes are open.
+    private func transcriptChip(_ w: CGFloat, _ h: CGFloat) -> some View {
+        let visible = hasTranscript && (deckHovered || isTranscriptOpen)
+        return Button(action: onToggleTranscript) {
+            Text("TRANSCRIPT")
+                .font(.system(size: max(7, w * 0.0195), weight: .black))
+                .foregroundStyle(isTranscriptOpen ? Self.tapeYellow.opacity(0.92) : .white.opacity(0.85))
+                .shadow(color: .black.opacity(0.4), radius: 0.5, y: 0.5)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                // Left-anchored, mirroring the speed pill's right anchor, so both markings grow
+                // inward from their own edge of the shell.
+                .frame(width: 0.13 * w, alignment: .leading)
+                .padding(.vertical, 5)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(isTranscriptOpen ? "Hide liner notes" : "Liner notes — read along and jump around")
+        .opacity(visible ? 1 : 0)
+        .allowsHitTesting(visible)
+        .animation(.easeOut(duration: 0.15), value: visible)
+        .position(x: 0.243 * w, y: 0.66 * h)
+    }
+
     // MARK: Tape-window timeline
 
     /// The cassette's tape window doubles as the timeline: the baked tick ruler is the scale
@@ -557,53 +604,107 @@ struct CassetteDeckView: View {
     private static let tapeWindow = CGRect(x: 0.392, y: 0.385, width: 0.215, height: 0.16)
     private static let rulerStartX: CGFloat = 0.412
     private static let rulerEndX: CGFloat = 0.583
+    private static let rulerY: CGFloat = 0.462
     private static let tapeYellow = Color(red: 221/255, green: 201/255, blue: 139/255)
+
+    /// x for a 0…1 position along the ruler.
+    private static func rulerX(_ frac: CGFloat, _ w: CGFloat) -> CGFloat {
+        (rulerStartX + min(max(frac, 0), 1) * (rulerEndX - rulerStartX)) * w
+    }
+
+    private func isLoaded(_ t: TimeInterval) -> Bool {
+        bufferedRanges.contains { $0.lowerBound <= t && t <= $0.upperBound }
+    }
+
+    /// Where the tape is filling to right now: the trailing edge of the loaded run the playhead
+    /// sits in — synthesis always works forward from the playhead (see `nextSynthIndex`). Nil
+    /// when the playhead is itself in a gap, because then the thing being loaded IS the
+    /// playhead's own segment and the needle halo carries that instead.
+    private func loadingFrontier(at t: TimeInterval) -> TimeInterval? {
+        guard let run = bufferedRanges.first(where: { $0.lowerBound <= t && t <= $0.upperBound })
+        else { return nil }
+        return run.upperBound < totalDuration * 0.995 ? run.upperBound : nil
+    }
 
     private func tapeTimeline(_ w: CGFloat, _ h: CGFloat) -> some View {
         let shown = scrubTime ?? currentTime
         let frac = totalDuration > 0 ? CGFloat(min(max(shown / totalDuration, 0), 1)) : 0
-        let needleX = (Self.rulerStartX + frac * (Self.rulerEndX - Self.rulerStartX)) * w
-        // Loaded-tape marks vanish once everything is synthesized — at that point every scrub
+        let needleX = Self.rulerX(frac, w)
+        // Loaded-tape chrome vanishes once everything is synthesized — at that point every scrub
         // is instant and the marks carry no information.
         let covered = bufferedRanges.reduce(0) { $0 + ($1.upperBound - $1.lowerBound) }
-        let partiallyLoaded = totalDuration > 0 && covered < totalDuration * 0.995
+        let loading = totalDuration > 0 && covered < totalDuration * 0.995
+        let onLoadedTape = isLoaded(shown)
+        // The needle waits in place, mid-gap, until its segment lands — the halo says so.
+        // Not while scrubbing: there the needle is a preview, and the dimmed needle plus the
+        // chip's ellipsis already say "this stretch isn't made yet".
+        let parked = loading && isBuffering && scrubTime == nil && !onLoadedTape
 
         return ZStack {
-            // Loaded tape: the stretch of ruler whose audio exists brightens slightly — drop the
-            // needle inside it and playback is instant; outside, the deck buffers a few seconds.
-            if partiallyLoaded {
+            if loading {
+                // Unloaded rail: the full span drawn faint, so the loaded stretch reads as a
+                // fill against it rather than as a stray mark on the ruler.
+                Capsule()
+                    .fill(.white.opacity(0.10))
+                    .frame(width: (Self.rulerEndX - Self.rulerStartX) * w, height: max(1, 0.008 * h))
+                    .position(x: (Self.rulerStartX + Self.rulerEndX) / 2 * w, y: Self.rulerY * h)
+                    .allowsHitTesting(false)
+
+                // Loaded tape: the stretch whose audio exists — drop the needle inside it and
+                // playback is instant; outside, the deck buffers until that segment is made.
                 ForEach(bufferedRanges.indices, id: \.self) { i in
-                    let lo = CGFloat(min(max(bufferedRanges[i].lowerBound / totalDuration, 0), 1))
-                    let hi = CGFloat(min(max(bufferedRanges[i].upperBound / totalDuration, 0), 1))
-                    let x0 = (Self.rulerStartX + lo * (Self.rulerEndX - Self.rulerStartX)) * w
-                    let x1 = (Self.rulerStartX + hi * (Self.rulerEndX - Self.rulerStartX)) * w
+                    let x0 = Self.rulerX(CGFloat(bufferedRanges[i].lowerBound / totalDuration), w)
+                    let x1 = Self.rulerX(CGFloat(bufferedRanges[i].upperBound / totalDuration), w)
                     Capsule()
-                        .fill(.white.opacity(0.38))
+                        .fill(.white.opacity(0.42))
                         .frame(width: max(1, x1 - x0), height: max(1, 0.010 * h))
-                        .position(x: (x0 + x1) / 2, y: 0.462 * h)
+                        .position(x: (x0 + x1) / 2, y: Self.rulerY * h)
                         .allowsHitTesting(false)
                 }
+
+                // Anchored on the real playhead, not `shown`: the bead marks where synthesis is
+                // actually working, so it holds still while a scrub previews somewhere else.
+                LoadingPulse(
+                    frontierX: loadingFrontier(at: currentTime).map {
+                        Self.rulerX(CGFloat($0 / totalDuration), w)
+                    },
+                    haloX: parked ? needleX : nil,
+                    w: w, h: h)
             }
 
-            // Playhead needle straddling the ruler line
+            // Playhead needle straddling the ruler line. A scrub aiming past the loaded tape
+            // dims it: dropping here means waiting for that stretch to be made.
             RoundedRectangle(cornerRadius: 1)
                 .fill(Self.tapeYellow)
+                .opacity(scrubTime != nil && loading && !onLoadedTape ? 0.5 : 1)
                 .frame(width: max(1.5, w * 0.004), height: 0.085 * h)
                 .shadow(color: .black.opacity(0.8), radius: 1)
-                .position(x: needleX, y: 0.462 * h)
+                .position(x: needleX, y: Self.rulerY * h)
                 .allowsHitTesting(false)
 
-            // Elapsed readout printed on the window glass, tucked between the tape packs
-            Text(Self.format(shown))
-                .font(.system(size: max(7, w * 0.015), weight: .heavy, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.75))
-                .shadow(color: .black.opacity(0.8), radius: 1)
-                .position(x: 0.4975 * w, y: 0.522 * h)
-                .allowsHitTesting(false)
+            // Elapsed readout printed on the window glass, tucked between the tape packs. It
+            // doubles as the transcript toggle: it's the one spot on the timeline that isn't the
+            // scrub groove (carved out of the scrub zone in controlZones), so tapping the readout
+            // can never be mistaken for dropping the needle.
+            Button(action: onToggleTranscript) {
+                Text(Self.format(shown))
+                    .font(.system(size: max(7, w * 0.015), weight: .heavy, design: .monospaced))
+                    .foregroundStyle(isTranscriptOpen ? Self.tapeYellow.opacity(0.95) : .white.opacity(0.75))
+                    .shadow(color: .black.opacity(0.8), radius: 1)
+                    .padding(.horizontal, 4).padding(.vertical, 2)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .allowsHitTesting(hasTranscript)
+            .help(isTranscriptOpen ? "Hide liner notes" : "Read along — opens the liner notes")
+            .position(x: 0.4975 * w, y: 0.522 * h)
 
-            // Scrub-target chip, only while dragging
+            // Scrub-target chip, only while dragging. The ellipsis is the "this stretch isn't
+            // made yet — you'll wait a moment here" tell, matching the dimmed needle.
             if scrubTime != nil {
-                Text("\(Self.format(shown)) · -\(Self.format(max(0, totalDuration - shown)))")
+                let willWait = loading && !onLoadedTape
+                Text("\(Self.format(shown)) · -\(Self.format(max(0, totalDuration - shown)))"
+                     + (willWait ? " ⋯" : ""))
                     .font(.system(size: max(7, w * 0.018), weight: .heavy, design: .monospaced))
                     .foregroundStyle(.white.opacity(0.92))
                     .padding(.horizontal, 5).padding(.vertical, 2)
@@ -613,6 +714,42 @@ struct CassetteDeckView: View {
                     .allowsHitTesting(false)
             }
 
+        }
+    }
+
+    /// The one animated layer of the timeline, isolated in its own TimelineView so the static
+    /// chrome (rail, loaded marks, needle, counter) isn't relaid out every frame:
+    ///  · a bead breathing at the point the tape is filling to, and
+    ///  · a halo around the needle when the playhead is parked in a gap waiting on its own audio.
+    /// One shared phase, so the two pulse together instead of drifting apart.
+    private struct LoadingPulse: View {
+        let frontierX: CGFloat?
+        let haloX: CGFloat?
+        let w: CGFloat
+        let h: CGFloat
+
+        var body: some View {
+            TimelineView(.animation) { tl in
+                let breath = 0.5 + 0.5 * sin(tl.date.timeIntervalSinceReferenceDate * 3.0)
+                ZStack {
+                    if let x = frontierX {
+                        Capsule()
+                            .fill(.white)
+                            .frame(width: max(1.5, w * 0.006), height: max(1.5, 0.013 * h))
+                            .opacity(0.25 + 0.6 * breath)
+                            .position(x: x, y: CassetteDeckView.rulerY * h)
+                    }
+                    if let x = haloX {
+                        Capsule()
+                            .fill(CassetteDeckView.tapeYellow)
+                            .frame(width: max(3, w * 0.015), height: 0.085 * h)
+                            .blur(radius: max(1.5, w * 0.007))
+                            .opacity(0.14 + 0.5 * breath)
+                            .position(x: x, y: CassetteDeckView.rulerY * h)
+                    }
+                }
+            }
+            .allowsHitTesting(false)
         }
     }
 
@@ -652,6 +789,8 @@ struct CassettePlayerHost: View {
             currentTime: streamer.currentTime,
             totalDuration: streamer.totalDuration,
             bufferedRanges: streamer.bufferedRanges,
+            hasTranscript: !streamer.transcript.isEmpty,
+            isTranscriptOpen: appState.transcriptVisible,
             onPlayPause: onPlayPause,
             onStop: onStop,
             onSkipBack: onSkipBack,
@@ -659,6 +798,7 @@ struct CassettePlayerHost: View {
             onCycleSpeed: onCycleSpeed,
             onToggleRecord: { appState.conversationModeEnabled.toggle() },
             onSeek: onSeek,
+            onToggleTranscript: { appState.transcriptVisible.toggle() },
             onMagnify: onMagnify,
             onResizeEnd: onResizeEnd
         )
