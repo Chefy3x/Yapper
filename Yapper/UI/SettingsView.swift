@@ -830,6 +830,7 @@ private struct VoiceCard: View {
 
 private struct HotkeysPanel: View {
     @Environment(\.settingsSkin) private var skin
+    @EnvironmentObject private var state: AppState
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Card {
@@ -871,6 +872,9 @@ private struct HotkeysPanel: View {
                 Text("Hotkey rebinding arrives in a later slice. The Right ⌘ contract is currently hardcoded.")
                     .font(skin.body(11))
                     .foregroundStyle(.secondary)
+                Spacer()
+                Button("Replay setup guide") { state.pendingOnboardingOpen = true }
+                    .controlSize(.small)
             }
             .padding(.horizontal, 4)
             .padding(.top, 4)
@@ -996,76 +1000,82 @@ private struct ProvidersPanel: View {
     @EnvironmentObject private var state: AppState
     @EnvironmentObject private var settings: SettingsStore
     @Environment(\.settingsSkin) private var skin
-    @State private var elevenLabsKey: String = ""
-    @State private var saved: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
+            // Deliberately first. Yapper reads text the moment it is installed, with no account
+            // and no card on file — everything below this card is an upgrade, not a requirement.
+            // Burying that under an API key form is how a free app reads as a paid one.
             VStack(alignment: .leading, spacing: 8) {
-                SectionLabel(text: "ElevenLabs")
+                SectionLabel(text: "Built in — nothing to sign up for")
+                Card {
+                    HStack(alignment: .center, spacing: 16) {
+                        Image(systemName: "apple.logo")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(skin.iconTint)
+                            .frame(width: 32, height: 32)
+                            .background(Circle().fill(skin.iconChipBG))
+
+                        RowLabel("macOS system voice",
+                                 subtitle: "Free, offline, private. No key, no account, no usage limit. Choose the voice under Voices.")
+                        Spacer()
+                    }
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                SectionLabel(text: "ElevenLabs — optional, paid")
                 Card {
                     VStack(alignment: .leading, spacing: 16) {
-                        // API key
-                        HStack(alignment: .center, spacing: 14) {
-                            Image(systemName: "key.fill")
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(skin.iconTint)
-                                .frame(width: 32, height: 32)
-                                .background(Circle().fill(skin.iconChipBG))
-
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("API key")
-                                    .font(skin.body(skin == .tape ? 12.5 : 13, .semibold))
-                                SecureField("xi-•••••••••••••••••••••••", text: $elevenLabsKey)
-                                    .textFieldStyle(.plain)
-                                    .font(.system(size: 13, design: .monospaced))
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 7)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                            .fill(Color.primary.opacity(0.04))
-                                    )
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                            .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
-                                    )
-                            }
-                        }
-
-                        HStack {
-                            if saved {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundStyle(skin.okTint)
-                                    Text("Saved to Keychain")
-                                        .font(skin.body(11, .medium))
-                                        .foregroundStyle(.secondary)
-                                }
-                                .transition(.opacity)
-                            }
-                            Spacer()
-                            PrimaryButton(title: "Save key", systemImage: "lock.fill") {
-                                state.keychain.set(elevenLabsKey, for: .elevenLabsKey)
-                                withAnimation { saved = true }
-                            }
-                        }
+                        APIKeyField(provider: .elevenLabs)
 
                         Rectangle().fill(Color.primary.opacity(0.06)).frame(height: 1)
 
-                        // Model selector
                         VStack(alignment: .leading, spacing: 10) {
                             Text("Model")
                                 .font(skin.body(skin == .tape ? 12.5 : 13, .semibold))
                             VStack(spacing: 8) {
                                 ForEach(ElevenLabsModel.allCases) { model in
                                     ModelOption(
-                                        model: model,
+                                        title: model.displayName,
+                                        subtitle: "\(model.characterLimit / 1000)k char limit per request",
                                         isSelected: settings.elevenLabsModelID == model.id,
                                         onSelect: { settings.elevenLabsModelID = model.id }
                                     )
                                 }
                             }
                         }
+                    }
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                SectionLabel(text: "OpenAI — optional, paid")
+                Card {
+                    VStack(alignment: .leading, spacing: 16) {
+                        APIKeyField(provider: .openAI)
+
+                        Rectangle().fill(Color.primary.opacity(0.06)).frame(height: 1)
+
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Model")
+                                .font(skin.body(skin == .tape ? 12.5 : 13, .semibold))
+                            VStack(spacing: 8) {
+                                ForEach(OpenAIModel.allCases) { model in
+                                    ModelOption(
+                                        title: model.displayName,
+                                        subtitle: model.blurb,
+                                        isSelected: settings.openAIModelID == model.id,
+                                        onSelect: { settings.openAIModelID = model.id }
+                                    )
+                                }
+                            }
+                        }
+
+                        Text("OpenAI voices synthesize one sentence at a time with no cross-sentence stitching, so seams are slightly more audible than ElevenLabs.")
+                            .font(skin.body(11))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
             }
@@ -1081,7 +1091,7 @@ private struct ProvidersPanel: View {
                             .background(Circle().fill(skin.iconChipBG))
 
                         RowLabel("Use macOS native voice when offline",
-                                 subtitle: "Falls back to Samantha when ElevenLabs is unreachable.")
+                                 subtitle: "Falls back to Samantha when a paid provider is unreachable.")
                         Spacer()
                         Toggle("", isOn: $settings.useNativeVoiceOffline)
                             .labelsHidden()
@@ -1089,21 +1099,14 @@ private struct ProvidersPanel: View {
                             .tint(skin.accent)
                     }
                 }
-                Text("OpenAI TTS fallback arrives in Slice 5.")
-                    .font(skin.body(11))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 4)
             }
-        }
-        .onAppear {
-            elevenLabsKey = state.keychain.get(.elevenLabsKey) ?? ""
-            saved = false
         }
     }
 }
 
 private struct ModelOption: View {
-    let model: ElevenLabsModel
+    let title: String
+    let subtitle: String
     let isSelected: Bool
     let onSelect: () -> Void
     @Environment(\.settingsSkin) private var skin
@@ -1118,10 +1121,10 @@ private struct ModelOption: View {
                         .frame(width: 16, height: 16)
                 }
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(model.displayName)
+                    Text(title)
                         .font(skin.body(skin == .tape ? 12.5 : 13, .semibold))
                         .foregroundStyle(.primary)
-                    Text("\(model.characterLimit / 1000)k char limit per request")
+                    Text(subtitle)
                         .font(skin.body(11))
                         .foregroundStyle(.secondary)
                 }

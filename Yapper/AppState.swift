@@ -25,6 +25,18 @@ final class AppState: ObservableObject {
     @Published var transcriptVisible: Bool = false
     /// Set by the menu bar "History" item to deep-link the Settings window to the History tab.
     @Published var pendingHistoryOpen: Bool = false
+    /// Set by Settings → Hotkeys to reopen the first-run guide on demand.
+    @Published var pendingOnboardingOpen: Bool = false
+
+    /// Fires every time a Right ⌘ gesture is recognised, regardless of what it went on to do.
+    /// The first-run guide listens here to confirm the user actually performed the gesture —
+    /// the read that follows can legitimately fail (nothing selected, unsupported app) without
+    /// meaning they got the keystroke wrong.
+    let hotkeyFired = PassthroughSubject<HotkeyGesture, Never>()
+
+    enum HotkeyGesture {
+        case readLatestOrToggle, readSelection, conversationMode, skipNext, dumpAXTree
+    }
 
     let settings = SettingsStore()
     let keychain = Keychain(service: "app.yapper.Yapper")
@@ -255,6 +267,7 @@ final class AppState: ObservableObject {
     private func wireHotkeys() {
         hotkeys.onReadLatestOrToggle = { [weak self] in
             guard let self else { return }
+            self.hotkeyFired.send(.readLatestOrToggle)
             // Double-tap: force a fresh Read Latest of the CURRENT window, superseding whatever
             // is playing or paused. Without this, tapping after a pause always resumes the old
             // audio — even when you've moved to a different conversation and want that one read.
@@ -296,6 +309,7 @@ final class AppState: ObservableObject {
         }
         hotkeys.onReadSelection = { [weak self] in
             guard let self else { return }
+            self.hotkeyFired.send(.readSelection)
             // If something is already playing, treat this gesture as "replace with selection" —
             // stop current playback first.
             if self.tts.active != nil { self.tts.stop() }
@@ -325,12 +339,14 @@ final class AppState: ObservableObject {
         }
         hotkeys.onToggleConversationMode = { [weak self] in
             guard let self else { return }
+            self.hotkeyFired.send(.conversationMode)
             self.conversationModeEnabled.toggle()
             self.lastEvent = "Conversation Mode -> \(self.conversationModeEnabled ? "ON" : "OFF")"
             Log.hotkey.info("Right Cmd+Enter -> Conversation Mode \(self.conversationModeEnabled, privacy: .public)")
         }
         hotkeys.onDumpAXTree = { [weak self] in
             guard let self else { return }
+            self.hotkeyFired.send(.dumpAXTree)
             let front = AccessibilityReader.frontmost()
             let url = AccessibilityReader.saveDumpForFrontmost()
             if let url {
@@ -343,6 +359,7 @@ final class AppState: ObservableObject {
         }
         hotkeys.onSkipNext = { [weak self] in
             guard let self else { return }
+            self.hotkeyFired.send(.skipNext)
             self.tts.skipToNext()
             self.lastEvent = "Skipped to next"
             Log.hotkey.info("Right Cmd+→ -> Skip to next")

@@ -5,7 +5,7 @@ import Combine
 final class SettingsStore: ObservableObject {
     private let defaults = UserDefaults.standard
 
-    enum Key: String {
+    enum Key: String, CaseIterable {
         case activeVoiceID
         case conversationDefaultOn
         case conversationAllowlist
@@ -17,10 +17,12 @@ final class SettingsStore: ObservableObject {
         case fallbackOrder
         case useNativeVoiceOffline
         case elevenLabsModelID
+        case openAIModelID
         case customVoicesJSON
         case playbackRate
         case miniPlayerTheme
         case cassetteScale
+        case onboardingCompleted
     }
 
     @Published var activeVoiceID: String {
@@ -45,6 +47,9 @@ final class SettingsStore: ObservableObject {
     }
     @Published var elevenLabsModelID: String {
         didSet { defaults.set(elevenLabsModelID, forKey: Key.elevenLabsModelID.rawValue) }
+    }
+    @Published var openAIModelID: String {
+        didSet { defaults.set(openAIModelID, forKey: Key.openAIModelID.rawValue) }
     }
     /// Last-used mini-player playback speed (1.0 = normal). Persists so a chosen speed sticks
     /// across reads instead of resetting to 1× every time.
@@ -79,6 +84,23 @@ final class SettingsStore: ObservableObject {
     }
     @Published var settingsDesign: SettingsDesign {
         didSet { defaults.set(settingsDesign.rawValue, forKey: "settingsDesign") }
+    }
+    /// The first-run guide has been seen (or explicitly skipped). Never shown again once true.
+    @Published var onboardingCompleted: Bool {
+        didSet { defaults.set(onboardingCompleted, forKey: Key.onboardingCompleted.rawValue) }
+    }
+
+    /// True when nothing has ever been persisted — a genuinely fresh install.
+    ///
+    /// Guards the first-run guide against firing for people who upgrade into this version:
+    /// they have no `onboardingCompleted` flag either, and shipping them a setup wizard for an
+    /// app they already use would be worse than shipping them nothing. Any other stored key
+    /// means the app has been used, so the guide is suppressed and marked complete.
+    static func looksLikeFirstRun(defaults: UserDefaults = .standard) -> Bool {
+        let priorUse = Key.allCases
+            .filter { $0 != .onboardingCompleted }
+            .contains { defaults.object(forKey: $0.rawValue) != nil }
+        return !priorUse
     }
 
     init() {
@@ -121,6 +143,10 @@ final class SettingsStore: ObservableObject {
         self.launchAtLogin = defaults.bool(forKey: Key.launchAtLogin.rawValue)
         let designRaw = defaults.string(forKey: "settingsDesign") ?? SettingsDesign.systemStyle.rawValue
         self.settingsDesign = SettingsDesign(rawValue: designRaw) ?? .systemStyle
+        self.openAIModelID = defaults.string(forKey: Key.openAIModelID.rawValue) ?? OpenAIModel.defaultModel.id
+        // Read before any didSet can fire, so the "is this a fresh install" probe above still
+        // sees a pristine defaults domain.
+        self.onboardingCompleted = defaults.bool(forKey: Key.onboardingCompleted.rawValue)
     }
 }
 

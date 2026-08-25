@@ -6,7 +6,9 @@ import Foundation
 final class TTSCoordinator: ObservableObject {
 
     enum Engine {
-        case elevenLabs(SentenceStreamPlayer)
+        /// Any provider that streams synthesized audio segment by segment — ElevenLabs, OpenAI,
+        /// and anything added later. The player doesn't know or care which.
+        case streaming(SentenceStreamPlayer)
         case native(NativeTTSSpeaker)
     }
 
@@ -33,7 +35,7 @@ final class TTSCoordinator: ObservableObject {
     /// Pause / resume whichever engine is active. Called from a contextual hotkey tap.
     var isPlaying: Bool {
         switch active {
-        case .elevenLabs(let s): s.state == .playing || s.state == .bufferingFirstAudio
+        case .streaming(let s): s.state == .playing || s.state == .bufferingFirstAudio
         case .native(let n): n.state == .speaking
         case nil: false
         }
@@ -41,7 +43,7 @@ final class TTSCoordinator: ObservableObject {
 
     func pauseOrResume() {
         switch active {
-        case .elevenLabs(let s):
+        case .streaming(let s):
             if s.state == .playing { s.pause() }
             else if s.state == .paused { s.resume() }
         case .native(let n):
@@ -59,7 +61,7 @@ final class TTSCoordinator: ObservableObject {
     /// Stop the active engine without touching the queue (used by skip-to-next).
     private func stopActiveOnly() {
         switch active {
-        case .elevenLabs(let s): s.stop()
+        case .streaming(let s): s.stop()
         // Clear the native finish hook first so the resulting didCancel doesn't advance the queue.
         case .native(let n): n.onFinish = nil; n.stop()
         case nil: break
@@ -103,10 +105,10 @@ final class TTSCoordinator: ObservableObject {
         speak(sample, voice: voice)
     }
 
-    /// Start reading `text` with the user's active voice. Streams via ElevenLabs if a key + voice
-    /// are configured; otherwise falls back to the native synthesizer.
-    /// Returns the cache file URL when synthesizing via ElevenLabs (so History can reference it for
-    /// replay), or nil for the native path.
+    /// Start reading `text` with the user's active voice. Streams via the voice's provider when
+    /// that provider is configured; otherwise falls back to the native macOS synthesizer.
+    /// Returns the cache file URL when streaming (so History can reference it for replay), or nil
+    /// for the native path, which produces no file.
     /// Manual read (Read Latest / Selection / preview). Supersedes any conversation queue.
     @discardableResult
     func speak(_ text: String, voice: VoicePreset) -> URL? {
@@ -116,15 +118,42 @@ final class TTSCoordinator: ObservableObject {
 
     @discardableResult
     private func speakInternal(_ text: String, voice: VoicePreset, advanceOnFinish: Bool) -> URL? {
-        let key = keychain.get(.elevenLabsKey) ?? ""
-        let canUseElevenLabs = voice.provider == .elevenLabs && !key.isEmpty
+        let synthesizer = streamingSynthesizer(for: voice)
 
-        Log.tts.info("speak decision: voice=\(voice.displayName, privacy: .public) provider=\(voice.provider.rawValue, privacy: .public) elVoiceID=\(voice.providerVoiceID, privacy: .public) keyPresent=\(!key.isEmpty, privacy: .public) → engine=\(canUseElevenLabs ? "ElevenLabs" : "native", privacy: .public)")
+        Log.tts.info("speak decision: voice=\(voice.displayName, privacy: .public) provider=\(voice.provider.rawValue, privacy: .public) providerVoiceID=\(voice.providerVoiceID, privacy: .public) → engine=\(synthesizer == nil ? "native" : voice.provider.rawValue, privacy: .public)")
 
-        if canUseElevenLabs {
-            return startElevenLabs(text: text, voice: voice, apiKey: key, advanceOnFinish: advanceOnFinish)
-        } else {
+        guard let synthesizer else {
             startNative(text: text, voice: voice, advanceOnFinish: advanceOnFinish)
+            return nil
+        }
+        return startStreaming(text: text, voice: voice, synthesizer: synthesizer,
+                              advanceOnFinish: advanceOnFinish)
+    }
+
+    /// The streaming engine for this voice, or nil when it can't run — no key stored, or a voice
+    /// that was always going to be spoken by macOS. Nil is the signal to use the native path,
+    /// which is why an unconfigured provider degrades instead of failing.
+    private func streamingSynthesizer(for voice: VoicePreset) -> SpeechSynthesizing? {
+        switch voice.provider {
+        case .elevenLabs:
+            let key = keychain.get(.elevenLabsKey) ?? ""
+            guard !key.isEmpty else { return nil }
+            return ElevenLabsSynthesizer(
+                voiceID: voice.providerVoiceID,
+                modelID: settings.elevenLabsModelID,
+                outputFormat: "mp3_44100_128",
+                voiceSettings: .natural,
+                apiKey: key
+            )
+        case .openAI:
+            let key = keychain.get(.openAIKey) ?? ""
+            guard !key.isEmpty else { return nil }
+            return OpenAISynthesizer(
+                voice: voice.providerVoiceID,
+                modelID: settings.openAIModelID,
+                apiKey: key
+            )
+        case .macOSNative:
             return nil
         }
     }
@@ -136,27 +165,25 @@ final class TTSCoordinator: ObservableObject {
         let player = SentenceStreamPlayer(existingFile: fileURL, text: text)
         player.setRate(Float(settings.playbackRate))
         player.onFinish = { [weak self] in self?.active = nil }
-        active = .elevenLabs(player)
+        active = .streaming(player)
         player.start()
     }
 
     @discardableResult
-    private func startElevenLabs(text: String, voice: VoicePreset, apiKey: String, advanceOnFinish: Bool) -> URL {
+    private func startStreaming(text: String, voice: VoicePreset,
+                               synthesizer: SpeechSynthesizing, advanceOnFinish: Bool) -> URL {
         let cacheURL = Self.cacheDir().appendingPathComponent("\(UUID().uuidString).mp3")
 
         // Soft character-limit check: log if we're over the model's per-request ceiling.
-        if let model = ElevenLabsModel(rawValue: settings.elevenLabsModelID),
+        if voice.provider == .elevenLabs,
+           let model = ElevenLabsModel(rawValue: settings.elevenLabsModelID),
            text.count > model.characterLimit {
             Log.tts.warning("Text is \(text.count) chars but \(model.displayName, privacy: .public) limit is \(model.characterLimit). Sending anyway — ElevenLabs may reject or truncate.")
         }
 
         let player = SentenceStreamPlayer(
             sentences: SentenceStreamPlayer.segments(from: text),
-            voiceID: voice.providerVoiceID,
-            modelID: settings.elevenLabsModelID,
-            outputFormat: "mp3_44100_128",
-            voiceSettings: .natural,
-            apiKey: apiKey,
+            synthesizer: synthesizer,
             cacheURL: cacheURL
         )
         player.setRate(Float(settings.playbackRate))   // start at the user's last-chosen speed
@@ -166,11 +193,11 @@ final class TTSCoordinator: ObservableObject {
         }
         player.onFailure = { [weak self] in
             // Couldn't synthesize the first segment — fall back to the native voice.
-            Log.tts.error("ElevenLabs synth failed; falling back to native voice.")
+            Log.tts.error("\(voice.provider.rawValue, privacy: .public) synth failed; falling back to native voice.")
             self?.active = nil
             self?.startNative(text: text, voice: voice, advanceOnFinish: advanceOnFinish)
         }
-        active = .elevenLabs(player)
+        active = .streaming(player)
         player.start()
 
         return cacheURL

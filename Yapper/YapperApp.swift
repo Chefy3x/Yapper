@@ -29,11 +29,18 @@ struct YapperApp: App {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var miniPlayer: MiniPlayerController?
+    private var onboarding: OnboardingController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Sampled first, before bootstrap or any store can persist a default: the probe for a
+        // fresh install is "has Yapper ever written a preference".
+        let isFirstRun = SettingsStore.looksLikeFirstRun()
+
         NSApp.setActivationPolicy(.accessory)
         AppState.shared.bootstrap()
         miniPlayer = MiniPlayerController(state: AppState.shared)
+        onboarding = OnboardingController(state: AppState.shared, isFirstRun: isFirstRun)
+        onboarding?.showIfNeeded()
         // Start Sparkle's scheduled update checks.
         _ = UpdaterService.shared
     }
