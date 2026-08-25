@@ -1,0 +1,139 @@
+# Yapper for Windows (Side B) — check, then build an installer.
+#
+# This workflow is also the only place the Windows-only code gets compiled for
+# real. Pipeline and UI work happens on a Mac (see windows/README.md), where the
+# WinRT speech layer and, later, the UIA reader are `#[cfg(windows)]` and never
+# built. A green `check` job on windows-latest is what says they still compile.
+
+name: Windows
+
+on:
+  # No tag trigger yet: a `paths` filter also applies to tag pushes, so a
+  # release tag that touched nothing under windows/ would silently not build.
+  # The release flow (tag → sign → publish → updater feed) is the rest of
+  # Phase 5; until then, cut builds with workflow_dispatch.
+  push:
+    branches: [main]
+    paths: ["windows/**", ".github/workflows/windows.yml"]
+  pull_request:
+    paths: ["windows/**", ".github/workflows/windows.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    name: check (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # windows-latest compiles the cfg(windows) modules; macos-latest is the
+        # machine the pipeline is actually developed on, so both have to stay
+        # green or the parity work stops being checkable where it's written.
+        os: [windows-latest, macos-latest]
+    defaults:
+      run:
+        working-directory: windows/src-tauri
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: windows/src-tauri
+
+      - name: Format
+        run: cargo fmt --check
+
+      - name: Lint
+        run: cargo clippy --all-targets -- -D warnings
+
+      # The parity suite: the Rust ports of YapperTests. A failure here means
+      # the two apps have diverged on segmentation, text cleaning, the
+      # ElevenLabs request shape, or the History file format.
+      - name: Test
+        run: cargo test
+
+  build:
+    name: installer
+    needs: check
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: windows/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: windows/src-tauri
+
+      - name: Install frontend deps
+        working-directory: windows
+        run: npm ci
+
+      - name: Build installer
+        working-directory: windows
+        env:
+          # Set these to have the bundler emit the `.sig` files the updater
+          # checks. Generate the pair with `npm run tauri signer generate`, put
+          # the private half in repo secrets, and the public half in
+          # tauri.conf.json's `plugins.updater.pubkey`.
+          #
+          # Losing this key means shipped copies can never update again — back
+          # it up somewhere that is not this repo. Same rule as the Mac side's
+          # Sparkle EdDSA key (see RELEASING.md).
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npm run tauri build
+
+      # ── Authenticode ────────────────────────────────────────────────────
+      # Deliberately inert until a certificate exists. Unsigned installers work
+      # but every user meets a SmartScreen "unrecognised app" wall, which for a
+      # download-from-a-website app is close to fatal.
+      #
+      # Before wiring this up, decide WHO signs. An Authenticode signature
+      # embeds the subject name in the binary, visible to anyone who opens the
+      # file's properties — and it is echoed in the winget manifest's publisher
+      # field. Signing as an individual therefore ships the signer's legal name
+      # inside every copy. Unlike the Mac side's Team ID, it cannot be kept in a
+      # gitignored file, because it is in the artifact itself. Signing through
+      # an organisation is the usual way to keep a personal name off it.
+      # Left commented rather than stubbed: a placeholder step that echoes and
+      # exits 0 would make an unsigned build look signed in the run log.
+      # Uncomment whichever route the certificate ends up taking.
+      #
+      # - name: Sign installer (Azure Trusted Signing)
+      #   uses: azure/trusted-signing-action@v0
+      #   with:
+      #     azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+      #     azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+      #     azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+      #     endpoint: ${{ secrets.TRUSTED_SIGNING_ENDPOINT }}
+      #     trusted-signing-account-name: ${{ secrets.TRUSTED_SIGNING_ACCOUNT }}
+      #     certificate-profile-name: ${{ secrets.TRUSTED_SIGNING_PROFILE }}
+      #     files-folder: windows/src-tauri/target/release/bundle/nsis
+      #     files-folder-filter: exe
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: yapper-windows-installer
+          path: |
+            windows/src-tauri/target/release/bundle/nsis/*.exe
+            windows/src-tauri/target/release/bundle/nsis/*.sig
+          if-no-files-found: error

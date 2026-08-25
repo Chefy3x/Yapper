@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="styles.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Yapper — Side B</title>
+    <script type="module" src="/main.js" defer></script>
+  </head>
+
+  <body>
+    <!-- First-run guide. Shown only on a genuinely pristine install; the
+         backend decides (should_show_onboarding), never the frontend. -->
+    <div id="onboarding" class="overlay" hidden>
+      <div class="guide">
+        <h1 class="wordmark">YAPPER</h1>
+        <p class="strap">READS ALOUD. STAYS OUT OF YOUR WAY.</p>
+        <ol class="guide-steps">
+          <li>
+            <span class="step-n">01</span>
+            <div>
+              <strong>Pick a voice.</strong>
+              <p>Windows' own voice works with no setup. ElevenLabs and OpenAI sound better and need a key.</p>
+            </div>
+          </li>
+          <li>
+            <span class="step-n">02</span>
+            <div>
+              <strong>Add a key (optional).</strong>
+              <p>Stored in Windows Credential Manager — never in a file, never in the app folder.</p>
+            </div>
+          </li>
+          <li>
+            <span class="step-n">03</span>
+            <div>
+              <strong>Use the hotkeys.</strong>
+              <p><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Y</kbd> reads and pauses. <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>S</kbd> reads your selection.</p>
+            </div>
+          </li>
+        </ol>
+        <button id="guide-done" class="primary" type="button">START THE TAPE ▸</button>
+      </div>
+    </div>
+
+    <header class="masthead">
+      <h1 class="wordmark">YAPPER</h1>
+      <nav class="tabs" role="tablist">
+        <button class="tab is-on" data-tab="deck" role="tab">DECK</button>
+        <button class="tab" data-tab="history" role="tab">HISTORY</button>
+        <button class="tab" data-tab="settings" role="tab">SETTINGS</button>
+        <button class="tab" data-tab="parity" role="tab">PARITY</button>
+      </nav>
+    </header>
+
+    <!-- ── DECK ─────────────────────────────────────────────────────── -->
+    <main class="panel is-on" data-panel="deck">
+      <!-- The deck face is the baked photo from the Mac app; the only things
+           drawn over it are the real reel/cap sprites and flat markers. -->
+      <div class="deck" id="deck">
+        <img class="deck-face" src="assets/deck/cassette-deck.png" alt="" draggable="false" />
+        <img class="reel reel-l" src="assets/deck/cassette-reel-left.png" alt="" draggable="false" />
+        <img class="reel reel-r" src="assets/deck/cassette-reel-right.png" alt="" draggable="false" />
+
+        <img class="cap" data-cap="rew"  src="assets/deck/cassette-cap-rew.png"  alt="" draggable="false" />
+        <img class="cap" data-cap="play" src="assets/deck/cassette-cap-play.png" alt="" draggable="false" />
+        <img class="cap" data-cap="stop" src="assets/deck/cassette-cap-stop.png" alt="" draggable="false" />
+        <img class="cap" data-cap="ff"   src="assets/deck/cassette-cap-ff.png"   alt="" draggable="false" />
+        <img class="cap" data-cap="rec"  src="assets/deck/cassette-cap-rec.png"  alt="" draggable="false" />
+
+        <!-- Tape-position groove: buffered marks, then the needle. -->
+        <div class="ruler" id="ruler">
+          <div class="ruler-buffered" id="ruler-buffered"></div>
+          <div class="needle" id="needle"></div>
+        </div>
+        <div class="counter" id="counter">00:00 / 00:00</div>
+        <div class="deck-chips">
+          <span class="chip" id="chip-state">IDLE</span>
+          <span class="chip" id="chip-rate">1×</span>
+          <span class="chip" id="chip-queue" hidden>QUEUE 0</span>
+        </div>
+
+        <button class="hot" data-act="rew"  title="Slower" aria-label="Slower"></button>
+        <button class="hot" data-act="play" title="Play / pause" aria-label="Play or pause"></button>
+        <button class="hot" data-act="stop" title="Stop" aria-label="Stop"></button>
+        <button class="hot" data-act="ff"   title="Faster" aria-label="Faster"></button>
+        <button class="hot" data-act="rec"  title="Read what's in the box" aria-label="Read the pasted text"></button>
+      </div>
+
+      <section class="block">
+        <label class="label" for="read-in">PASTE SOMETHING TO READ</label>
+        <textarea id="read-in" rows="4" spellcheck="false"
+          placeholder="Paste a response here and hit REC on the deck, or Ctrl+Enter. Markdown is cleaned before it's spoken."></textarea>
+        <p class="err" id="read-err" hidden></p>
+      </section>
+
+      <section class="block">
+        <label class="label">LINER NOTES <span class="hint">click a line to seek</span></label>
+        <ol class="transcript" id="transcript"><li class="empty">—</li></ol>
+      </section>
+    </main>
+
+    <!-- ── HISTORY ──────────────────────────────────────────────────── -->
+    <main class="panel" data-panel="history">
+      <section class="block">
+        <div class="block-head">
+          <label class="label">RECENT READS</label>
+          <button class="danger ghost" id="history-clear" type="button">CLEAR ALL</button>
+        </div>
+        <ul class="history" id="history"><li class="empty">Nothing read yet.</li></ul>
+      </section>
+    </main>
+
+    <!-- ── SETTINGS ─────────────────────────────────────────────────── -->
+    <main class="panel" data-panel="settings">
+      <section class="block">
+        <label class="label" for="voice">VOICE</label>
+        <div class="row">
+          <select id="voice"></select>
+          <button id="voice-preview" type="button">PREVIEW</button>
+        </div>
+      </section>
+
+      <section class="block">
+        <label class="label">API KEYS <span class="hint">stored in Windows Credential Manager</span></label>
+        <div class="row">
+          <input id="key-elevenlabs" type="password" placeholder="ElevenLabs key" autocomplete="off" spellcheck="false" />
+          <button data-save-key="elevenLabs" type="button">SAVE</button>
+          <span class="chip" data-key-state="elevenLabs">—</span>
+        </div>
+        <div class="row">
+          <input id="key-openai" type="password" placeholder="OpenAI key" autocomplete="off" spellcheck="false" />
+          <button data-save-key="openAI" type="button">SAVE</button>
+          <span class="chip" data-key-state="openAI">—</span>
+        </div>
+        <p class="hint">Saving an empty box removes the stored key.</p>
+      </section>
+
+      <section class="block">
+        <label class="label" for="model-elevenlabs">ELEVENLABS MODEL</label>
+        <select id="model-elevenlabs"></select>
+        <p class="hint" id="model-elevenlabs-blurb"></p>
+
+        <label class="label" for="model-openai">OPENAI MODEL</label>
+        <select id="model-openai"></select>
+        <p class="hint" id="model-openai-blurb"></p>
+      </section>
+
+      <section class="block">
+        <label class="label" for="retention">HISTORY RETENTION</label>
+        <div class="row">
+          <input id="retention" type="number" min="1" max="720" />
+          <span class="hint">hours — older reads and their audio are deleted</span>
+        </div>
+        <label class="check">
+          <input id="native-offline" type="checkbox" />
+          <span>Fall back to the Windows voice when a provider is unreachable</span>
+        </label>
+        <label class="check">
+          <input id="launch-at-login" type="checkbox" />
+          <span>Start Yapper when I sign in</span>
+        </label>
+      </section>
+
+      <section class="block">
+        <label class="label">HOTKEYS</label>
+        <ul class="keys" id="keys"></ul>
+        <p class="hint">
+          The Mac app reads on a right-Command <em>tap</em>. Windows needs a low-level
+          keyboard hook for that, which lands with the reader work — these chords do
+          the same jobs in the meantime.
+        </p>
+      </section>
+    </main>
+
+    <!-- ── PARITY (dev) ─────────────────────────────────────────────── -->
+    <main class="panel" data-panel="parity">
+      <section class="block">
+        <label class="label" for="parity-in">PIPELINE PARITY</label>
+        <textarea id="parity-in" rows="6" spellcheck="false"
+          placeholder="Paste text here. Cleaning and segmentation must match the Mac deck: markdown stripped, first sentence alone, then batches (350 / 1000)."></textarea>
+        <div class="row">
+          <button id="parity-run" type="button">RUN ▸</button>
+          <span class="hint" id="parity-stat">0 SEGMENTS</span>
+        </div>
+      </section>
+      <section class="block">
+        <label class="label">CLEANED</label>
+        <pre class="cleaned" id="parity-cleaned">—</pre>
+      </section>
+      <section class="block">
+        <label class="label">SEGMENTS</label>
+        <ol class="segments" id="parity-segments"><li class="empty">—</li></ol>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <span id="foot-phase">SIDE B · WINDOWS</span>
+      <span id="foot-note">reader lands in phase 3</span>
+    </footer>
+  </body>
+</html>
