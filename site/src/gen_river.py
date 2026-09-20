@@ -33,8 +33,8 @@ SETTINGS = {                                # ElevenLabsClient.VoiceSettings.nat
 LINES = [
     "Hi. I'm Yapper — a tape deck that lives in your Mac's menu bar.",
     "When Claude, ChatGPT, or Codex finishes a reply, I read it out loud. You go make coffee.",
-    "Tap the right Command key: the newest reply, spoken. Tap again to pause. That's the whole manual.",
-    "Highlight anything, anywhere — right Command plus S — and congratulations, it's a podcast now.",
+    "Tap the right Option key: the newest reply, spoken. Tap again to pause. That's the whole manual.",
+    "Highlight anything, anywhere — right Option plus S — and congratulations, it's a podcast now.",
     "Press record, and every new reply auto-plays the moment it lands. They queue. They never talk over each other.",
     "Code blocks? Skipped. Markdown? Stripped. You hear prose, not punctuation.",
     "What you're hearing is my real voice — ElevenLabs, the River preset. The same one Yapper ships.",
