@@ -9,6 +9,11 @@ text below changes — and keep it byte-for-byte in sync with template.html's LI
         -a elevenlabs.api.key -w)" python3 site/src/gen_river.py
     python3 site/src/build.py   # (no rebuild needed — audio is not inlined)
 
+Pass --only=3,4 to re-synthesize just those clips when one line's text changed —
+stability is 0.40, so a full run re-rolls all nine into slightly different takes
+for no reason. Neighbour context still comes from the whole LINES list either way,
+so a subset clip seams exactly like a full run's would.
+
 Voice + settings mirror Yapper's app defaults exactly: River preset
 (Models/VoicePreset.swift) and ElevenLabsClient.VoiceSettings.natural, on
 eleven_multilingual_v2. The key is read from env ELEVEN_KEY and never written to disk.
@@ -42,12 +47,24 @@ LINES = [
     "That's Side A. Side B is coming. Yapper — reads aloud, stays out of your way.",
 ]
 
+# --only=3,4 limits the run to those clip numbers (1-based); everything else is a
+# positional AUDIO_DIR override.
+args = [a for a in sys.argv[1:] if not a.startswith("--only")]
+only = None
+for flag in (a for a in sys.argv[1:] if a.startswith("--only")):
+    only = {int(n) for n in flag.split("=", 1)[1].replace(",", " ").split()}
+    if not only <= set(range(1, len(LINES) + 1)):
+        sys.exit(f"--only takes clip numbers 1..{len(LINES)}")
+
 # Default to site/audio (sibling of this script's parent); allow an override argv[1].
-AUDIO_DIR = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else pathlib.Path(__file__).resolve().parent.parent / "audio"
+AUDIO_DIR = pathlib.Path(args[0]) if args else pathlib.Path(__file__).resolve().parent.parent / "audio"
 AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 
 total = 0
+written = 0
 for i, text in enumerate(LINES):
+    if only is not None and i + 1 not in only:
+        continue
     body = {"text": text, "model_id": MODEL_ID, "voice_settings": SETTINGS}
     if i > 0:               body["previous_text"] = LINES[i - 1]   # prosodic continuity across
     if i < len(LINES) - 1:  body["next_text"] = LINES[i + 1]       # segment seams (text-only)
@@ -69,6 +86,7 @@ for i, text in enumerate(LINES):
         sys.exit(f"[{i+1}] {type(e).__name__}: {e}")
     dest.write_bytes(data)
     total += len(data)
+    written += 1
     print(f"[{i+1}/{len(LINES)}] {len(data)/1024:6.1f} KB  {dest.name}  «{text[:42]}…»")
 
-print(f"done — {total/1024:.0f} KB across {len(LINES)} clips in {AUDIO_DIR}")
+print(f"done — {total/1024:.0f} KB across {written} clips in {AUDIO_DIR}")
