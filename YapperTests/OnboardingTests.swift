@@ -50,19 +50,20 @@ struct OnboardingGateTests {
 // The menu bar strip and the guide's closing recap render from one list, so they can't drift.
 struct ShortcutReferenceTests {
 
-    @Test func listsTheFourUserFacingGestures() {
-        #expect(ShortcutReference.all.count == 4)
+    @Test func listsTheFiveUserFacingGestures() {
+        // Read/pause, hold-to-talk, selection, Conversation Mode, skip.
+        #expect(ShortcutReference.all(yapperKey: .rightOption).count == 5)
     }
 
     // Right ⌘ + D dumps the accessibility tree to disk. It's a debug affordance that belongs in
     // Settings only — surfacing it in the menu would put a developer tool in everyone's face.
     @Test func omitsTheDebugAXDump() {
-        let labels = ShortcutReference.all.map { $0.label.lowercased() }
+        let labels = ShortcutReference.all(yapperKey: .rightOption).map { $0.label.lowercased() }
         #expect(!labels.contains { $0.contains("debug") || $0.contains("dump") })
     }
 
     @Test func everyLineIsLabelledAndKeyed() {
-        for item in ShortcutReference.all {
+        for item in ShortcutReference.all(yapperKey: .rightOption) {
             #expect(!item.caps.isEmpty)
             #expect(!item.label.isEmpty)
         }

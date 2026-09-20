@@ -99,7 +99,7 @@ final class AccessibilityReader {
             case .unsupportedApp(let id): "Reading not supported for \(id) yet."
             case .noFocusedWindow: "No focused window in the frontmost app."
             case .noAssistantMessageFound: "Couldn't find an assistant message to read."
-            case .noReadableContent: "Nothing to read here — select text and press Right Cmd + S instead."
+            case .noReadableContent: "Nothing to read here — select text and press the Yapper key + S instead."
             case .copyFailed: "Couldn't copy the assistant message to the clipboard."
             case .noSelection: "Nothing is selected to read."
             }
@@ -575,7 +575,7 @@ final class AccessibilityReader {
 
     /// Full snapshot of the pasteboard: every item with every type's data, so restore preserves
     /// images, files, and rich text — not just plain strings.
-    private static func pasteboardSnapshot(_ pb: NSPasteboard) -> [[NSPasteboard.PasteboardType: Data]] {
+    static func pasteboardSnapshot(_ pb: NSPasteboard) -> [[NSPasteboard.PasteboardType: Data]] {
         (pb.pasteboardItems ?? []).map { item in
             item.types.reduce(into: [:]) { acc, type in
                 acc[type] = item.data(forType: type)
@@ -584,7 +584,7 @@ final class AccessibilityReader {
     }
 
     /// Puts the snapshot back, including restoring emptiness if the pasteboard held nothing.
-    private static func restorePasteboard(_ pb: NSPasteboard, from snapshot: [[NSPasteboard.PasteboardType: Data]]) {
+    static func restorePasteboard(_ pb: NSPasteboard, from snapshot: [[NSPasteboard.PasteboardType: Data]]) {
         pb.clearContents()
         guard !snapshot.isEmpty else { return }
         let items: [NSPasteboardItem] = snapshot.map { entry in

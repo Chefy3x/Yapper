@@ -23,6 +23,11 @@ final class SettingsStore: ObservableObject {
         case miniPlayerTheme
         case cassetteScale
         case onboardingCompleted
+        case voiceInputEnabled
+        case whisperModelID
+        case handsFreeEnabled
+        case inputDeviceUID
+        case yapperKey
     }
 
     @Published var activeVoiceID: String {
@@ -90,6 +95,30 @@ final class SettingsStore: ObservableObject {
         didSet { defaults.set(onboardingCompleted, forKey: Key.onboardingCompleted.rawValue) }
     }
 
+    // MARK: Voice In (hold the talk key to talk)
+
+    /// Master switch for local speech-to-text. Off means the hold gesture does nothing.
+    @Published var voiceInputEnabled: Bool {
+        didSet { defaults.set(voiceInputEnabled, forKey: Key.voiceInputEnabled.rawValue) }
+    }
+    /// WhisperKit model variant. Defaults per architecture — see `WhisperModel.recommended`.
+    @Published var whisperModelID: String {
+        didSet { defaults.set(whisperModelID, forKey: Key.whisperModelID.rawValue) }
+    }
+    /// After a Conversation Mode reply finishes reading, open the mic until the user pauses.
+    /// The transcript lands in the composer; Yapper never presses Return.
+    @Published var handsFreeEnabled: Bool {
+        didSet { defaults.set(handsFreeEnabled, forKey: Key.handsFreeEnabled.rawValue) }
+    }
+    /// The one modifier that drives Yapper (tap / hold / chords). See `YapperKey`.
+    @Published var yapperKey: YapperKey {
+        didSet { defaults.set(yapperKey.rawValue, forKey: Key.yapperKey.rawValue) }
+    }
+    /// CoreAudio device UID to record from. Nil = whatever macOS calls the default input.
+    @Published var inputDeviceUID: String? {
+        didSet { defaults.set(inputDeviceUID, forKey: Key.inputDeviceUID.rawValue) }
+    }
+
     /// True when nothing has ever been persisted — a genuinely fresh install.
     ///
     /// Guards the first-run guide against firing for people who upgrade into this version:
@@ -137,6 +166,11 @@ final class SettingsStore: ObservableObject {
         self.miniPlayerDefaultCorner = MiniPlayerCorner(rawValue: cornerRaw) ?? .bottomRight
         let themeRaw = defaults.string(forKey: Key.miniPlayerTheme.rawValue) ?? MiniPlayerTheme.minimal.rawValue
         self.miniPlayerTheme = MiniPlayerTheme(rawValue: themeRaw) ?? .minimal
+        self.voiceInputEnabled = defaults.object(forKey: Key.voiceInputEnabled.rawValue) as? Bool ?? true
+        self.whisperModelID = defaults.string(forKey: Key.whisperModelID.rawValue) ?? WhisperModel.recommended.id
+        self.handsFreeEnabled = defaults.bool(forKey: Key.handsFreeEnabled.rawValue)
+        self.inputDeviceUID = defaults.string(forKey: Key.inputDeviceUID.rawValue)
+        self.yapperKey = YapperKey(rawValue: defaults.string(forKey: Key.yapperKey.rawValue) ?? "") ?? .default
         let storedScale = defaults.object(forKey: Key.cassetteScale.rawValue) as? Double ?? 1.0
         self.cassetteScale = min(max(storedScale, Self.cassetteScaleRange.lowerBound),
                                  Self.cassetteScaleRange.upperBound)

@@ -3,7 +3,7 @@ import AppKit
 
 /// The first-run guide.
 ///
-/// It exists for one reason: Yapper's entire control surface is a tap on the Right ⌘ key, and
+/// It exists for one reason: Yapper's entire control surface is a tap on one modifier key, and
 /// that is an invented gesture with no affordance anywhere in macOS. A new user can install the
 /// app, grant permission, and never once make it speak — not because they missed something
 /// obvious, but because there is nothing to miss. So the middle step doesn't *describe* the
@@ -182,7 +182,7 @@ struct OnboardingView: View {
             StepHeading(
                 icon: "command",
                 title: "One key. Five moves.",
-                blurb: "Right ⌘, the one next to your thumb. The line below is already selected."
+                blurb: "\(settings.yapperKey.keycap), on the right of the space bar. The line below is already selected."
             )
 
             SampleTextBox(text: Self.sampleLine, skin: skin)
@@ -190,7 +190,7 @@ struct OnboardingView: View {
             OnboardingCard {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(spacing: 10) {
-                        MiniKeycap(content: .text("Right ⌘"))
+                        MiniKeycap(content: .text(settings.yapperKey.keycap))
                         Text("+").font(.system(size: 10, weight: .bold)).foregroundStyle(.tertiary)
                         MiniKeycap(content: .text("S"))
                         Text("Hold it, press S")
@@ -299,7 +299,7 @@ struct OnboardingView: View {
                 }
                 .padding(.bottom, 2)
 
-                ForEach(Array(ShortcutReference.all.enumerated()), id: \.offset) { _, item in
+                ForEach(Array(ShortcutReference.all(yapperKey: settings.yapperKey).enumerated()), id: \.offset) { _, item in
                     ShortcutLine(caps: item.caps, label: item.label, capColumnWidth: 118)
                 }
             }

@@ -29,6 +29,11 @@ packages:
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle
     from: "2.9.4"
+  # Local speech-to-text for Voice In (hold the talk key to talk). CoreML, on-device, no network
+  # once the model is downloaded. Pinned exact: the 1.x line renamed the package and moved APIs.
+  WhisperKit:
+    url: https://github.com/argmaxinc/WhisperKit
+    exactVersion: "0.18.0"
 schemes:
   Yapper:
     build:
@@ -59,17 +64,21 @@ targets:
         LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
         NSAccessibilityUsageDescription: "Yapper reads AI responses from the focused window so it can speak them aloud."
         NSAppleEventsUsageDescription: "Yapper inspects the focused window to find the latest AI response."
+        NSMicrophoneUsageDescription: "Yapper listens while you hold your talk key so it can type what you say. Speech is transcribed on this Mac and never uploaded."
         NSHumanReadableCopyright: "Copyright © 2026 KeepCo. All rights reserved."
         # Sparkle auto-updates: feed lives in the repo so the URL never moves.
         SUFeedURL: https://raw.githubusercontent.com/Chefy3x/Yapper/main/site/appcast.xml
         SUPublicEDKey: Jj6vPCQLIQ/YNSDVq7T2bu/mgpfyWoy57hcpTbKFz5g=
     dependencies:
       - package: Sparkle
+      - package: WhisperKit
     entitlements:
       path: Yapper/Yapper.entitlements
       properties:
         com.apple.security.app-sandbox: false
         com.apple.security.automation.apple-events: true
+        # Hardened runtime blocks microphone access without this.
+        com.apple.security.device.audio-input: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.yapper.Yapper
@@ -96,6 +105,7 @@ targets:
     dependencies:
       # App sources reference Sparkle (UpdaterService), so the test bundle links it too.
       - package: Sparkle
+      - package: WhisperKit
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.yapper.YapperTests

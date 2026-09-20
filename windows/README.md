@@ -81,6 +81,12 @@ be inspected live:
   `--force-renderer-accessibility` to tell the two apart.
 - **Then** wire `Coordinator::enqueue` — the Conversation Mode queue is finished
   and tested, and nothing feeds it until a reader exists.
+- **Voice In parity** — the Mac side now has hold-a-modifier push-to-talk (Right ⌥ by default, `YapperKey`) and a
+  hands-free turn after each reply, transcribed locally with WhisperKit and
+  pasted into the focused composer (never auto-sent). The Windows equivalent is
+  `whisper-rs` (whisper.cpp bindings) + `cpal` for capture, with the same
+  `TranscriptFilter` / `VoiceActivityDetector` / `ModifierGesture` rules
+  ported as pure functions and mirrored in the parity tests.
 
 ### What Phase 5 needs
 

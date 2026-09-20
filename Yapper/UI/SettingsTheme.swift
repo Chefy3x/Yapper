@@ -189,7 +189,7 @@ struct MiniKeycap: View {
     }
 }
 
-/// One line of the Right ⌘ contract: the key cluster, then what it does.
+/// One line of the Yapper-key contract: the key cluster, then what it does.
 /// Shared so the menu bar strip and the guide's recap can never drift apart.
 struct ShortcutLine: View {
     let caps: [MiniKeycap.Content]
@@ -216,15 +216,19 @@ struct ShortcutLine: View {
     }
 }
 
-/// The four user-facing gestures, in the order they matter. The AX dump (Right ⌘ + D) is a
+/// The user-facing gestures, in the order they matter. The AX dump (key + D) is a
 /// debug affordance and deliberately absent — it lives in Settings only.
 enum ShortcutReference {
-    static let all: [(caps: [MiniKeycap.Content], label: String)] = [
-        ([.text("Right ⌘")], "Read latest / pause"),
-        ([.text("Right ⌘"), .text("S")], "Read selected text"),
-        ([.text("Right ⌘"), .symbol("return")], "Conversation Mode"),
-        ([.text("Right ⌘"), .symbol("arrow.right")], "Skip ahead"),
-    ]
+    static func all(yapperKey key: YapperKey) -> [(caps: [MiniKeycap.Content], label: String)] {
+        let cap = MiniKeycap.Content.text(key.keycap)
+        return [
+            ([cap], "Read latest / pause"),
+            ([cap, .text("hold")], "Talk — release to type"),
+            ([cap, .text("S")], "Read selected text"),
+            ([cap, .symbol("return")], "Conversation Mode"),
+            ([cap, .symbol("arrow.right")], "Skip ahead"),
+        ]
+    }
 }
 
 /// The J-card barcode, drawn from a fixed stripe pattern.

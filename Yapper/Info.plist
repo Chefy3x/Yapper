@@ -30,6 +30,8 @@
 	<string>Yapper inspects the focused window to find the latest AI response.</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright © 2026 KeepCo. All rights reserved.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Yapper listens while you hold your talk key so it can type what you say. Speech is transcribed on this Mac and never uploaded.</string>
 	<key>SUFeedURL</key>
 	<string>https://raw.githubusercontent.com/Chefy3x/Yapper/main/site/appcast.xml</string>
 	<key>SUPublicEDKey</key>
