@@ -5,5 +5,18 @@
         <link>https://raw.githubusercontent.com/Chefy3x/Yapper/main/site/appcast.xml</link>
         <description>Yapper release feed</description>
         <language>en</language>
+        <item>
+            <title>Version 0.2.0</title>
+            <link>https://github.com/Chefy3x/Yapper/releases/tag/v0.2.0</link>
+            <pubDate>Tue, 22 Sep 2026 11:10:17 -0400</pubDate>
+            <sparkle:version>2</sparkle:version>
+            <sparkle:shortVersionString>0.2.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/Chefy3x/Yapper/releases/download/v0.2.0/Yapper.dmg"
+                type="application/octet-stream"
+                sparkle:edSignature="pRBcFL7Bl2ZTluRKIDbg8po5H5v8uEuksAAvexiWSqzkiUWxnHEvqnwrtpsNTtEYXQBFbcvzhTaD5J2q00wQCw=="
+                length="6390916"/>
+        </item>
     </channel>
 </rss>
