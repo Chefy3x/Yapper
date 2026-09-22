@@ -8,6 +8,9 @@ the demo-deck voice clips ship as sibling files in site/audio/ (river-1..9.mp3,
 River preset via ElevenLabs) and are fetched lazily on Play, not inlined — deploy
 that folder alongside index.html. Regenerate them with site/src/gen_river.py when
 the template's LINES text changes (no rebuild needed — they aren't inlined here).
+Likewise site/media/ (the demo clip + its poster), favicon.svg, apple-touch-icon.png
+and og.png are sibling files: deploy the whole site/ folder, not just index.html.
+The nav mark is favicon.svg inlined, so the tab icon and the page logo can't drift.
 
 Deck geometry (reel centers, cap sprite rects, hotspots, speed marking) lives in
 template.html's CSS, transcribed from Yapper/UI/CassettePlayerView.swift — the app
@@ -30,11 +33,16 @@ tpl = tpl.replace("__REELL__", webp("reel-left.webp"))
 tpl = tpl.replace("__REELR__", webp("reel-right.webp"))
 for cap in ("rew", "play", "stop", "ff", "rec"):
     tpl = tpl.replace(f"__CAP{cap.upper()}__", webp(f"cap-{cap}.webp"))
+tpl = tpl.replace("__TAPE__", webp("cta-tape.webp"))
+tpl = tpl.replace("__MINIMAL__", webp("shell-minimal.webp"))   # the real MiniPlayerView, rendered offscreen at 3x
+tpl = tpl.replace("__MARK__", "data:image/svg+xml;base64," +
+                  base64.b64encode((SRC.parent / "favicon.svg").read_bytes()).decode())
 
 head_end = tpl.index("</style>") + len("</style>")
 head, body = tpl[:head_end], tpl[head_end:]
 full = ("<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n"
-        "<link rel=\"icon\" href=\"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📼</text></svg>\">\n"
+        "<link rel=\"icon\" href=\"favicon.svg\" type=\"image/svg+xml\">\n"
+        "<link rel=\"apple-touch-icon\" href=\"apple-touch-icon.png\">\n"
         + head + "\n</head>\n<body>" + body + "\n</body>\n</html>\n")
 OUT.write_text(full)
 print(f"built {OUT} ({len(full)/1024:.0f} KB)")

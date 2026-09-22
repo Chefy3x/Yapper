@@ -1,0 +1,51 @@
+<!doctype html>
+<!-- Source for site/og.png (the link-preview card). Serve site/ locally, open
+     /src/og-card.html at exactly 1200x630, and screenshot the viewport to site/og.png. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600&display=swap">
+<style>
+  *{box-sizing:border-box;margin:0}
+  html,body{width:1200px;height:630px;overflow:hidden}
+  body{
+    background:#F7F6F2;color:#141412;font-family:'DM Sans',sans-serif;
+    -webkit-font-smoothing:antialiased;display:grid;grid-template-columns:520px 1fr;
+  }
+  .copy{padding:64px 0 56px 72px;display:flex;flex-direction:column}
+  .brand{display:flex;align-items:center;gap:12px;font-weight:600;font-size:24px;letter-spacing:-.015em}
+  .brand img{width:36px;height:36px}
+  h1{
+    margin-top:auto;font-family:'Instrument Serif',serif;font-weight:400;
+    font-size:92px;line-height:.96;letter-spacing:-.025em;
+  }
+  h1 i{display:block}
+  p{margin-top:22px;font-size:23px;line-height:1.4;color:#4B4943;max-width:26ch}
+  .fine{margin-top:26px;display:flex;gap:10px}
+  .fine span{
+    font-size:16px;font-weight:500;color:#4B4943;background:#fff;
+    border:1px solid rgba(20,20,18,.1);border-radius:999px;padding:8px 14px;
+  }
+  .fine .tag{background:#BAD951;border-color:transparent;color:#1F2E08;font-weight:600}
+  .stage{
+    margin:40px 40px 40px 8px;border-radius:28px;position:relative;
+    background:linear-gradient(180deg,#F3EBD3 0%,#EAE0C2 100%);
+    border:1px solid rgba(20,20,18,.08);display:grid;place-items:center;
+  }
+  .stage::before{
+    content:"";position:absolute;inset:0;border-radius:inherit;
+    background:radial-gradient(60% 50% at 50% 45%,rgba(227,185,58,.22),transparent 70%);
+  }
+  .stage img{position:relative;width:560px;filter:drop-shadow(0 26px 30px rgba(20,20,18,.32))}
+</style>
+</head>
+<body>
+  <div class="copy">
+    <div class="brand"><img src="../favicon.svg" alt="">Yapper</div>
+    <h1>Your AI won't <i>shut up.</i></h1>
+    <p>A menu-bar tape deck that reads Claude, ChatGPT &amp; Codex out loud — and lets you talk back.</p>
+    <div class="fine"><span class="tag">Free for macOS</span><span>open source</span></div>
+  </div>
+  <div class="stage"><img src="deck.webp" alt=""></div>
+</body>
+</html>

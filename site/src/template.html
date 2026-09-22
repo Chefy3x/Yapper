@@ -1,7 +1,18 @@
 <title>Yapper — reads your AI out loud</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Yapper is a macOS menu-bar tape deck that reads Claude, ChatGPT, Codex — or anything you highlight — out loud in a real voice.">
+<meta name="description" content="Yapper is a macOS menu-bar tape deck that reads Claude, ChatGPT, Codex — or anything you highlight — out loud, and lets you talk back. Free and open source.">
 <meta name="theme-color" content="#F7F6F2">
+<link rel="canonical" href="https://useyapper.vercel.app/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Yapper">
+<meta property="og:url" content="https://useyapper.vercel.app/">
+<meta property="og:title" content="Yapper — your AI won't shut up. Good.">
+<meta property="og:description" content="A menu-bar tape deck for macOS that reads Claude, ChatGPT and Codex out loud — and lets you talk back. Free and open source.">
+<meta property="og:image" content="https://useyapper.vercel.app/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Yapper — a black cassette deck on a cream background, next to the line “Your AI won't shut up.”">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap">
@@ -67,7 +78,7 @@ a{color:inherit;text-decoration:none}
 img{max-width:100%;display:block}
 ::selection{background:var(--green-soft);color:var(--ink)}
 .wrap{max-width:1120px;margin:0 auto;padding:0 24px}
-.wrap--narrow{max-width:880px}
+.wrap--narrow{max-width:880px;margin-left:auto;margin-right:auto}
 
 /* ---------- type ---------- */
 h1,h2,h3{margin:0;font-family:var(--serif);font-weight:400;letter-spacing:-.015em;line-height:1.05}
@@ -77,13 +88,21 @@ h3{font-size:26px;letter-spacing:-.01em;line-height:1.1}
 em,.it{font-style:italic}
 p{margin:0}
 .lead{font-size:18px;line-height:1.55;color:var(--ink-2);font-weight:400}
+.lead b{font-weight:600;color:var(--ink)}
 .muted{color:var(--muted)}
 .mono{font-family:var(--mono)}
+/* section labels read like the deck's tape counter: three digits on the same dark LCD
+   as the counter under the deck, then the label. The digits climb down the page and
+   the last section lands on 090 — the end of a C-90. */
 .eyebrow{
-  display:inline-flex;align-items:center;
-  font:600 13px/1 var(--sans);letter-spacing:.01em;
-  color:#2F4310;background:var(--green-soft);
-  border-radius:999px;padding:7px 12px;margin-bottom:18px;
+  display:inline-flex;align-items:center;gap:10px;
+  font:600 11.5px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;
+  color:var(--muted);margin-bottom:18px;
+}
+.eyebrow .ctr{
+  font:600 11px/1 var(--mono);letter-spacing:.1em;color:var(--green);
+  background:#1B1A17;border-radius:5px;padding:5px 7px 4px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 1px 2px rgba(20,20,18,.18);
 }
 
 /* ---------- buttons ---------- */
@@ -124,6 +143,10 @@ p{margin:0}
   color:#1F2E08;background:var(--lime);
   border-radius:999px;padding:5px 9px;
 }
+a.badge{transition:border-color .15s ease,box-shadow .15s ease}
+a.badge:hover{border-color:var(--line-2);box-shadow:var(--shadow-md)}
+.badge .arr{color:var(--muted);transition:transform .15s ease}
+a.badge:hover .arr{transform:translateX(2px);color:var(--ink)}
 kbd{
   display:inline-block;
   font:600 12.5px/1 var(--sans);letter-spacing:.01em;color:var(--ink);
@@ -131,11 +154,21 @@ kbd{
   padding:6px 8px 5px;white-space:nowrap;
 }
 .plus{color:var(--faint);font-weight:500;font-size:13px}
-.beta{
+.beta,.new{
   display:inline-block;vertical-align:middle;margin-left:8px;
   font:600 10.5px/1 var(--sans);letter-spacing:.06em;text-transform:uppercase;
   color:var(--muted);border:1px solid var(--line-2);border-radius:999px;padding:4px 7px 3px;
 }
+.new{color:#1F2E08;background:var(--lime);border-color:transparent}
+
+/* hand-written margin notes — the same marker + arrow as the deck's "press play" note */
+.note{
+  position:absolute;z-index:6;pointer-events:none;
+  font-family:var(--marker);font-size:19px;line-height:1.15;color:var(--ink);
+  transform:rotate(-5deg);text-align:left;white-space:nowrap;
+}
+.note svg{display:block}
+.note svg.flip{transform:scaleX(-1)}
 
 /* ---------- cards ---------- */
 .card{
@@ -154,7 +187,7 @@ kbd{
 }
 .nav-inner{height:64px;display:flex;align-items:center;justify-content:space-between;gap:20px}
 .brand{display:flex;align-items:center;gap:9px;font-weight:600;font-size:16px;letter-spacing:-.015em}
-.brand svg{width:26px;height:18px;display:block}
+.brand img{width:26px;height:26px;display:block}
 .nav-links{display:flex;gap:4px;align-items:center}
 .nav-links a{
   font-size:14px;font-weight:500;color:var(--ink-2);padding:8px 12px;border-radius:8px;
@@ -315,11 +348,34 @@ kbd{
    SECTIONS
    ========================================================= */
 .sect{padding:104px 0 0}
-.sect-head{margin-bottom:40px;max-width:640px}
-.sect-head.center{margin-left:auto;margin-right:auto;text-align:center}
+.sect-head{margin:0 auto 40px;max-width:680px;text-align:center}
 .sect-head .lead{margin-top:14px}
 
+/* --- see it work --- */
+.film{
+  position:relative;max-width:1000px;margin:0 auto;aspect-ratio:16/9;
+  background:#141210;border:1px solid var(--line);border-radius:20px;overflow:hidden;
+  box-shadow:var(--shadow-md);
+}
+.film video{display:block;width:100%;height:100%;object-fit:cover}
+.film-snd{
+  position:absolute;right:16px;bottom:16px;
+  display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 14px;
+  font:600 13px/1 var(--sans);color:#F4F1E8;cursor:pointer;
+  background:rgba(20,20,18,.62);border:1px solid rgba(255,255,255,.18);border-radius:999px;
+  -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
+  transition:background .15s ease;
+}
+.film-snd:hover{background:rgba(20,20,18,.82)}
+.film-snd svg{width:15px;height:15px;flex:none}
+.film-snd:focus{outline:none}
+.film-snd:focus-visible{outline:2px solid var(--green);outline-offset:3px}
+
 /* --- big three --- */
+.trio-zone{position:relative}
+#features .sect-head{margin-bottom:68px}   /* room for the margin note */
+.note--new{left:calc(50% + 70px);top:-58px}
+.note--new svg{margin:0 0 0 -6px}
 .trio{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;align-items:stretch}
 .trio .card{display:flex;flex-direction:column;gap:10px;padding:26px 26px 22px}
 .card-combo{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px}
@@ -330,6 +386,63 @@ kbd{
   font-size:13px;color:var(--muted);
 }
 .rec-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--red);margin-right:8px;vertical-align:1px;box-shadow:0 0 0 3px rgba(199,69,55,.14);animation:blink 1.2s steps(2,start) infinite}
+
+/* --- voice in --- */
+.vi{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:56px;align-items:center;max-width:1000px;margin:0 auto}
+.vi-list{display:grid;gap:24px}
+.vi-list p{padding-left:18px;border-left:2px solid var(--line-2);color:var(--ink-2);font-size:15px;line-height:1.6}
+.vi-list b{display:block;font-weight:600;color:var(--ink);margin-bottom:4px;letter-spacing:-.01em}
+.vi-demo{
+  background:linear-gradient(180deg,#F3EBD3 0%,#EAE0C2 100%);
+  border:1px solid var(--line);border-radius:24px;padding:28px;box-shadow:var(--shadow-md);
+}
+.lcd{
+  background:#1B1A17;border:1px solid rgba(0,0,0,.4);border-radius:12px;padding:14px 16px 12px;
+  font:600 11.5px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--green);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 1px 2px rgba(20,20,18,.2);
+}
+.lcd-top{display:flex;align-items:center;gap:10px;white-space:nowrap}
+.lcd .led{width:8px;height:8px;border-radius:50%;background:#3a352b;flex:none}
+.lcd.listening .led{background:var(--red);box-shadow:0 0 8px var(--red);animation:blink 1.1s steps(2,start) infinite}
+.lcd.done .led{background:var(--led);box-shadow:0 0 8px var(--led)}
+.lcd-state{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.lcd-app{color:rgba(186,217,81,.5)}
+.wave{display:flex;align-items:center;gap:3px;height:36px;margin-top:12px}
+.wave i{flex:1;height:3px;border-radius:2px;background:rgba(186,217,81,.28)}
+.lcd.listening .wave i{background:var(--green);animation:wv .7s ease-in-out infinite alternate}
+@keyframes wv{from{height:4px}to{height:var(--h,24px)}}
+.composer{
+  margin-top:14px;background:var(--surface);border:1px solid var(--line-2);border-radius:16px;
+  padding:14px 14px 12px 16px;box-shadow:var(--shadow-sm);
+}
+.composer-text{min-height:48px;font-size:15px;line-height:1.5;color:var(--ink)}
+.composer-text .ph{color:var(--faint)}
+.caret{display:inline-block;width:2px;height:1.1em;margin-left:1px;vertical-align:-3px;background:var(--ink);animation:blink 1s steps(2,start) infinite}
+.composer-foot{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:8px;font-size:12.5px;color:var(--muted)}
+.send{width:30px;height:30px;flex:none;border-radius:50%;display:grid;place-items:center;color:var(--faint);background:var(--surface-2);border:1px solid var(--line-2)}
+.send svg{width:14px;height:14px}
+
+/* --- two shells --- */
+.shells{display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:1000px;margin:0 auto}
+.shell{margin:0;display:flex;flex-direction:column}
+.shell-stage{
+  flex:1;display:grid;place-items:center;min-height:300px;padding:40px 28px;
+  background:linear-gradient(180deg,#F3EBD3 0%,#EAE0C2 100%);
+  border:1px solid var(--line);border-radius:20px;
+}
+.shell-stage img{max-width:100%;height:auto}
+.shell-stage .shell-mini{width:min(360px,100%);border-radius:16px;box-shadow:0 22px 40px -16px rgba(20,20,18,.5),0 2px 8px rgba(20,20,18,.18)}
+.shell-stage .shell-deck{width:min(400px,100%);filter:drop-shadow(0 18px 24px rgba(20,20,18,.28))}
+.shell figcaption{padding:14px 4px 0;font-size:14px;color:var(--muted)}
+.shell figcaption b{color:var(--ink);font-weight:600}
+
+/* --- setup --- */
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.step{padding:26px 26px 24px}
+.step .n{display:block;margin-bottom:14px;font:italic 400 44px/1 var(--serif);color:var(--green-deep)}
+.step h3{margin-bottom:8px}
+.step p{color:var(--ink-2);font-size:15px;line-height:1.6}
+.step p b{font-weight:600;color:var(--ink)}
 
 /* --- tracklist --- */
 .tracklist{padding:8px 28px 14px}
@@ -353,7 +466,11 @@ kbd{
   display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;
   font:500 12px/1.6 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);
 }
+.track .t .new{margin-left:6px;vertical-align:1px}
 .tracklist--b{border-style:dashed;border-color:var(--line-2);background:transparent;box-shadow:none}
+.tl-zone{position:relative}
+.note--pencil{right:-34px;top:-66px;transform:rotate(4deg)}
+.note--pencil svg{margin:2px 0 0 38px}
 .tracklist--b .track .t{color:var(--ink-2)}
 .tracklist--b .track .no{color:var(--muted)}
 
@@ -371,11 +488,31 @@ kbd{
 .liner p{border-top:1px solid var(--line-2);padding-top:18px;color:var(--ink-2);font-size:15px;line-height:1.6}
 .liner b{display:block;font-weight:600;color:var(--ink);font-size:15px;margin-bottom:6px;letter-spacing:-.01em}
 
-/* --- roadmap chips / CTA --- */
-.chip-row{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:28px}
+/* --- FAQ --- */
+.faq{max-width:760px;margin:0 auto}
+.faq details{border-bottom:1px solid var(--line-2)}
+.faq details:first-child{border-top:1px solid var(--line-2)}
+.faq summary{
+  list-style:none;cursor:pointer;
+  display:flex;justify-content:space-between;align-items:center;gap:16px;
+  padding:20px 0;font-weight:600;font-size:17px;letter-spacing:-.01em;
+}
+.faq summary::-webkit-details-marker{display:none}
+.faq summary::after{content:"+";flex:none;font:400 26px/1 var(--sans);color:var(--muted);transition:transform .2s ease}
+.faq details[open] summary::after{transform:rotate(45deg)}
+.faq summary:focus{outline:none}
+.faq summary:focus-visible{outline:2px solid var(--green-deep);outline-offset:4px;border-radius:4px}
+.faq details p{padding:0 0 22px;max-width:64ch;color:var(--ink-2);font-size:15.5px;line-height:1.65}
+.faq details p b{font-weight:600;color:var(--ink)}
+
+/* --- CTA --- */
 .cta{
   margin-top:104px;background:var(--surface-2);border:1px solid var(--line);border-radius:28px;
-  padding:72px 24px;text-align:center;
+  padding:64px 24px 72px;text-align:center;
+}
+.cta-tape{
+  width:min(320px,72%);margin:0 auto 34px;border-radius:14px;
+  box-shadow:0 18px 36px -14px rgba(20,20,18,.45),0 2px 6px rgba(20,20,18,.12);
 }
 .cta .lead{max-width:56ch;margin:16px auto 0}
 .cta .btn-row{margin-top:30px}
@@ -391,9 +528,17 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
 .foot-links a:hover{color:var(--ink)}
 
 /* ---------- responsive ---------- */
+@media (max-width:1000px){
+  .nav-links a{padding:8px 9px}
+}
 @media (max-width:960px){
-  .trio{grid-template-columns:1fr;max-width:560px;margin:0 auto}
+  .trio,.steps{grid-template-columns:1fr;max-width:560px;margin:0 auto}
+  .note--new{display:none}          /* one column: the card's own NEW tag carries it */
+  #features .sect-head{margin-bottom:40px}
   .liner{grid-template-columns:1fr 1fr}
+  .vi{grid-template-columns:minmax(0,1fr);gap:32px;max-width:560px}
+  .shells{grid-template-columns:1fr;max-width:560px}
+  .note--pencil{right:4px}
 }
 @media (max-width:760px){
   :root{--deckw:calc(100vw - 74px)}   /* wrap 24+24, stage 12+12, border 1+1 */
@@ -408,13 +553,21 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
   .track .spec{grid-column:2;text-align:left}
   .hk-row{flex-direction:column;align-items:flex-start;gap:10px;padding:16px 0}
   .hk-keys{min-width:0}
-  .cta{padding:56px 20px;border-radius:20px}
+  .cta{padding:48px 20px 56px;border-radius:20px}
   .sect{padding-top:80px}
+  .film{border-radius:14px}
+  .film-snd{right:10px;bottom:10px;height:32px;padding:0 12px;font-size:12.5px}
+  .vi-demo{padding:18px;border-radius:20px}
+  .lcd-app{display:none}
+  .shell-stage{min-height:220px;padding:28px 18px}
+  .note--pencil{font-size:16px;top:-58px}
+  .faq summary{font-size:16px}
 }
 @media (prefers-reduced-motion:reduce){
   html{scroll-behavior:auto}
   .marquee-track{animation:none}
-  .counter.rec .led,.rec-dot{animation:none}
+  .counter.rec .led,.rec-dot,.lcd.listening .led,.lcd.listening .wave i,.caret{animation:none}
+  .faq summary::after,.badge .arr{transition:none}
   .reel img{transition:none!important}
   .cap img,.cap .recess,.speed-mark{transition:none!important}
   .btn{transition:none}
@@ -425,19 +578,16 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
 <nav class="nav">
   <div class="wrap nav-inner">
     <a class="brand" href="#top" aria-label="Yapper">
-      <svg viewBox="0 0 26 18" fill="none" aria-hidden="true">
-        <rect x="1" y="1" width="24" height="16" rx="3.5" stroke="#141412" stroke-width="2"/>
-        <circle cx="8.5" cy="9" r="3" stroke="#141412" stroke-width="2"/>
-        <circle cx="17.5" cy="9" r="3" stroke="#141412" stroke-width="2"/>
-        <path d="M6 15h14" stroke="#BAD951" stroke-width="2" stroke-linecap="round"/>
-      </svg>
+      <img src="__MARK__" alt="" width="26" height="26">
       Yapper
     </a>
     <div class="nav-links">
       <a href="#features">Features</a>
+      <a href="#voice-in">Voice In</a>
       <a href="#shortcuts">Shortcuts</a>
       <a href="#privacy">Privacy</a>
       <a href="#roadmap">Roadmap</a>
+      <a href="#faq">FAQ</a>
       <a href="https://github.com/Chefy3x/Yapper">GitHub</a>
     </div>
     <div class="nav-cta">
@@ -451,12 +601,12 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
 
   <!-- ======================= hero ======================= -->
   <header class="hero">
-    <span class="badge"><span class="tag">macOS</span>a menu-bar tape deck for macOS</span>
+    <a class="badge" href="#voice-in"><span class="tag">New</span>Voice In — talk back to your AI <span class="arr" aria-hidden="true">→</span></a>
     <h1><span class="l1">Your AI won't</span><br><span class="l2">shut up.</span></h1>
     <div class="hero-hook">good — <span class="strike">stop reading</span> start listening.</div>
     <p class="lead hero-sub">Yapper reads <b>Claude, ChatGPT, Codex</b> — or anything you highlight — out loud
     in a real voice. Tap <b>Right ⌥</b> and walk away: the answer follows you across the room
-    while the screen stays where it belongs.</p>
+    while the screen stays where it belongs. Hold it to talk back.</p>
 
     <div class="btn-row" id="download">
       <a class="btn btn--primary" href="https://github.com/Chefy3x/Yapper/releases/latest/download/Yapper.dmg">
@@ -501,8 +651,8 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
     </div>
 
     <div class="hero-chips">
-      <span class="pill"><b>engine</b>ElevenLabs</span>
-      <span class="pill"><b>offline</b>built-in fallback</span>
+      <span class="pill"><b>voices</b>macOS · ElevenLabs · OpenAI</span>
+      <span class="pill"><b>voice in</b>on-device Whisper</span>
       <span class="pill"><b>code blocks</b>never read</span>
     </div>
   </header>
@@ -517,61 +667,158 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
 
 <div class="wrap">
 
+  <!-- ======================= see it work ======================= -->
+  <section class="sect" id="demo">
+    <div class="sect-head">
+      <span class="eyebrow"><span class="ctr">004</span>see it work</span>
+      <h2>One tap. It's talking.</h2>
+      <p class="lead">Right ⌥ pulls the newest reply straight out of the chat and the deck starts reading.
+      No copy, no paste, no switching windows.</p>
+    </div>
+    <div class="film">
+      <video id="film" src="media/flow.mp4" poster="media/flow-poster.webp" muted autoplay loop playsinline preload="auto"
+        aria-label="Yapper at work: one tap of Right Option on a long chat reply, the cassette deck slides in and reads it aloud"></video>
+      <button class="film-snd" id="filmSnd" type="button" aria-pressed="false">
+        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 6v4h2.6L8.5 13V3L5.1 6H2.5Z" fill="currentColor"/><path d="M11 5.5a3.5 3.5 0 0 1 0 5M12.8 3.6a6 6 0 0 1 0 8.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        <span id="filmLbl">Sound on</span>
+      </button>
+    </div>
+  </section>
+
   <!-- ======================= big three ======================= -->
   <section class="sect" id="features">
     <div class="sect-head">
-      <span class="eyebrow">what's on the tape</span>
+      <span class="eyebrow"><span class="ctr">012</span>what's on the tape</span>
       <h2>Three moves. That's the manual.</h2>
     </div>
-    <div class="trio">
-      <div class="card">
-        <div class="card-combo"><kbd>Right ⌥</kbd><span class="plus">tap</span></div>
-        <h3>Read latest</h3>
-        <p class="card-body">One tap pulls the newest reply out of the focused chat and starts talking.
-        Tap again to pause, again to resume. Double-tap to force-read whatever chat is in front —
-        it supersedes anything already playing.</p>
-        <div class="card-tag">works while you make coffee</div>
+    <div class="trio-zone">
+      <div class="note note--new" aria-hidden="true">just shipped
+        <svg class="flip" width="46" height="34" viewBox="0 0 46 34" fill="none">
+          <path d="M6 2 C 14 16, 26 24, 40 27" stroke="#141412" stroke-width="2.4" stroke-linecap="round"/>
+          <path d="M32 28.5 L 41 27.6 L 35.5 20.5" stroke="#141412" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        </svg>
       </div>
-      <div class="card">
-        <div class="card-combo"><kbd>Right ⌥</kbd><span class="plus">+</span><kbd>S</kbd></div>
-        <h3>Read selection</h3>
-        <p class="card-body">Highlight anything, anywhere — an email, a doc, a 40-page changelog —
-        and it's audio. Works in any app that can select text, browsers and terminals included.</p>
-        <div class="card-tag">every article is a podcast now</div>
+      <div class="trio">
+        <div class="card">
+          <div class="card-combo"><kbd>Right ⌥</kbd><span class="plus">tap</span></div>
+          <h3>Listen</h3>
+          <p class="card-body">One tap pulls the newest reply out of the focused chat and starts talking.
+          Tap again to pause, again to resume. Or highlight anything, anywhere, and hit
+          <b>Right ⌥ + S</b> — every article is a podcast now.</p>
+          <div class="card-tag">works while you make coffee</div>
+        </div>
+        <div class="card">
+          <div class="card-combo"><kbd>Right ⌥</kbd><span class="plus">hold</span></div>
+          <h3>Talk back<span class="new">New</span></h3>
+          <p class="card-body">Hold the key and say it. Whisper, running on your Mac, types your words
+          into whatever's focused. Yapper never presses Return — sending stays yours.</p>
+          <div class="card-tag">your voice never leaves the Mac</div>
+        </div>
+        <div class="card">
+          <div class="card-combo"><kbd>Right ⌥</kbd><span class="plus">+</span><kbd>⏎</kbd></div>
+          <h3><span class="rec-dot"></span>Conversation mode<span class="beta">Beta</span></h3>
+          <p class="card-body">Press REC and every new AI reply auto-plays the moment it finishes
+          generating. Replies queue in order and never talk over each other; skip ahead with
+          <b>Right ⌥ + →</b>. Toggle off, the queue clears.</p>
+          <div class="card-tag">stay hands-off all session</div>
+        </div>
       </div>
-      <div class="card">
-        <div class="card-combo"><kbd>Right ⌥</kbd><span class="plus">+</span><kbd>⏎</kbd></div>
-        <h3><span class="rec-dot"></span>Conversation mode<span class="beta">Beta</span></h3>
-        <p class="card-body">Press REC and every new AI reply auto-plays the moment it finishes
-        generating. Replies queue in order and never talk over each other; skip ahead with
-        <b>Right ⌥ + →</b>. Toggle off, the queue clears.</p>
-        <div class="card-tag">stay hands-off all session</div>
+    </div>
+  </section>
+
+  <!-- ======================= voice in ======================= -->
+  <section class="sect" id="voice-in">
+    <div class="sect-head">
+      <span class="eyebrow"><span class="ctr">019</span>new · voice in</span>
+      <h2>Hold to talk back.</h2>
+      <p class="lead">The other half of the loop. Hold <b>Right ⌥</b>, say what you'd type, let go —
+      your words land in the chat box, ready when you are.</p>
+    </div>
+    <div class="vi">
+      <div class="vi-list">
+        <p><b>Whisper, on your Mac.</b> Speech is transcribed on-device. Your audio is never uploaded,
+        and once the model is downloaded it works offline.</p>
+        <p><b>Learns your words.</b> Add the names and jargon it keeps missing — and when you fix a
+        transcript, it learns the correction.</p>
+        <p><b>Hands-free, if you want it.</b> Switch it on and the mic opens by itself when a reply
+        finishes reading, then closes when you stop talking.</p>
+        <p><b>Return is yours.</b> Yapper types; you send. It never presses Return for you.</p>
       </div>
+      <div class="vi-demo" aria-hidden="true">
+        <div class="lcd" id="lcd">
+          <div class="lcd-top"><span class="led"></span><span class="lcd-state" id="lcdState">Hold right ⌥ to talk</span><span class="lcd-app">whisper · local</span></div>
+          <div class="wave" id="wave"></div>
+        </div>
+        <div class="composer">
+          <div class="composer-text" id="ctext"><span class="ph">Reply…</span></div>
+          <div class="composer-foot"><span id="cfoot">Yapper types. You send.</span><span class="send"><svg viewBox="0 0 16 16" fill="none"><path d="M8 13V3m0 0L3.5 7.5M8 3l4.5 4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================= two shells ======================= -->
+  <section class="sect" id="shells">
+    <div class="sect-head">
+      <span class="eyebrow"><span class="ctr">023</span>two shells</span>
+      <h2>Loud or quiet. Same engine.</h2>
+      <p class="lead">Pick the player that suits the room. Swap any time in Settings.</p>
+    </div>
+    <div class="shells">
+      <figure class="shell">
+        <div class="shell-stage"><img class="shell-mini" src="__MINIMAL__" width="320" height="80" alt="The Minimal player: a slim dark floating bar showing the source app, the sentence being read, a scrubber and the time" draggable="false"></div>
+        <figcaption><b>Minimal.</b> A slim floating bar: what's reading, where you are, and nothing else.</figcaption>
+      </figure>
+      <figure class="shell">
+        <div class="shell-stage"><img class="shell-deck" src="__DECK__" alt="The Cassette player: the black tape deck from the top of this page" draggable="false"></div>
+        <figcaption><b>Cassette.</b> The deck from the top of the page — reels, transport, speed marking and all.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <!-- ======================= setup ======================= -->
+  <section class="sect" id="setup">
+    <div class="sect-head">
+      <span class="eyebrow"><span class="ctr">027</span>setup</span>
+      <h2>Talking in a minute.</h2>
+    </div>
+    <div class="steps">
+      <div class="card step"><span class="n">1</span><h3>Download</h3>
+        <p>Drag Yapper into Applications. It's signed and notarized by Apple, so it opens like any
+        other app — and keeps itself up to date from then on.</p></div>
+      <div class="card step"><span class="n">2</span><h3>Follow the guide</h3>
+        <p>The first-run guide gets you through the Accessibility permission, then has you try the
+        tap on real text, so the first one lands.</p></div>
+      <div class="card step"><span class="n">3</span><h3>Tap Right ⌥</h3>
+        <p>Out of the box it talks with the Mac's own voice — <b>free, offline, no account</b>.
+        Paste an ElevenLabs or OpenAI key whenever you want one that sounds like a person.</p></div>
     </div>
   </section>
 
   <!-- ======================= tracklist ======================= -->
   <section class="sect">
-    <div class="sect-head center">
-      <span class="eyebrow">liner notes</span>
+    <div class="sect-head">
+      <span class="eyebrow"><span class="ctr">035</span>liner notes</span>
       <h2>Side A — full track list</h2>
     </div>
-    <div class="wrap--narrow" style="padding:0">
+    <div class="wrap--narrow">
       <div class="card tracklist">
         <div class="tl-head">
           <span class="name">YAPPER · C-90</span>
-          <span class="meta">rec: '26 · mix 1 · lo-fi</span>
+          <span class="meta">rec: '26 · mix 2 · lo-fi</span>
         </div>
-        <div class="track"><span class="no">A1</span><span><span class="t">Real voices</span><span class="d">ElevenLabs Flash v2.5 &amp; Multilingual v2 — presets or any voice ID you own</span></span><span class="spec">~75 ms to first sound</span></div>
-        <div class="track"><span class="no">A2</span><span><span class="t">Sentence streaming</span><span class="d">first sentence synthesized alone, the rest batched behind it</span></span><span class="spec">talks before it's done thinking</span></div>
-        <div class="track"><span class="no">A3</span><span><span class="t">Markdown cleanup</span><span class="d">headers, lists, links stripped to prose; paragraph pauses kept</span></span><span class="spec">prose in, prose out</span></div>
-        <div class="track"><span class="no">A4</span><span><span class="t">Code block skip</span><span class="d">fenced code is never read, never announced</span></span><span class="spec">silence &gt; syntax</span></div>
+        <div class="track"><span class="no">A1</span><span><span class="t">Three voices<span class="new">New</span></span><span class="d">the Mac's own voice, free and offline — or bring an ElevenLabs or OpenAI key for presets or any voice you own</span></span><span class="spec">free out of the box</span></div>
+        <div class="track"><span class="no">A2</span><span><span class="t">Voice in<span class="new">New</span></span><span class="d">hold the key and talk; Whisper on your Mac types it into the chat</span></span><span class="spec">Return is yours</span></div>
+        <div class="track"><span class="no">A3</span><span><span class="t">Sentence streaming</span><span class="d">first sentence synthesized alone, the rest batched behind it</span></span><span class="spec">talks before it's done thinking</span></div>
+        <div class="track"><span class="no">A4</span><span><span class="t">Prose only</span><span class="d">markdown stripped to prose, paragraph pauses kept, fenced code skipped without a word</span></span><span class="spec">silence &gt; syntax</span></div>
         <div class="track"><span class="no">A5</span><span><span class="t">The scrubber</span><span class="d">seek anywhere in a read; transport nudges ±10 s</span></span><span class="spec">re-hear that one sentence</span></div>
         <div class="track"><span class="no">A6</span><span><span class="t">Speed</span><span class="d">cycle the marking printed on the shell — hover the tape, it's under C-90</span></span><span class="spec">1× → 2×</span></div>
         <div class="track"><span class="no">A7</span><span><span class="t">History</span><span class="d">every read replayable from cached audio, re-synthesized if it expired</span></span><span class="spec">1 h – 7 d, then the tape burns</span></div>
         <div class="track"><span class="no">A8</span><span><span class="t">Two shells</span><span class="d">Minimal floating bar, or the cassette you're looking at</span></span><span class="spec">same engine, your call</span></div>
         <div class="track"><span class="no">A9</span><span><span class="t">Offline fallback</span><span class="d">network dies mid-sentence? the built-in macOS voice takes the mic</span></span><span class="spec">never fails silent</span></div>
-        <div class="track"><span class="no">A10</span><span><span class="t">Menu bar home</span><span class="d">a waveform that only moves when something's speaking</span></span><span class="spec">no dock icon, no clutter</span></div>
+        <div class="track"><span class="no">A10</span><span><span class="t">Your key<span class="new">New</span></span><span class="d">Right ⌥ by default — or fn, Right ⌃, Right ⌘, picked in Settings</span></span><span class="spec">your driver, your call</span></div>
+        <div class="track"><span class="no">A11</span><span><span class="t">Updates itself<span class="new">New</span></span><span class="d">new builds arrive inside the app, signature-checked before they install</span></span><span class="spec">no re-downloading</span></div>
+        <div class="track"><span class="no">A12</span><span><span class="t">Menu bar home</span><span class="d">a waveform that only moves when something's speaking</span></span><span class="spec">no dock icon, no clutter</span></div>
         <div class="tl-foot">
           <span>total running time: your whole workday</span>
           <span>recorded live · no overdubs</span>
@@ -582,16 +829,18 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
 
   <!-- ======================= hotkey contract ======================= -->
   <section class="sect" id="shortcuts">
-    <div class="sect-head center">
-      <span class="eyebrow">the right ⌥ contract</span>
-      <h2>One key. Five moves.</h2>
+    <div class="sect-head">
+      <span class="eyebrow"><span class="ctr">048</span>the right ⌥ contract</span>
+      <h2>One key. Six moves.</h2>
       <p class="lead">The right Option key — the one nothing else wants.
-      No two-hand chords, no collisions with app shortcuts.</p>
+      No two-hand chords, no collisions with app shortcuts. Rather use fn, Right ⌃ or Right ⌘?
+      Swap it in Settings.</p>
     </div>
-    <div class="wrap--narrow" style="padding:0">
+    <div class="wrap--narrow">
       <div class="card contract">
         <div class="hk-row"><span class="hk-keys"><kbd>Right ⌥</kbd></span><span class="hk-does"><b>Read latest</b> — or pause / resume whatever's playing</span></div>
         <div class="hk-row"><span class="hk-keys"><kbd>Right ⌥</kbd><span class="plus">×2</span></span><span class="hk-does"><b>Force-read</b> the focused chat, superseding current audio</span></div>
+        <div class="hk-row"><span class="hk-keys"><kbd>Right ⌥</kbd><span class="plus">hold</span></span><span class="hk-does"><b>Talk back</b> — speak, let go, and it's typed into the chat<span class="new">New</span></span></div>
         <div class="hk-row"><span class="hk-keys"><kbd>Right ⌥</kbd><span class="plus">+</span><kbd>S</kbd></span><span class="hk-does"><b>Read selection</b> — any highlighted text, any app</span></div>
         <div class="hk-row"><span class="hk-keys"><kbd>Right ⌥</kbd><span class="plus">+</span><kbd>⏎</kbd></span><span class="hk-does"><b>Conversation Mode</b> on / off<span class="beta">Beta</span></span></div>
         <div class="hk-row"><span class="hk-keys"><kbd>Right ⌥</kbd><span class="plus">+</span><kbd>→</kbd></span><span class="hk-does"><b>Skip</b> to the next queued reply</span></div>
@@ -604,35 +853,42 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
   <!-- ======================= liner notes / fine print ======================= -->
   <section class="sect" id="privacy">
     <div class="sect-head">
-      <span class="eyebrow">the fine print</span>
+      <span class="eyebrow"><span class="ctr">061</span>the fine print</span>
       <h2>Recorded locally.</h2>
     </div>
     <div class="liner">
-      <p><b>No cloud middleman.</b> Your ElevenLabs key lives in the macOS Keychain. The only thing that
-      ever leaves the machine is the cleaned text, sent straight to ElevenLabs with your key. No relay
-      server, no accounts, no telemetry.</p>
+      <p><b>No cloud middleman.</b> API keys live in the macOS Keychain. With a voice provider, the only
+      thing that leaves the machine is the cleaned text, sent straight to ElevenLabs or OpenAI on your key.
+      With the built-in voice, nothing leaves at all. No relay server, no accounts, no telemetry.</p>
+      <p><b>Your voice stays here.</b> Voice In runs Whisper on your Mac. Your audio is never uploaded,
+      and nothing is sent anywhere until you press Return yourself.</p>
       <p><b>Your words expire.</b> Spoken text exists only in local history — purged on your schedule,
-      one hour to seven days, enforced hourly. No other transcript ever touches the disk.</p>
-      <p><b>Clipboard sacred.</b> Conversation Mode captures a reply by pressing the app's own Copy
-      button, then restores your clipboard byte-for-byte — images and files included.</p>
-      <p><b>No truncated tapes.</b> Audio is published to the cache only when complete. A stopped or
-      failed read can never come back to haunt a replay.</p>
-      <p><b>One permission, once.</b> Yapper asks for macOS Accessibility so it can see the chat on your
-      screen — granted once, live immediately, no relaunch.</p>
-      <p><b>41 tests stand guard.</b> The markdown cleaner, sentence segmentation, the conversation state
-      machine, and history retention are all pinned down by a logic suite that runs on every build.</p>
+      one hour to seven days, enforced hourly. The only dictation kept is your last one, so you can
+      correct it — and it never leaves the Mac.</p>
+      <p><b>Clipboard sacred.</b> Yapper borrows the clipboard to grab a reply or type what you said,
+      then restores it byte-for-byte — images and files included.</p>
+      <p><b>Permissions, asked once.</b> Accessibility, so Yapper can see the chat and type into it — the
+      first-run guide walks you through it. Microphone only if you switch on Voice In.</p>
+      <p><b>Signed, sealed, self-updating.</b> Every build is signed and notarized by Apple. Updates
+      arrive in the app and are checked against Yapper's signing key before they install.</p>
     </div>
   </section>
 
   <!-- ======================= side B ======================= -->
   <section class="sect" id="roadmap">
-    <div class="sect-head center">
-      <span class="eyebrow">side B</span>
+    <div class="sect-head">
+      <span class="eyebrow"><span class="ctr">074</span>side B</span>
       <h2>Not yet recorded.</h2>
       <p class="lead">The pencil side of the J-card.
       Tracks get cut in the order they earn it — no dates, no promises, updates arrive on their own.</p>
     </div>
-    <div class="wrap--narrow" style="padding:0">
+    <div class="wrap--narrow tl-zone">
+      <div class="note note--pencil" aria-hidden="true">pencilled in,<br>not promised
+        <svg class="flip" width="46" height="34" viewBox="0 0 46 34" fill="none">
+          <path d="M6 2 C 14 16, 26 24, 40 27" stroke="#141412" stroke-width="2.4" stroke-linecap="round"/>
+          <path d="M32 28.5 L 41 27.6 L 35.5 20.5" stroke="#141412" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        </svg>
+      </div>
       <div class="card tracklist tracklist--b">
         <div class="tl-head">
           <span class="name">YAPPER · C-90 · SIDE B</span>
@@ -641,25 +897,71 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
         <div class="track"><span class="no">B1</span><span><span class="t">Headphone buttons</span><span class="d">your AirPods' pause button, wired straight to the tape</span></span><span class="spec">pause from the couch</span></div>
         <div class="track"><span class="no">B2</span><span><span class="t">Sentence skip</span><span class="d">step back one sentence, not ten seconds</span></span><span class="spec">±1 sentence</span></div>
         <div class="track"><span class="no">B3</span><span><span class="t">History search</span><span class="d">type three words, find the reply</span></span><span class="spec">grep for the tape</span></div>
-        <div class="track"><span class="no">B4</span><span><span class="t">Rebindable hotkeys</span><span class="d">pick your own driver key, or remap the chords outright</span></span><span class="spec">your key, your rules</span></div>
-        <div class="track"><span class="no">B5</span><span><span class="t">Third voice tier</span><span class="d">OpenAI TTS slotted between ElevenLabs and the Mac voice</span></span><span class="spec">three voices deep</span></div>
-        <div class="track"><span class="no">B6</span><span><span class="t">Sleep manners</span><span class="d">lid closes, tape pauses; wake up, it resumes</span></span><span class="spec">naps politely</span></div>
-        <div class="track"><span class="no">B7</span><span><span class="t">Voice in</span><span class="d">talk back — the other half of the loop</span></span><span class="spec">voice in · voice out</span></div>
+        <div class="track"><span class="no">B4</span><span><span class="t">Remappable chords</span><span class="d">the key is already yours to pick — the chords are next</span></span><span class="spec">your chords, your rules</span></div>
+        <div class="track"><span class="no">B5</span><span><span class="t">Sleep manners</span><span class="d">lid closes, tape pauses; wake up, it resumes</span></span><span class="spec">naps politely</span></div>
+        <div class="track"><span class="no">B6</span><span><span class="t">Windows</span><span class="d">the same deck on a PC — the port is being cut now</span></span><span class="spec">PC, eventually</span></div>
         <div class="tl-foot">
           <span>total running time: unknown</span>
           <span>pencilled in · order may shuffle</span>
         </div>
       </div>
     </div>
-    <div class="chip-row">
-      <span class="pill">an independent production</span>
-      <span class="pill">reads aloud · stays out of your way</span>
+  </section>
+
+  <!-- ======================= FAQ ======================= -->
+  <section class="sect" id="faq">
+    <div class="sect-head">
+      <span class="eyebrow"><span class="ctr">082</span>q &amp; a</span>
+      <h2>Before you press play.</h2>
+    </div>
+    <div class="faq">
+      <details>
+        <summary>Do I need an ElevenLabs account?</summary>
+        <p>No. Out of the box Yapper talks with the Mac's built-in voice — free, offline, no sign-up.
+        When you want a voice that sounds like a person, paste an ElevenLabs or OpenAI API key into
+        Settings. Yapper checks the key works before it goes into your Keychain.</p>
+      </details>
+      <details>
+        <summary>What does it cost?</summary>
+        <p>Nothing. Yapper is free and open source. If you add an ElevenLabs or OpenAI key, they bill
+        you directly for what you use — Yapper takes no cut and has no subscription.</p>
+      </details>
+      <details>
+        <summary>Which apps can it read?</summary>
+        <p>The Claude and Codex desktop apps, plus Claude, ChatGPT, Gemini and Perplexity in Safari,
+        Chrome, Arc, Dia, Edge, Firefox and Brave. Other chat apps — the ChatGPT desktop app included —
+        work on a best-effort basis. For everything else there's Read Selection: highlight any text and
+        press <b>Right ⌥ + S</b>.</p>
+      </details>
+      <details>
+        <summary>Does my voice leave my Mac?</summary>
+        <p>No. Voice In transcribes with Whisper on your Mac. The only download is the speech model
+        itself, once — about 80 MB to 1.5 GB, depending on which one you pick. After that it works
+        offline.</p>
+      </details>
+      <details>
+        <summary>What permissions does it need?</summary>
+        <p>Accessibility, so it can find the latest reply and type what you dictate. Microphone, only if
+        you switch on Voice In. That's it.</p>
+      </details>
+      <details>
+        <summary>Will it run on my Mac?</summary>
+        <p>macOS 13 Ventura or later, on Apple silicon or Intel — it's one universal download. Voice In's
+        most accurate model wants Apple silicon; Intel Macs start on a lighter one.</p>
+      </details>
+      <details>
+        <summary>Is there a Windows version?</summary>
+        <p>A port is being built in the same repo. No date yet — watch
+        <a href="https://github.com/Chefy3x/Yapper" style="text-decoration:underline;text-underline-offset:3px">the GitHub repo</a>
+        if you want to know when it lands.</p>
+      </details>
     </div>
   </section>
 
   <!-- ======================= bottom CTA ======================= -->
   <section class="cta">
-    <span class="eyebrow">end of the reel</span>
+    <img class="cta-tape" src="__TAPE__" alt="The Yapper cassette — hand-labeled, Side A, C-90" draggable="false">
+    <span class="eyebrow"><span class="ctr">090</span>end of the reel</span>
     <h2>Take the tape home.</h2>
     <p class="lead">Free and open source. One download, one permission, and your AI starts talking.</p>
     <div class="btn-row">
@@ -677,7 +979,7 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
     <div class="foot-inner">
       <span class="mono">YAPPER · C-90 · POSITION A</span>
       <span>© 2026 Yapper · made for macOS · this page contains no cloud</span>
-      <span class="foot-links"><a href="https://github.com/Chefy3x/Yapper">GitHub</a><a href="https://github.com/Chefy3x/Yapper/releases">Releases</a></span>
+      <span class="foot-links"><a href="https://github.com/Chefy3x/Yapper">GitHub</a><a href="https://github.com/Chefy3x/Yapper/releases">Release notes</a></span>
     </div>
   </footer>
 
@@ -811,6 +1113,7 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
     if(hasSpeech) window.speechSynthesis.cancel();
     if(audioEl) audioEl.pause();
     clearTimeout(visualT);
+    filmQuiet();                              // one voice at a time: the deck wins over the demo clip
     if(audioReady) startAudio(i, myGen);
     else startSpeech(i, myGen);
     paint();
@@ -909,6 +1212,108 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
   function hideNote(){
     if(noteHidden) return; noteHidden = true;
     deckNote.style.transition = "opacity .6s"; deckNote.style.opacity = "0";
+  }
+
+  /* ---------- the demo clip: muted loop, one button for sound ---------- */
+  var film = document.getElementById("film");
+  var filmSnd = document.getElementById("filmSnd");
+  var filmLbl = document.getElementById("filmLbl");
+  function filmLabel(){
+    var loud = !film.muted && !film.paused;
+    filmLbl.textContent = loud ? "Mute" : (film.paused ? "Play with sound" : "Sound on");
+    filmSnd.setAttribute("aria-pressed", loud ? "true" : "false");
+  }
+  function filmQuiet(){                        // back to the silent loop (or a still, for reduced motion)
+    if(!film || film.muted) return;
+    film.muted = true; film.loop = true;
+    if(reduceMotion) film.pause();
+    filmLabel();
+  }
+  if(film){
+    if(reduceMotion){ film.removeAttribute("autoplay"); film.pause(); }
+    filmSnd.addEventListener("click", function(){
+      if(film.muted || film.paused){
+        stop();                                // hush the deck first
+        film.muted = false; film.loop = false; film.currentTime = 0;
+        var fp = film.play(); if(fp && fp.catch) fp.catch(function(){});
+      } else {
+        filmQuiet();
+      }
+      filmLabel();
+    });
+    film.addEventListener("ended", function(){ // one pass with sound, then back to the quiet loop
+      filmQuiet();
+      if(!reduceMotion){ film.currentTime = 0; var fp = film.play(); if(fp && fp.catch) fp.catch(function(){}); }
+      filmLabel();
+    });
+    film.addEventListener("play", filmLabel);
+    film.addEventListener("pause", filmLabel);
+    if(!reduceMotion && "IntersectionObserver" in window){   // don't burn CPU on a loop nobody can see
+      new IntersectionObserver(function(es){
+        es.forEach(function(e){
+          if(!film.muted) return;
+          if(e.isIntersecting){ var fp = film.play(); if(fp && fp.catch) fp.catch(function(){}); }
+          else film.pause();
+        });
+      }, {threshold: 0.15}).observe(film);
+    }
+    filmLabel();
+  }
+
+  /* ---------- Voice In demo: the deck's LCD listens, the words land in the box ---------- */
+  var lcd = document.getElementById("lcd");
+  if(lcd){
+    var lcdState = document.getElementById("lcdState");
+    var ctext = document.getElementById("ctext");
+    var cfoot = document.getElementById("cfoot");
+    var wave = document.getElementById("wave");
+    var SAID = "make it shorter, and skip the code sample";
+    for(var wi = 0; wi < 30; wi++){
+      var bar = document.createElement("i");
+      bar.style.setProperty("--h", (6 + (wi * 37 % 26)) + "px");
+      bar.style.animationDelay = (-(wi * 97 % 700)) + "ms";
+      wave.appendChild(bar);
+    }
+    var viGen = 0, viT = null;
+    function viShow(cls, stateTxt, typed, caret, foot){
+      lcd.className = "lcd" + (cls ? " " + cls : "");
+      lcdState.textContent = stateTxt;
+      ctext.innerHTML = "";
+      if(typed){ ctext.appendChild(document.createTextNode(typed)); }
+      else { var ph = document.createElement("span"); ph.className = "ph"; ph.textContent = "Reply…"; ctext.appendChild(ph); }
+      if(caret){ var c = document.createElement("span"); c.className = "caret"; ctext.appendChild(c); }
+      cfoot.textContent = foot;
+    }
+    function viRun(){
+      var my = ++viGen;
+      function later(ms, fn){ viT = setTimeout(function(){ if(my === viGen) fn(); }, ms); }
+      viShow("", "Hold right ⌥ to talk", "", false, "Yapper types. You send.");
+      later(1400, function(){
+        viShow("listening", "Listening…", "", false, "Yapper types. You send.");
+        later(2600, function(){
+          viShow("", "Whisper · on this Mac", "", true, "Yapper types. You send.");
+          later(700, function type(n){
+            n = n || 1;
+            viShow("", "Typing into the chat", SAID.slice(0, n), true, "Yapper types. You send.");
+            if(n < SAID.length) later(34, function(){ type(n + 1); });
+            else later(250, function(){
+              viShow("done", "✓ Typed · Return is yours", SAID, true, "Your turn — Yapper never presses Return.");
+              later(3600, viRun);
+            });
+          });
+        });
+      });
+    }
+    function viStop(){ viGen++; clearTimeout(viT); }
+    if(reduceMotion){
+      viShow("done", "✓ Typed · Return is yours", SAID, false, "Your turn — Yapper never presses Return.");
+    } else if("IntersectionObserver" in window){
+      new IntersectionObserver(function(es){
+        es.forEach(function(e){ if(e.isIntersecting) viRun(); else viStop(); });
+      }, {threshold: 0.3}).observe(lcd);
+    } else {
+      viRun();
+    }
   }
 
   /* ---------- wire the transport ---------- */
