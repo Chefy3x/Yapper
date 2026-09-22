@@ -6,4 +6,5 @@ enum Log {
     static let hotkey = Logger(subsystem: "app.yapper.Yapper", category: "hotkey")
     static let ax = Logger(subsystem: "app.yapper.Yapper", category: "ax")
     static let tts = Logger(subsystem: "app.yapper.Yapper", category: "tts")
+    static let voice = Logger(subsystem: "app.yapper.Yapper", category: "voice")
 }

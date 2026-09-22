@@ -5,7 +5,7 @@ import Combine
 final class SettingsStore: ObservableObject {
     private let defaults = UserDefaults.standard
 
-    enum Key: String {
+    enum Key: String, CaseIterable {
         case activeVoiceID
         case conversationDefaultOn
         case conversationAllowlist
@@ -17,10 +17,17 @@ final class SettingsStore: ObservableObject {
         case fallbackOrder
         case useNativeVoiceOffline
         case elevenLabsModelID
+        case openAIModelID
         case customVoicesJSON
         case playbackRate
         case miniPlayerTheme
         case cassetteScale
+        case onboardingCompleted
+        case voiceInputEnabled
+        case whisperModelID
+        case handsFreeEnabled
+        case inputDeviceUID
+        case yapperKey
     }
 
     @Published var activeVoiceID: String {
@@ -45,6 +52,9 @@ final class SettingsStore: ObservableObject {
     }
     @Published var elevenLabsModelID: String {
         didSet { defaults.set(elevenLabsModelID, forKey: Key.elevenLabsModelID.rawValue) }
+    }
+    @Published var openAIModelID: String {
+        didSet { defaults.set(openAIModelID, forKey: Key.openAIModelID.rawValue) }
     }
     /// Last-used mini-player playback speed (1.0 = normal). Persists so a chosen speed sticks
     /// across reads instead of resetting to 1× every time.
@@ -79,6 +89,47 @@ final class SettingsStore: ObservableObject {
     }
     @Published var settingsDesign: SettingsDesign {
         didSet { defaults.set(settingsDesign.rawValue, forKey: "settingsDesign") }
+    }
+    /// The first-run guide has been seen (or explicitly skipped). Never shown again once true.
+    @Published var onboardingCompleted: Bool {
+        didSet { defaults.set(onboardingCompleted, forKey: Key.onboardingCompleted.rawValue) }
+    }
+
+    // MARK: Voice In (hold the talk key to talk)
+
+    /// Master switch for local speech-to-text. Off means the hold gesture does nothing.
+    @Published var voiceInputEnabled: Bool {
+        didSet { defaults.set(voiceInputEnabled, forKey: Key.voiceInputEnabled.rawValue) }
+    }
+    /// WhisperKit model variant. Defaults per architecture — see `WhisperModel.recommended`.
+    @Published var whisperModelID: String {
+        didSet { defaults.set(whisperModelID, forKey: Key.whisperModelID.rawValue) }
+    }
+    /// After a Conversation Mode reply finishes reading, open the mic until the user pauses.
+    /// The transcript lands in the composer; Yapper never presses Return.
+    @Published var handsFreeEnabled: Bool {
+        didSet { defaults.set(handsFreeEnabled, forKey: Key.handsFreeEnabled.rawValue) }
+    }
+    /// The one modifier that drives Yapper (tap / hold / chords). See `YapperKey`.
+    @Published var yapperKey: YapperKey {
+        didSet { defaults.set(yapperKey.rawValue, forKey: Key.yapperKey.rawValue) }
+    }
+    /// CoreAudio device UID to record from. Nil = whatever macOS calls the default input.
+    @Published var inputDeviceUID: String? {
+        didSet { defaults.set(inputDeviceUID, forKey: Key.inputDeviceUID.rawValue) }
+    }
+
+    /// True when nothing has ever been persisted — a genuinely fresh install.
+    ///
+    /// Guards the first-run guide against firing for people who upgrade into this version:
+    /// they have no `onboardingCompleted` flag either, and shipping them a setup wizard for an
+    /// app they already use would be worse than shipping them nothing. Any other stored key
+    /// means the app has been used, so the guide is suppressed and marked complete.
+    static func looksLikeFirstRun(defaults: UserDefaults = .standard) -> Bool {
+        let priorUse = Key.allCases
+            .filter { $0 != .onboardingCompleted }
+            .contains { defaults.object(forKey: $0.rawValue) != nil }
+        return !priorUse
     }
 
     init() {
@@ -115,12 +166,21 @@ final class SettingsStore: ObservableObject {
         self.miniPlayerDefaultCorner = MiniPlayerCorner(rawValue: cornerRaw) ?? .bottomRight
         let themeRaw = defaults.string(forKey: Key.miniPlayerTheme.rawValue) ?? MiniPlayerTheme.minimal.rawValue
         self.miniPlayerTheme = MiniPlayerTheme(rawValue: themeRaw) ?? .minimal
+        self.voiceInputEnabled = defaults.object(forKey: Key.voiceInputEnabled.rawValue) as? Bool ?? true
+        self.whisperModelID = defaults.string(forKey: Key.whisperModelID.rawValue) ?? WhisperModel.recommended.id
+        self.handsFreeEnabled = defaults.bool(forKey: Key.handsFreeEnabled.rawValue)
+        self.inputDeviceUID = defaults.string(forKey: Key.inputDeviceUID.rawValue)
+        self.yapperKey = YapperKey(rawValue: defaults.string(forKey: Key.yapperKey.rawValue) ?? "") ?? .default
         let storedScale = defaults.object(forKey: Key.cassetteScale.rawValue) as? Double ?? 1.0
         self.cassetteScale = min(max(storedScale, Self.cassetteScaleRange.lowerBound),
                                  Self.cassetteScaleRange.upperBound)
         self.launchAtLogin = defaults.bool(forKey: Key.launchAtLogin.rawValue)
         let designRaw = defaults.string(forKey: "settingsDesign") ?? SettingsDesign.systemStyle.rawValue
         self.settingsDesign = SettingsDesign(rawValue: designRaw) ?? .systemStyle
+        self.openAIModelID = defaults.string(forKey: Key.openAIModelID.rawValue) ?? OpenAIModel.defaultModel.id
+        // Read before any didSet can fire, so the "is this a fresh install" probe above still
+        // sees a pristine defaults domain.
+        self.onboardingCompleted = defaults.bool(forKey: Key.onboardingCompleted.rawValue)
     }
 }
 

@@ -17,6 +17,10 @@ final class AppState: ObservableObject {
         didSet { settings.activeVoiceID = activeVoice.id }
     }
     @Published var hasAccessibilityPermission: Bool = false
+    @Published var hasMicrophonePermission: Bool = false
+    /// Mirrors the Voice In coordinator so the menu bar icon and Settings observe one object.
+    @Published var voiceInputState: VoiceInputCoordinator.State = .idle
+    @Published var whisperModelStatus: WhisperModelStatus = .notDownloaded
     @Published var lastEvent: String = ""
     @Published var currentReading: ReadingItem?
     /// Liner notes (the transcript panel) are showing. Lives here rather than in the player view
@@ -25,6 +29,18 @@ final class AppState: ObservableObject {
     @Published var transcriptVisible: Bool = false
     /// Set by the menu bar "History" item to deep-link the Settings window to the History tab.
     @Published var pendingHistoryOpen: Bool = false
+    /// Set by Settings → Hotkeys to reopen the first-run guide on demand.
+    @Published var pendingOnboardingOpen: Bool = false
+
+    /// Fires every time a Yapper-key gesture is recognised, regardless of what it went on to do.
+    /// The first-run guide listens here to confirm the user actually performed the gesture —
+    /// the read that follows can legitimately fail (nothing selected, unsupported app) without
+    /// meaning they got the keystroke wrong.
+    let hotkeyFired = PassthroughSubject<HotkeyGesture, Never>()
+
+    enum HotkeyGesture {
+        case readLatestOrToggle, readSelection, conversationMode, skipNext, dumpAXTree, pushToTalk
+    }
 
     let settings = SettingsStore()
     let keychain = Keychain(service: "app.yapper.Yapper")
@@ -32,8 +48,20 @@ final class AppState: ObservableObject {
     let history = HistoryStore()
     lazy var tts = TTSCoordinator(keychain: keychain, settings: settings)
     lazy var conversationWatcher = ConversationWatcher(settings: settings)
+    let vocabulary = VocabularyStore()
+    lazy var voiceInput = VoiceInputCoordinator(
+        settings: settings,
+        vocabulary: vocabulary,
+        capture: AudioCapture(),
+        delivery: PasteDelivery(),
+        makeTranscriber: { model, onStatus in WhisperTranscriber(model: model, onStatus: onStatus) }
+    )
 
     private var conversationModeCancellable: AnyCancellable?
+    private var voiceInputCancellables: Set<AnyCancellable> = []
+    /// True from the moment a Conversation Mode reply starts playing until playback goes idle.
+    /// Hands-free listening arms only on that idle transition — never after a manual read.
+    private var conversationReadActive = false
     private var readingIndicatorCancellable: AnyCancellable?
     private var permissionPoll: Timer?
     private var historyPruneTimer: Timer?
@@ -68,6 +96,59 @@ final class AppState: ObservableObject {
             startPermissionPolling()
         }
         wireConversationMode()
+        wireVoiceInput()
+    }
+
+    // MARK: - Voice In
+
+    private func wireVoiceInput() {
+        voiceInput.onBargeIn = { [weak self] in
+            guard let self, self.tts.active != nil else { return }
+            self.tts.stop()   // you're answering — the reply stops reading, queue included
+        }
+        voiceInput.onEvent = { [weak self] in self?.lastEvent = $0 }
+        voiceInput.onDelivered = { text in
+            Log.voice.info("Delivered \(text.count, privacy: .public) chars to the focused app")
+        }
+        voiceInput.$state.sink { [weak self] in self?.voiceInputState = $0 }.store(in: &voiceInputCancellables)
+        voiceInput.$modelStatus.sink { [weak self] in self?.whisperModelStatus = $0 }.store(in: &voiceInputCancellables)
+        voiceInput.$microphoneStatus
+            .map { $0 == .granted }
+            .sink { [weak self] in self?.hasMicrophonePermission = $0 }
+            .store(in: &voiceInputCancellables)
+
+        // Hands-free: the mic opens when a conversation reply finishes and nothing is queued.
+        // Any playback starting closes it again so the speakers never feed the mic.
+        tts.$active
+            .map { $0 != nil }
+            .removeDuplicates()
+            .sink { [weak self] playing in
+                guard let self else { return }
+                if playing {
+                    self.voiceInput.disarmHandsFree()
+                } else if self.conversationReadActive {
+                    self.conversationReadActive = false
+                    if self.conversationModeEnabled, self.tts.queueCount == 0 {
+                        self.voiceInput.armHandsFree()
+                    }
+                }
+            }
+            .store(in: &voiceInputCancellables)
+
+        hotkeys.key = settings.yapperKey
+        hotkeys.skipIsMeaningful = { [weak self] in
+            guard let self else { return false }
+            return self.tts.active != nil || self.tts.queueCount > 0
+        }
+        settings.$yapperKey
+            .removeDuplicates()
+            .sink { [weak self] key in
+                self?.hotkeys.key = key
+                self?.voiceInput.cancelPushToTalk()   // a hold in flight on the old key is void
+            }
+            .store(in: &voiceInputCancellables)
+
+        voiceInput.bootstrap()
     }
 
     /// Yapper runs for weeks at a time, so the retention window has to be enforced continuously —
@@ -119,6 +200,8 @@ final class AppState: ObservableObject {
         } else {
             conversationWatcher.stop()
             tts.clearQueue()   // stop queuing; the current item plays out
+            voiceInput.disarmHandsFree()
+            conversationReadActive = false
             lastEvent = "Conversation Mode OFF"
         }
     }
@@ -151,6 +234,7 @@ final class AppState: ObservableObject {
         // queued-but-not-yet-playing items don't flash the player or pollute history early.
         tts.enqueue(item, voice: activeVoice) { [weak self] url in
             guard let self else { return }
+            self.conversationReadActive = true
             self.currentReading = item
             self.lastEvent = "Speaking from \(pending.sourceApp)"
             self.history.record(item: item, voiceID: self.activeVoice.id,
@@ -165,6 +249,7 @@ final class AppState: ObservableObject {
                                createdAt: Date(),
                                cleanedText: entry.cleanedText,
                                rawText: entry.rawText)
+        conversationReadActive = false
         if let fileURL = history.audioURL(for: entry) {
             tts.replay(fileURL: fileURL, text: entry.cleanedText)
             currentReading = item
@@ -229,6 +314,7 @@ final class AppState: ObservableObject {
     private func performReadLatest() {
         guard !readLatestInFlight else { return }
         readLatestInFlight = true
+        conversationReadActive = false
         lastEvent = "Reading…"
         Task { @MainActor [weak self] in
             guard let self else { return }
@@ -255,6 +341,7 @@ final class AppState: ObservableObject {
     private func wireHotkeys() {
         hotkeys.onReadLatestOrToggle = { [weak self] in
             guard let self else { return }
+            self.hotkeyFired.send(.readLatestOrToggle)
             // Double-tap: force a fresh Read Latest of the CURRENT window, superseding whatever
             // is playing or paused. Without this, tapping after a pause always resumes the old
             // audio — even when you've moved to a different conversation and want that one read.
@@ -264,7 +351,7 @@ final class AppState: ObservableObject {
             if isDoubleTap {
                 self.pendingResumeTask?.cancel()
                 self.pendingResumeTask = nil
-                Log.hotkey.info("Right Cmd double-tap -> Force Read Latest")
+                Log.hotkey.info("Yapper key double-tap -> Force Read Latest")
                 self.performReadLatest()
                 return
             }
@@ -273,7 +360,7 @@ final class AppState: ObservableObject {
             if self.tts.isPlaying {
                 self.tts.pauseOrResume()
                 self.lastEvent = "Paused"
-                Log.hotkey.info("Right Cmd tap -> Pause")
+                Log.hotkey.info("Yapper key tap -> Pause")
                 return
             }
             // Single tap while paused: resume — but only after the double-tap window has passed.
@@ -287,21 +374,23 @@ final class AppState: ObservableObject {
                     self.pendingResumeTask = nil
                     self.tts.pauseOrResume()
                     self.lastEvent = "Resumed"
-                    Log.hotkey.info("Right Cmd tap -> Resume")
+                    Log.hotkey.info("Yapper key tap -> Resume")
                 }
                 return
             }
-            Log.hotkey.info("Right Cmd tap -> Read Latest")
+            Log.hotkey.info("Yapper key tap -> Read Latest")
             self.performReadLatest()
         }
         hotkeys.onReadSelection = { [weak self] in
             guard let self else { return }
+            self.hotkeyFired.send(.readSelection)
             // If something is already playing, treat this gesture as "replace with selection" —
             // stop current playback first.
+            self.conversationReadActive = false
             if self.tts.active != nil { self.tts.stop() }
 
             self.lastEvent = "Reading selection…"
-            Log.hotkey.info("Right Cmd+S -> Read Selection")
+            Log.hotkey.info("Yapper key+S -> Read Selection")
 
             Task { @MainActor [weak self] in
                 guard let self else { return }
@@ -325,12 +414,24 @@ final class AppState: ObservableObject {
         }
         hotkeys.onToggleConversationMode = { [weak self] in
             guard let self else { return }
+            self.hotkeyFired.send(.conversationMode)
             self.conversationModeEnabled.toggle()
             self.lastEvent = "Conversation Mode -> \(self.conversationModeEnabled ? "ON" : "OFF")"
-            Log.hotkey.info("Right Cmd+Enter -> Conversation Mode \(self.conversationModeEnabled, privacy: .public)")
+            Log.hotkey.info("Yapper key+Enter -> Conversation Mode \(self.conversationModeEnabled, privacy: .public)")
         }
+        hotkeys.onPushToTalkBegan = { [weak self] in
+            guard let self else { return }
+            self.hotkeyFired.send(.pushToTalk)
+            self.pendingResumeTask?.cancel()   // a hold is not a tap; never resume under it
+            self.pendingResumeTask = nil
+            Log.hotkey.info("Yapper key hold -> Voice In")
+            self.voiceInput.beginPushToTalk()
+        }
+        hotkeys.onPushToTalkEnded = { [weak self] in self?.voiceInput.endPushToTalk() }
+        hotkeys.onPushToTalkCancelled = { [weak self] in self?.voiceInput.cancelPushToTalk() }
         hotkeys.onDumpAXTree = { [weak self] in
             guard let self else { return }
+            self.hotkeyFired.send(.dumpAXTree)
             let front = AccessibilityReader.frontmost()
             let url = AccessibilityReader.saveDumpForFrontmost()
             if let url {
@@ -343,9 +444,10 @@ final class AppState: ObservableObject {
         }
         hotkeys.onSkipNext = { [weak self] in
             guard let self else { return }
+            self.hotkeyFired.send(.skipNext)
             self.tts.skipToNext()
             self.lastEvent = "Skipped to next"
-            Log.hotkey.info("Right Cmd+→ -> Skip to next")
+            Log.hotkey.info("Yapper key+→ -> Skip to next")
         }
     }
 }

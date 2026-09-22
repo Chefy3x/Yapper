@@ -23,7 +23,7 @@ private enum YSection: String, CaseIterable, Identifiable {
         switch self {
         case .general:      "Launch behavior and mini player"
         case .voices:       "Pick your voice or add a custom one"
-        case .hotkeys:      "The Right Command contract"
+        case .hotkeys:      "The Yapper key contract"
         case .providers:    "ElevenLabs and fallbacks"
         case .conversation: "How Conversation Mode behaves"
         case .history:      "Retention and clearing"
@@ -830,13 +830,15 @@ private struct VoiceCard: View {
 
 private struct HotkeysPanel: View {
     @Environment(\.settingsSkin) private var skin
+    @EnvironmentObject private var state: AppState
+    @EnvironmentObject private var settings: SettingsStore
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Card {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Right Command modifier")
+                    Text("The Yapper key: \(settings.yapperKey.displayName)")
                         .font(skin.body(skin == .tape ? 13 : 14, .semibold))
-                    Text("Tap or chord with the Right ⌘ key to control Yapper without leaving your current app.")
+                    Text("Tap, hold, or chord with one modifier to control Yapper without leaving your current app. The left-hand twin is never touched.")
                         .font(skin.body(11))
                         .foregroundStyle(.secondary)
                 }
@@ -844,33 +846,74 @@ private struct HotkeysPanel: View {
 
             VStack(spacing: 8) {
                 HotkeyRow(
-                    keys: [.named("Right ⌘")],
+                    keys: [.named(settings.yapperKey.keycap)],
                     title: "Read latest",
                     subtitle: "Tap reads latest, or pauses/resumes while playing. Double-tap always reads the focused chat."
                 )
                 HotkeyRow(
-                    keys: [.named("Right ⌘"), .letter("S")],
+                    keys: [.named(settings.yapperKey.keycap), .named("hold")],
+                    title: "Talk",
+                    subtitle: "Hold to listen, release to type what you said into the focused app. You press Return."
+                )
+                HotkeyRow(
+                    keys: [.named(settings.yapperKey.keycap), .letter("S")],
                     title: "Read selection",
                     subtitle: "Speak the currently selected text"
                 )
                 HotkeyRow(
-                    keys: [.named("Right ⌘"), .symbol("return")],
+                    keys: [.named(settings.yapperKey.keycap), .symbol("return")],
                     title: "Toggle Conversation Mode",
                     subtitle: "Auto-read new assistant messages"
                 )
                 HotkeyRow(
-                    keys: [.named("Right ⌘"), .letter("D")],
+                    keys: [.named(settings.yapperKey.keycap), .symbol("arrow.right")],
+                    title: "Skip ahead",
+                    subtitle: "Next queued reply. Only taken while something is playing or queued — idle, it stays the app's."
+                )
+                HotkeyRow(
+                    keys: [.named(settings.yapperKey.keycap), .letter("D")],
                     title: "AX debug dump",
                     subtitle: "Snapshot the accessibility tree to disk"
                 )
             }
 
+            Card {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 14) {
+                        Image(systemName: "keyboard")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(skin.iconTint)
+                            .frame(width: 36, height: 36)
+                            .background(Circle().fill(skin.iconChipBG))
+                        RowLabel("Yapper key",
+                                 subtitle: "Which right-hand modifier drives everything above. Right ⌥ is inert on its own in almost every app; Right ⌘ isn't.")
+                        Spacer()
+                        Picker("", selection: $settings.yapperKey) {
+                            ForEach(YapperKey.allCases) { key in
+                                Text(key.displayName).tag(key)
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(maxWidth: 170)
+                    }
+                    if let caveat = settings.yapperKey.caveat {
+                        Label(caveat, systemImage: "info.circle")
+                            .font(skin.body(11))
+                            .foregroundStyle(.secondary)
+                            .padding(.leading, 50)
+                    }
+                }
+            }
+
             HStack(spacing: 8) {
                 Image(systemName: "lock.fill")
                     .foregroundStyle(.tertiary)
-                Text("Hotkey rebinding arrives in a later slice. The Right ⌘ contract is currently hardcoded.")
+                Text("The key is yours to pick; the gestures on it are fixed.")
                     .font(skin.body(11))
                     .foregroundStyle(.secondary)
+                Spacer()
+                Button("Replay setup guide") { state.pendingOnboardingOpen = true }
+                    .controlSize(.small)
             }
             .padding(.horizontal, 4)
             .padding(.top, 4)
@@ -996,76 +1039,82 @@ private struct ProvidersPanel: View {
     @EnvironmentObject private var state: AppState
     @EnvironmentObject private var settings: SettingsStore
     @Environment(\.settingsSkin) private var skin
-    @State private var elevenLabsKey: String = ""
-    @State private var saved: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
+            // Deliberately first. Yapper reads text the moment it is installed, with no account
+            // and no card on file — everything below this card is an upgrade, not a requirement.
+            // Burying that under an API key form is how a free app reads as a paid one.
             VStack(alignment: .leading, spacing: 8) {
-                SectionLabel(text: "ElevenLabs")
+                SectionLabel(text: "Built in — nothing to sign up for")
+                Card {
+                    HStack(alignment: .center, spacing: 16) {
+                        Image(systemName: "apple.logo")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(skin.iconTint)
+                            .frame(width: 32, height: 32)
+                            .background(Circle().fill(skin.iconChipBG))
+
+                        RowLabel("macOS system voice",
+                                 subtitle: "Free, offline, private. No key, no account, no usage limit. Choose the voice under Voices.")
+                        Spacer()
+                    }
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                SectionLabel(text: "ElevenLabs — optional, paid")
                 Card {
                     VStack(alignment: .leading, spacing: 16) {
-                        // API key
-                        HStack(alignment: .center, spacing: 14) {
-                            Image(systemName: "key.fill")
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(skin.iconTint)
-                                .frame(width: 32, height: 32)
-                                .background(Circle().fill(skin.iconChipBG))
-
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("API key")
-                                    .font(skin.body(skin == .tape ? 12.5 : 13, .semibold))
-                                SecureField("xi-•••••••••••••••••••••••", text: $elevenLabsKey)
-                                    .textFieldStyle(.plain)
-                                    .font(.system(size: 13, design: .monospaced))
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 7)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                            .fill(Color.primary.opacity(0.04))
-                                    )
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                            .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
-                                    )
-                            }
-                        }
-
-                        HStack {
-                            if saved {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundStyle(skin.okTint)
-                                    Text("Saved to Keychain")
-                                        .font(skin.body(11, .medium))
-                                        .foregroundStyle(.secondary)
-                                }
-                                .transition(.opacity)
-                            }
-                            Spacer()
-                            PrimaryButton(title: "Save key", systemImage: "lock.fill") {
-                                state.keychain.set(elevenLabsKey, for: .elevenLabsKey)
-                                withAnimation { saved = true }
-                            }
-                        }
+                        APIKeyField(provider: .elevenLabs)
 
                         Rectangle().fill(Color.primary.opacity(0.06)).frame(height: 1)
 
-                        // Model selector
                         VStack(alignment: .leading, spacing: 10) {
                             Text("Model")
                                 .font(skin.body(skin == .tape ? 12.5 : 13, .semibold))
                             VStack(spacing: 8) {
                                 ForEach(ElevenLabsModel.allCases) { model in
                                     ModelOption(
-                                        model: model,
+                                        title: model.displayName,
+                                        subtitle: "\(model.characterLimit / 1000)k char limit per request",
                                         isSelected: settings.elevenLabsModelID == model.id,
                                         onSelect: { settings.elevenLabsModelID = model.id }
                                     )
                                 }
                             }
                         }
+                    }
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                SectionLabel(text: "OpenAI — optional, paid")
+                Card {
+                    VStack(alignment: .leading, spacing: 16) {
+                        APIKeyField(provider: .openAI)
+
+                        Rectangle().fill(Color.primary.opacity(0.06)).frame(height: 1)
+
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Model")
+                                .font(skin.body(skin == .tape ? 12.5 : 13, .semibold))
+                            VStack(spacing: 8) {
+                                ForEach(OpenAIModel.allCases) { model in
+                                    ModelOption(
+                                        title: model.displayName,
+                                        subtitle: model.blurb,
+                                        isSelected: settings.openAIModelID == model.id,
+                                        onSelect: { settings.openAIModelID = model.id }
+                                    )
+                                }
+                            }
+                        }
+
+                        Text("OpenAI voices synthesize one sentence at a time with no cross-sentence stitching, so seams are slightly more audible than ElevenLabs.")
+                            .font(skin.body(11))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
             }
@@ -1081,7 +1130,7 @@ private struct ProvidersPanel: View {
                             .background(Circle().fill(skin.iconChipBG))
 
                         RowLabel("Use macOS native voice when offline",
-                                 subtitle: "Falls back to Samantha when ElevenLabs is unreachable.")
+                                 subtitle: "Falls back to Samantha when a paid provider is unreachable.")
                         Spacer()
                         Toggle("", isOn: $settings.useNativeVoiceOffline)
                             .labelsHidden()
@@ -1089,21 +1138,14 @@ private struct ProvidersPanel: View {
                             .tint(skin.accent)
                     }
                 }
-                Text("OpenAI TTS fallback arrives in Slice 5.")
-                    .font(skin.body(11))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 4)
             }
-        }
-        .onAppear {
-            elevenLabsKey = state.keychain.get(.elevenLabsKey) ?? ""
-            saved = false
         }
     }
 }
 
 private struct ModelOption: View {
-    let model: ElevenLabsModel
+    let title: String
+    let subtitle: String
     let isSelected: Bool
     let onSelect: () -> Void
     @Environment(\.settingsSkin) private var skin
@@ -1118,10 +1160,10 @@ private struct ModelOption: View {
                         .frame(width: 16, height: 16)
                 }
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(model.displayName)
+                    Text(title)
                         .font(skin.body(skin == .tape ? 12.5 : 13, .semibold))
                         .foregroundStyle(.primary)
-                    Text("\(model.characterLimit / 1000)k char limit per request")
+                    Text(subtitle)
                         .font(skin.body(11))
                         .foregroundStyle(.secondary)
                 }
@@ -1191,6 +1233,9 @@ private struct ConversationPanel: View {
                 }
             }
 
+            VoiceInSection()
+            VocabularySection()
+
             // Explainer card — in tape skin this is the pane's one paper moment.
             VStack(alignment: .leading, spacing: 10) {
                 if skin == .tape {
@@ -1205,7 +1250,7 @@ private struct ConversationPanel: View {
                         .foregroundStyle(.secondary)
                         .textCase(.uppercase)
                 }
-                Text("While on, Yapper watches the apps you've checked and speaks each new assistant response as it finishes — even when that app isn't focused. Browsers are read only when their active tab is an AI site. Toggle anytime with Right ⌘ + Return; skip ahead with Right ⌘ + →.")
+                Text("While on, Yapper watches the apps you've checked and speaks each new assistant response as it finishes — even when that app isn't focused. Browsers are read only when their active tab is an AI site. Toggle anytime with \(settings.yapperKey.keycap) + Return; skip ahead with \(settings.yapperKey.keycap) + →.\n\nVoice in closes the loop: hold \(settings.yapperKey.keycap) and talk, release, and the words land in whatever is focused. Speech is transcribed on this Mac by Whisper — nothing leaves the machine. With hands-free on, the mic opens by itself after each reply finishes reading and closes when you pause. Yapper never presses Return; sending is always yours.")
                     .font(skin.body(skin == .tape ? 11.5 : 12))
                     .foregroundStyle(skin == .tape ? AnyShapeStyle(Tape.dust) : AnyShapeStyle(.secondary))
                     .lineSpacing(3)
@@ -1288,6 +1333,371 @@ private struct WatchedAppRow: View {
                 .tint(skin.liveTint)
                 .disabled(!isInstalled)
         }
+    }
+}
+
+// MARK: - Voice In
+
+/// Local speech-to-text controls: master switch, mic permission, Whisper model, hands-free.
+private struct VoiceInSection: View {
+    @EnvironmentObject private var settings: SettingsStore
+    @EnvironmentObject private var state: AppState
+    @Environment(\.settingsSkin) private var skin
+    @State private var inputDevices: [AudioInputDevice] = []
+
+    var body: some View {
+        Card {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .center, spacing: 16) {
+                    Image(systemName: "mic.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(skin.liveTint)
+                        .frame(width: 36, height: 36)
+                        .background(Circle().fill(skin.liveTint.opacity(0.13)))
+                    RowLabel("Voice in",
+                             subtitle: "Hold \\(settings.yapperKey.keycap) to talk. Transcribed on this Mac, typed into the focused app.")
+                    Spacer()
+                    Toggle("", isOn: $settings.voiceInputEnabled)
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                        .tint(skin.liveTint)
+                }
+                .padding(.bottom, 4)
+
+                RowDivider()
+                microphoneRow
+                RowDivider()
+                modelRow
+                RowDivider()
+                handsFreeRow
+                if inputDevices.count > 1 {
+                    RowDivider()
+                    inputDeviceRow
+                }
+            }
+        }
+        .onAppear {
+            inputDevices = AudioInputDevices.list()
+            state.voiceInput.refreshMicrophonePermission()
+        }
+    }
+
+    // MARK: Rows
+
+    private var microphoneRow: some View {
+        HStack(spacing: 12) {
+            Image(systemName: state.hasMicrophonePermission ? "checkmark.circle.fill" : "exclamationmark.circle")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(state.hasMicrophonePermission ? Color.green : Color.orange)
+                .frame(width: 22)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Microphone").font(skin.body(skin == .tape ? 12.5 : 13, .semibold))
+                Text(state.hasMicrophonePermission ? "Access granted" : "Yapper needs microphone access to listen")
+                    .font(skin.body(11))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            if !state.hasMicrophonePermission {
+                Button("Grant…") {
+                    Task {
+                        _ = await MicrophonePermission.request()
+                        state.voiceInput.refreshMicrophonePermission()
+                        if !state.hasMicrophonePermission { MicrophonePermission.openSystemSettings() }
+                    }
+                }
+                .controlSize(.small)
+            }
+        }
+    }
+
+    private var modelRow: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) {
+                Image(systemName: "cpu")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(skin.iconTint)
+                    .frame(width: 22)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Speech model").font(skin.body(skin == .tape ? 12.5 : 13, .semibold))
+                    Text(modelStatusLine)
+                        .font(skin.body(11))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Picker("", selection: $settings.whisperModelID) {
+                    ForEach(WhisperModel.catalog) { model in
+                        Text("\(model.displayName) · \(model.approxSize)").tag(model.id)
+                    }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 230)
+                .disabled(state.whisperModelStatus.isBusy)
+                modelAction
+            }
+            if case .downloading(let progress) = state.whisperModelStatus {
+                ProgressView(value: progress)
+                    .tint(skin.liveTint)
+                    .padding(.leading, 34)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var modelAction: some View {
+        switch state.whisperModelStatus {
+        case .notDownloaded:
+            Button("Download") { state.voiceInput.downloadModel() }
+                .controlSize(.small)
+                .disabled(!settings.voiceInputEnabled)
+        case .failed:
+            Button("Retry") { state.voiceInput.downloadModel() }
+                .controlSize(.small)
+        case .downloading, .loading:
+            ProgressView().controlSize(.small)
+        case .ready, .downloaded:
+            EmptyView()
+        }
+    }
+
+    private var modelStatusLine: String {
+        let model = WhisperModel.named(settings.whisperModelID)
+        switch state.whisperModelStatus {
+        case .notDownloaded: return "\(model.blurb) Not downloaded yet."
+        case .downloaded: return "On disk. Loads when Voice in is switched on."
+        case .downloading(let p): return "Downloading… \(Int(p * 100))%"
+        case .loading: return "Loading onto the Neural Engine…"
+        case .ready: return "Ready. \(model.blurb)"
+        case .failed(let message): return "Failed: \(message)"
+        }
+    }
+
+    private var handsFreeRow: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "ear")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(skin.iconTint)
+                .frame(width: 22)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Hands-free after each reply").font(skin.body(skin == .tape ? 12.5 : 13, .semibold))
+                Text("When Conversation Mode finishes reading a response, the mic opens until you pause. Nothing is sent — you press Return.")
+                    .font(skin.body(11))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Toggle("", isOn: $settings.handsFreeEnabled)
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .tint(skin.liveTint)
+                .disabled(!settings.voiceInputEnabled)
+        }
+    }
+
+    private var inputDeviceRow: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "waveform.circle")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(skin.iconTint)
+                .frame(width: 22)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Input").font(skin.body(skin == .tape ? 12.5 : 13, .semibold))
+                Text("Which microphone to listen with.")
+                    .font(skin.body(11))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Picker("", selection: $settings.inputDeviceUID) {
+                Text("System default").tag(String?.none)
+                ForEach(inputDevices) { device in
+                    Text(device.name).tag(Optional(device.uid))
+                }
+            }
+            .labelsHidden()
+            .frame(maxWidth: 230)
+        }
+    }
+}
+
+// MARK: - Vocabulary
+
+/// Terms that bias Whisper, rules that fix what it still mishears, and the fix-last-transcript
+/// loop that learns both from one edit.
+private struct VocabularySection: View {
+    @EnvironmentObject private var state: AppState
+    @ObservedObject private var vocab: VocabularyStore
+    @Environment(\.settingsSkin) private var skin
+    @State private var newTerm = ""
+    @State private var newHeard = ""
+    @State private var newTyped = ""
+    @State private var correction = ""
+    @State private var learnedNote: String?
+
+    init() {
+        _vocab = ObservedObject(wrappedValue: AppState.shared.vocabulary)
+    }
+
+    var body: some View {
+        Card {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .center, spacing: 16) {
+                    Image(systemName: "character.book.closed.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(skin.iconTint)
+                        .frame(width: 36, height: 36)
+                        .background(Circle().fill(skin.iconChipBG))
+                    RowLabel("Vocabulary",
+                             subtitle: "Names and jargon Whisper should expect, and fixes for what it still gets wrong. Stays on this Mac.")
+                    Spacer()
+                }
+                .padding(.bottom, 8)
+
+                RowDivider()
+                termsBlock
+                RowDivider()
+                replacementsBlock
+                RowDivider()
+                lastTranscriptBlock
+            }
+        }
+    }
+
+    // MARK: Terms
+
+    private var termsBlock: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            sectionTitle("Expected words", hint: "Fed to Whisper as context before every turn.")
+            HStack(spacing: 8) {
+                TextField("Add a name, product, or term", text: $newTerm)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit(addTerm)
+                Button("Add", action: addTerm).controlSize(.small).disabled(newTerm.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+            if !vocab.terms.isEmpty {
+                FlowChips(items: vocab.terms) { vocab.removeTerm($0) }
+            }
+        }
+        .padding(.vertical, 6)
+    }
+
+    private func addTerm() {
+        vocab.addTerm(newTerm)
+        newTerm = ""
+    }
+
+    // MARK: Replacements
+
+    private var replacementsBlock: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            sectionTitle("Corrections", hint: "When Whisper hears the left, Yapper types the right.")
+            HStack(spacing: 8) {
+                TextField("Heard", text: $newHeard).textFieldStyle(.roundedBorder)
+                Image(systemName: "arrow.right").foregroundStyle(.tertiary)
+                TextField("Type instead", text: $newTyped).textFieldStyle(.roundedBorder).onSubmit(addReplacement)
+                Button("Add", action: addReplacement).controlSize(.small)
+                    .disabled(newHeard.trimmingCharacters(in: .whitespaces).isEmpty || newTyped.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+            ForEach(vocab.replacements) { rule in
+                HStack(spacing: 8) {
+                    Text(rule.heard).font(skin.body(12)).foregroundStyle(.secondary)
+                    Image(systemName: "arrow.right").font(.system(size: 9)).foregroundStyle(.tertiary)
+                    Text(rule.typed).font(skin.body(12, .semibold))
+                    Spacer()
+                    Button { vocab.removeReplacement(rule.id) } label: {
+                        Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.vertical, 2)
+            }
+        }
+        .padding(.vertical, 6)
+    }
+
+    private func addReplacement() {
+        vocab.addReplacement(heard: newHeard, typed: newTyped)
+        newHeard = ""; newTyped = ""
+    }
+
+    // MARK: Last transcript
+
+    private var lastTranscriptBlock: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            sectionTitle("Last transcript", hint: "Edit what Yapper typed into what you meant, then save — every changed word becomes a correction.")
+            if let last = vocab.lastTranscript {
+                TextEditor(text: $correction)
+                    .font(skin.body(12))
+                    .frame(minHeight: 54, maxHeight: 110)
+                    .scrollContentBackground(.hidden)
+                    .padding(6)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.05)))
+                    .onAppear { correction = last.delivered }
+                    .onChange(of: last.delivered) { correction = $0 }
+                HStack {
+                    HStack(spacing: 3) {
+                        Text(last.at, style: .relative)
+                        Text("ago")
+                    }
+                    .font(skin.body(11))
+                    .foregroundStyle(.tertiary)
+                    Spacer()
+                    if let learnedNote {
+                        Text(learnedNote).font(skin.body(11)).foregroundStyle(skin.liveTint)
+                    }
+                    Button("Save correction") {
+                        let learned = vocab.learn(corrected: correction)
+                        learnedNote = learned.isEmpty ? "No word changes to learn"
+                            : "Learned \(learned.count) fix\(learned.count == 1 ? "" : "es")"
+                    }
+                    .controlSize(.small)
+                    .disabled(correction.trimmingCharacters(in: .whitespacesAndNewlines) == last.delivered)
+                }
+            } else {
+                Text("Nothing transcribed yet.").font(skin.body(11)).foregroundStyle(.tertiary)
+            }
+        }
+        .padding(.vertical, 6)
+    }
+
+    private func sectionTitle(_ title: String, hint: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title).font(skin.body(skin == .tape ? 12.5 : 13, .semibold))
+            Text(hint).font(skin.body(11)).foregroundStyle(.secondary)
+        }
+    }
+}
+
+/// Wrapping row of removable chips.
+private struct FlowChips: View {
+    let items: [String]
+    let onRemove: (String) -> Void
+    @Environment(\.settingsSkin) private var skin
+
+    var body: some View {
+        // Simple wrap: chunk by an estimated width. Good enough for a few dozen terms.
+        let rows = chunk(items, perRow: 4)
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                HStack(spacing: 6) {
+                    ForEach(row, id: \.self) { term in
+                        HStack(spacing: 4) {
+                            Text(term).font(skin.body(11.5)).lineLimit(1)
+                            Button { onRemove(term) } label: {
+                                Image(systemName: "xmark").font(.system(size: 8, weight: .bold))
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.secondary)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Capsule().fill(skin.iconChipBG))
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+    }
+
+    private func chunk(_ items: [String], perRow: Int) -> [[String]] {
+        stride(from: 0, to: items.count, by: perRow).map { Array(items[$0..<min($0 + perRow, items.count)]) }
     }
 }
 
@@ -1412,7 +1822,7 @@ private struct HistoryBrowser: View {
             Text("Nothing read yet")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.secondary)
-            Text("Items you read with Right ⌘ or Right ⌘ + S show up here for quick replay.")
+            Text("Items you read with a tap of the Yapper key, or key + S, show up here for quick replay.")
                 .font(.system(size: 11))
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)

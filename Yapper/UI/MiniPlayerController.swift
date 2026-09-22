@@ -79,7 +79,7 @@ final class MiniPlayerController: NSObject {
                 self.panel = nil
                 if let r = self.state?.currentReading,
                    let active = self.state?.tts.active,
-                   case .elevenLabs = active {
+                   case .streaming = active {
                     self.show(for: r)
                 }
             }
@@ -111,7 +111,7 @@ final class MiniPlayerController: NSObject {
 
     private func show(for reading: ReadingItem) {
         guard let state else { return }
-        guard case .elevenLabs(let streamer) = state.tts.active else {
+        guard case .streaming(let streamer) = state.tts.active else {
             // Native fallback path: no mini player for v1 (no scrubber data).
             return
         }
@@ -124,16 +124,16 @@ final class MiniPlayerController: NSObject {
             state?.currentReading = nil
         }
         let onSeek: (TimeInterval) -> Void = { [weak state] seconds in
-            if case .elevenLabs(let s)? = state?.tts.active { s.seek(to: seconds) }
+            if case .streaming(let s)? = state?.tts.active { s.seek(to: seconds) }
         }
         let onCycleSpeed: () -> Void = { [weak state] in
-            guard let state, case .elevenLabs(let s) = state.tts.active else { return }
+            guard let state, case .streaming(let s) = state.tts.active else { return }
             s.cycleRate()
             state.settings.playbackRate = Double(s.rate)   // persist for the next read
         }
         // Deck REW/FF: jump the timeline (seek clamps to 0…duration internally).
         let skip: (TimeInterval) -> Void = { [weak state] delta in
-            guard let state, case .elevenLabs(let s) = state.tts.active else { return }
+            guard let state, case .streaming(let s) = state.tts.active else { return }
             s.seek(to: s.currentTime + delta)
         }
         // Pinch on the deck body: accumulate the magnification into the persisted scale;
@@ -204,13 +204,13 @@ final class MiniPlayerController: NSObject {
     /// the notes with it, and closing the deck closes them.
     private func showTranscript() {
         guard let state, let parent = panel, parent.isVisible,
-              case .elevenLabs(let streamer) = state.tts.active else { return }
+              case .streaming(let streamer) = state.tts.active else { return }
 
         let content = AnyView(TranscriptView(
             streamer: streamer,
             sourceApp: state.currentReading?.sourceApp ?? "Yapper",
             onSeek: { [weak state] seconds in
-                if case .elevenLabs(let s)? = state?.tts.active { s.seek(to: seconds) }
+                if case .streaming(let s)? = state?.tts.active { s.seek(to: seconds) }
             },
             onClose: { [weak state] in state?.transcriptVisible = false }))
 

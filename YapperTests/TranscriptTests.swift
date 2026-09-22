@@ -8,11 +8,21 @@ import Foundation
 @MainActor
 struct TranscriptTests {
 
+    /// Never called: these tests only exercise the pre-audio estimates, which are computed from
+    /// character counts before any synthesis is attempted. Failing loudly beats returning silence
+    /// if that ever stops being true.
+    private struct UnusedSynthesizer: SpeechSynthesizing {
+        struct NotExpected: Error {}
+        func synthesize(text: String, previousText: String?, nextText: String?,
+                        previousRequestIDs: [String]) async throws -> SpeechSegment {
+            throw NotExpected()
+        }
+    }
+
     private func player(for text: String) -> SentenceStreamPlayer {
         SentenceStreamPlayer(
             sentences: SentenceStreamPlayer.segments(from: text),
-            voiceID: "voice", modelID: "model", outputFormat: "mp3_44100_128",
-            voiceSettings: .natural, apiKey: "",
+            synthesizer: UnusedSynthesizer(),
             cacheURL: FileManager.default.temporaryDirectory
                 .appendingPathComponent("yapper-transcript-test-\(UUID().uuidString).mp3"))
     }

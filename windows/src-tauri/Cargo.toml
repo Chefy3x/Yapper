@@ -1,0 +1,65 @@
+[package]
+name = "yapper-windows"
+version = "0.1.0"
+description = "Yapper for Windows — reads AI responses aloud from your desktop."
+edition = "2021"
+
+[lib]
+# The `_lib` suffix keeps the lib name distinct from the bin name (a Windows
+# requirement — see https://github.com/rust-lang/cargo/issues/8519).
+name = "yapper_windows_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-opener = "2"
+# Tray + hotkey (Phase 4). The global-shortcut plugin gives a plain chord
+# binding on every OS; the Mac app's right-Cmd *tap* gesture needs a low-level
+# keyboard hook, which is Phase 4's Windows-only remainder (see shortcuts.rs).
+tauri-plugin-global-shortcut = "2"
+# Updater (Phase 5) — the Sparkle counterpart: a signed JSON feed.
+tauri-plugin-updater = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+# HTTP client for the ElevenLabs TTS endpoint (native TLS: schannel on Windows).
+reqwest = { version = "0.12", features = ["json"] }
+# ICU4X sentence segmentation — pure Rust, deterministic across OSes, so the
+# pipeline segments identically on Windows and in tests run on any host.
+icu_segmenter = "1.5"
+# TextCleaner needs lookaround (`(?<!\w)\*…\*(?!\w)`), which the `regex` crate
+# deliberately doesn't support. fancy-regex does, so the ported patterns stay
+# character-for-character the same as the Swift originals.
+fancy-regex = "0.19"
+uuid = { version = "1", features = ["v4", "serde"] }
+# History timestamps are ISO-8601 on both sides, so history.json written by
+# either app parses in the other.
+chrono = { version = "0.4", features = ["serde"] }
+dirs = "6"
+# Credential storage: Windows Credential Manager, and the macOS Keychain so the
+# same code path is exercisable during Mac-side development.
+keyring = { version = "3", features = ["apple-native", "windows-native"] }
+# Audio output — CoreAudio on macOS, WASAPI on Windows. Segment audio is
+# decoded to PCM up front (see audio/), mirroring AVAudioPlayer(data:).
+rodio = { version = "0.22", default-features = false, features = ["playback"] }
+symphonia = { version = "0.5", features = ["mp3", "wav", "pcm"] }
+tokio = { version = "1", features = ["sync", "time", "rt", "macros"] }
+log = "0.4"
+
+[target.'cfg(windows)'.dependencies]
+# WinRT speech (the AVSpeechSynthesizer counterpart) and, in Phase 3, UIA.
+windows = { version = "0.62", features = [
+    "Foundation",
+    "Foundation_Collections",
+    "Media_Core",
+    "Media_SpeechSynthesis",
+    "Storage_Streams",
+] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+tempfile = "3"
+filetime = "0.2"

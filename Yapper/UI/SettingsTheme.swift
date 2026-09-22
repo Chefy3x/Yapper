@@ -157,6 +157,80 @@ struct DashedHairline: View {
     }
 }
 
+/// Compact keycap for dense surfaces — the menu bar reference strip and the first-run guide.
+/// Deliberately flatter and smaller than the Settings keycaps: a 280pt menu wants a legible
+/// label, not a row of 3D keys, and it has to sit quietly in both light and dark appearance.
+struct MiniKeycap: View {
+    enum Content {
+        case text(String)
+        case symbol(String)   // SF Symbol name
+    }
+    let content: Content
+    var body: some View {
+        Group {
+            switch content {
+            case .text(let s):
+                Text(s).font(.system(size: 10.5, weight: .semibold))
+            case .symbol(let s):
+                Image(systemName: s).font(.system(size: 9, weight: .bold))
+            }
+        }
+        .foregroundStyle(.primary.opacity(0.75))
+        .padding(.horizontal, 5)
+        .frame(minWidth: 18, minHeight: 18)
+        .background(
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                .fill(Color.primary.opacity(0.07))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.10), lineWidth: 0.5)
+        )
+    }
+}
+
+/// One line of the Yapper-key contract: the key cluster, then what it does.
+/// Shared so the menu bar strip and the guide's recap can never drift apart.
+struct ShortcutLine: View {
+    let caps: [MiniKeycap.Content]
+    let label: String
+    /// Width of the key column — keeps every label in a list left-aligned with the others.
+    var capColumnWidth: CGFloat = 104
+
+    var body: some View {
+        HStack(spacing: 8) {
+            HStack(spacing: 3) {
+                ForEach(Array(caps.enumerated()), id: \.offset) { _, cap in
+                    MiniKeycap(content: cap)
+                }
+            }
+            .frame(width: capColumnWidth, alignment: .leading)
+
+            Text(label)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// The user-facing gestures, in the order they matter. The AX dump (key + D) is a
+/// debug affordance and deliberately absent — it lives in Settings only.
+enum ShortcutReference {
+    static func all(yapperKey key: YapperKey) -> [(caps: [MiniKeycap.Content], label: String)] {
+        let cap = MiniKeycap.Content.text(key.keycap)
+        return [
+            ([cap], "Read latest / pause"),
+            ([cap, .text("hold")], "Talk — release to type"),
+            ([cap, .text("S")], "Read selected text"),
+            ([cap, .symbol("return")], "Conversation Mode"),
+            ([cap, .symbol("arrow.right")], "Skip ahead"),
+        ]
+    }
+}
+
 /// The J-card barcode, drawn from a fixed stripe pattern.
 struct TapeBarcode: View {
     var height: CGFloat = 22

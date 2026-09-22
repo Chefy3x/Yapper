@@ -83,11 +83,8 @@ final class SentenceStreamPlayer: NSObject, ObservableObject {
     /// intra-segment offset to enter at once that segment lands. Consumed by playCurrent()/resume().
     private var pendingSeekOffset: TimeInterval? = nil
 
-    private let voiceID: String
-    private let modelID: String
-    private let outputFormat: String
-    private let voiceSettings: ElevenLabsClient.VoiceSettings
-    private let apiKey: String
+    /// Who actually turns text into audio. Nil on the replay path, which never synthesizes.
+    private let synthesizer: SpeechSynthesizing?
     private let isReplay: Bool
 
     private let delegateProxy = SegPlayerDelegate()
@@ -104,14 +101,9 @@ final class SentenceStreamPlayer: NSObject, ObservableObject {
     // MARK: - Init
 
     /// Live synthesis init.
-    init(sentences: [String], voiceID: String, modelID: String, outputFormat: String,
-         voiceSettings: ElevenLabsClient.VoiceSettings, apiKey: String, cacheURL: URL) {
+    init(sentences: [String], synthesizer: SpeechSynthesizing, cacheURL: URL) {
         self.segments = sentences.map { Segment(text: $0) }
-        self.voiceID = voiceID
-        self.modelID = modelID
-        self.outputFormat = outputFormat
-        self.voiceSettings = voiceSettings
-        self.apiKey = apiKey
+        self.synthesizer = synthesizer
         self.cacheURL = cacheURL
         self.isReplay = false
         super.init()
@@ -128,8 +120,7 @@ final class SentenceStreamPlayer: NSObject, ObservableObject {
     init(existingFile: URL, text: String = "") {
         let data = try? Data(contentsOf: existingFile)
         self.segments = [Segment(text: text, data: data)]
-        self.voiceID = ""; self.modelID = ""; self.outputFormat = ""; self.apiKey = ""
-        self.voiceSettings = .natural
+        self.synthesizer = nil
         self.cacheURL = existingFile
         self.isReplay = true
         super.init()
@@ -296,21 +287,17 @@ final class SentenceStreamPlayer: NSObject, ObservableObject {
             // finally publishes the cache) even after playback finished and the UI let go.
             while !Task.isCancelled {
                 guard let i = self.nextSynthIndex() else { break }
-                let req = ElevenLabsClient.Request(
-                    voiceID: self.voiceID,
-                    text: self.segments[i].text,
-                    modelID: self.modelID,
-                    outputFormat: self.outputFormat,
-                    voiceSettings: self.voiceSettings,
-                    // Text conditioning: `nextText` always (that audio doesn't exist yet);
-                    // `previousText` is the fallback the API uses when no request ids are sent
-                    // (first segment, or a jump landing). Only `text` is voiced.
-                    previousText: i > 0 ? self.segments[i - 1].text : nil,
-                    nextText: i + 1 < self.segments.count ? self.segments[i + 1].text : nil,
-                    previousRequestIDs: self.stitchIDs(before: i)
-                )
+                guard let synthesizer = self.synthesizer else { return }
                 do {
-                    let result = try await ElevenLabsClient.synthesize(req, apiKey: self.apiKey)
+                    let result = try await synthesizer.synthesize(
+                        text: self.segments[i].text,
+                        // Text conditioning: `nextText` always (that audio doesn't exist yet);
+                        // `previousText` is the fallback used when no request ids are sent
+                        // (first segment, or a jump landing). Only `text` is voiced.
+                        previousText: i > 0 ? self.segments[i - 1].text : nil,
+                        nextText: i + 1 < self.segments.count ? self.segments[i + 1].text : nil,
+                        previousRequestIDs: self.stitchIDs(before: i)
+                    )
                     if Task.isCancelled { return }
                     self.segments[i].requestID = result.requestID
                     self.segments[i].data = result.data

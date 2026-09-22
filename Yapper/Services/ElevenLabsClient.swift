@@ -140,6 +140,16 @@ struct ElevenLabsClient {
         return SynthesisResult(data: data, requestID: http.value(forHTTPHeaderField: "request-id"))
     }
 
+    /// Checks a key against the cheapest authenticated endpoint ElevenLabs documents.
+    ///
+    /// Saving an unchecked key is how a single typo turns into a voice that silently stops working
+    /// an hour later, with nothing on screen connecting the two.
+    static func validate(apiKey: String) async -> APIKeyCheck {
+        await APIKeyCheck.probe(url: URL(string: "https://api.elevenlabs.io/v1/user")!, key: apiKey) {
+            request, key in request.setValue(key, forHTTPHeaderField: "xi-api-key")
+        }
+    }
+
     /// Streams MP3 bytes for the given request. The stream throws on transport or HTTP errors.
     /// The closure form lets us await chunks in an `for try await` loop.
     static func stream(_ req: Request, apiKey: String) -> AsyncThrowingStream<Data, Error> {

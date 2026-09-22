@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MenuBarContent: View {
     @EnvironmentObject private var state: AppState
+    @EnvironmentObject private var settings: SettingsStore
     @ObservedObject private var updater = UpdaterService.shared
 
     var body: some View {
@@ -45,6 +46,27 @@ struct MenuBarContent: View {
                 .buttonStyle(.plain)
                 .padding(.horizontal, 12)
             }
+
+            // The Yapper-key contract is undiscoverable by design — tapping a bare modifier is an
+            // invented gesture with no affordance anywhere in macOS. This strip is the standing
+            // answer to "what were the keys again", so nobody has to dig through Settings for it.
+            Divider()
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text("SHORTCUTS")
+                    .font(.system(size: 9, weight: .semibold))
+                    .tracking(0.8)
+                    .foregroundStyle(.tertiary)
+                    .padding(.bottom, 1)
+
+                ForEach(Array(ShortcutReference.all(yapperKey: settings.yapperKey).enumerated()), id: \.offset) { _, item in
+                    ShortcutLine(caps: item.caps, label: item.label)
+                }
+            }
+            .padding(.horizontal, 12)
+            // Without Accessibility these keys are inert; showing them at full strength would
+            // promise something the app can't currently do.
+            .opacity(state.hasAccessibilityPermission ? 1 : 0.4)
 
             if !state.lastEvent.isEmpty {
                 Divider()
@@ -100,7 +122,7 @@ struct MenuBarContent: View {
             .padding(.horizontal, 12)
             .padding(.bottom, 8)
         }
-        .frame(width: 260)
+        .frame(width: 280)   // widened for the shortcut strip's key column + label
     }
 
     /// Opens the Settings scene. `@Environment(\.openSettings)` is macOS 14+,
