@@ -131,6 +131,11 @@ kbd{
   padding:6px 8px 5px;white-space:nowrap;
 }
 .plus{color:var(--faint);font-weight:500;font-size:13px}
+.beta{
+  display:inline-block;vertical-align:middle;margin-left:8px;
+  font:600 10.5px/1 var(--sans);letter-spacing:.06em;text-transform:uppercase;
+  color:var(--muted);border:1px solid var(--line-2);border-radius:999px;padding:4px 7px 3px;
+}
 
 /* ---------- cards ---------- */
 .card{
@@ -536,7 +541,7 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
       </div>
       <div class="card">
         <div class="card-combo"><kbd>Right ⌥</kbd><span class="plus">+</span><kbd>⏎</kbd></div>
-        <h3><span class="rec-dot"></span>Conversation mode</h3>
+        <h3><span class="rec-dot"></span>Conversation mode<span class="beta">Beta</span></h3>
         <p class="card-body">Press REC and every new AI reply auto-plays the moment it finishes
         generating. Replies queue in order and never talk over each other; skip ahead with
         <b>Right ⌥ + →</b>. Toggle off, the queue clears.</p>
@@ -588,7 +593,7 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
         <div class="hk-row"><span class="hk-keys"><kbd>Right ⌥</kbd></span><span class="hk-does"><b>Read latest</b> — or pause / resume whatever's playing</span></div>
         <div class="hk-row"><span class="hk-keys"><kbd>Right ⌥</kbd><span class="plus">×2</span></span><span class="hk-does"><b>Force-read</b> the focused chat, superseding current audio</span></div>
         <div class="hk-row"><span class="hk-keys"><kbd>Right ⌥</kbd><span class="plus">+</span><kbd>S</kbd></span><span class="hk-does"><b>Read selection</b> — any highlighted text, any app</span></div>
-        <div class="hk-row"><span class="hk-keys"><kbd>Right ⌥</kbd><span class="plus">+</span><kbd>⏎</kbd></span><span class="hk-does"><b>Conversation Mode</b> on / off</span></div>
+        <div class="hk-row"><span class="hk-keys"><kbd>Right ⌥</kbd><span class="plus">+</span><kbd>⏎</kbd></span><span class="hk-does"><b>Conversation Mode</b> on / off<span class="beta">Beta</span></span></div>
         <div class="hk-row"><span class="hk-keys"><kbd>Right ⌥</kbd><span class="plus">+</span><kbd>→</kbd></span><span class="hk-does"><b>Skip</b> to the next queued reply</span></div>
       </div>
     </div>
