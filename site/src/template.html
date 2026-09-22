@@ -1,11 +1,16 @@
 <title>Yapper — reads your AI out loud</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Yapper is a macOS menu-bar tape deck that reads Claude, ChatGPT, Codex — or anything you highlight — out loud in a real voice.">
+<meta name="theme-color" content="#F7F6F2">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap">
 <style>
 /* ============================================================
-   YAPPER — bootleg mixtape landing page
-   palette + art sampled from the app's own cassette deck.
-   Permanent Marker (c) Font Diner — Apache License 2.0, embedded.
+   YAPPER — landing page
+   Light, product-site layout. The cassette deck art + demo are the
+   app's own; Permanent Marker (c) Font Diner — Apache 2.0 — is kept
+   only for the hand-written "press play" note on the deck.
    ============================================================ */
 @font-face{
   font-family:'Permanent Marker';
@@ -13,192 +18,185 @@
   font-display:swap;
 }
 :root{
-  --deckw:min(660px,94vw);   /* rendered deck width — px-true scaling for deck chrome */
-  --void:#0f0d0b;
-  --panel:#161310;
-  --panel2:#1c1814;
-  --cream:#ece3cb;
-  --dust:rgba(236,227,203,.60);
-  --faint:rgba(236,227,203,.34);
-  --paper:#ddc98b;
-  --paper-hi:#eadfae;
-  --paper-lo:#c9b06a;
-  --ink:#181206;
-  --ink-soft:rgba(24,18,6,.72);
-  --red:#a53a2e;
-  --red-hot:#c74537;
-  --acid:#a8c636;
-  --line:rgba(236,227,203,.14);
-  --impact:'Anton',Impact,Haettenschweiler,'Franklin Gothic Medium','Arial Narrow',sans-serif;
-  --marker:'Permanent Marker','Marker Felt','Segoe Print','Comic Sans MS',cursive;
+  --deckw:min(720px,92vw);   /* rendered deck width — px-true scaling for deck chrome */
+  --bg:#F7F6F2;
+  --surface:#FFFFFF;
+  --surface-2:#EFEDE6;
+  --ink:#141412;
+  --ink-2:#4B4943;
+  --muted:#77746B;
+  --faint:#A6A299;
+  --line:rgba(20,20,18,.08);
+  --line-2:rgba(20,20,18,.14);
+  --tape:#DDC98B;
+  --tape-soft:#F4EDD8;
+  --tape-ink:#7A6320;
+  --green:#BAD951;        /* sampled from the skull sticker on deck.webp — primary buttons, ink text */
+  --green-hover:#B0D13F;
+  --green-soft:#EBF3C6;   /* chips — tint of the sticker */
+  --green-deep:#6F8D14;   /* text accents */
+  --lime:#BAD951;         /* hero badge tag */
+  --red:#C74537;
+  --led:#3E9E5B;
+  --sans:'DM Sans',-apple-system,BlinkMacSystemFont,'SF Pro Text',system-ui,'Segoe UI',Roboto,sans-serif;
+  --serif:'Instrument Serif',Georgia,'Times New Roman',serif;
   --mono:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;
+  --marker:'Permanent Marker','Marker Felt',cursive;
+  --r:12px;
+  --r-lg:20px;
+  --shadow-sm:0 1px 2px rgba(20,20,18,.05),0 1px 4px rgba(20,20,18,.04);
+  --shadow-md:0 12px 32px -12px rgba(20,20,18,.18),0 2px 6px rgba(20,20,18,.05);
+  --shadow-green:0 1px 2px rgba(60,80,10,.22),inset 0 1px 0 rgba(255,255,255,.35);
 }
 *,*::before,*::after{box-sizing:border-box}
 html{scroll-behavior:smooth;overflow-x:clip}
 @supports not (overflow-x:clip){html{overflow-x:hidden}}
 body{
   margin:0;
-  background:var(--void);
-  color:var(--cream);
-  font-family:var(--mono);
-  font-size:13.5px;
-  line-height:1.8;
+  background:var(--bg);
+  color:var(--ink);
+  font-family:var(--sans);
+  font-size:16px;
+  line-height:1.6;
   -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+  text-rendering:optimizeLegibility;
   overflow-x:hidden;
 }
-/* film grain over everything */
-body::after{
-  content:"";position:fixed;inset:-40px;z-index:2147483000;pointer-events:none;
-  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='260' height='260'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='.5'/></svg>");
-  opacity:.13;mix-blend-mode:overlay;
-}
-/* faint tungsten pool behind the hero */
-.stage{
-  position:relative;
-  background:
-    radial-gradient(1100px 520px at 50% 300px, rgba(217,193,120,.075), transparent 66%);
-}
-a{color:inherit}
+a{color:inherit;text-decoration:none}
 img{max-width:100%;display:block}
-::selection{background:var(--paper);color:var(--ink)}
+::selection{background:var(--green-soft);color:var(--ink)}
+.wrap{max-width:1120px;margin:0 auto;padding:0 24px}
+.wrap--narrow{max-width:880px}
 
-.wrap{max-width:1060px;margin:0 auto;padding:0 22px}
-
-/* ---------- type voices ---------- */
-.shout{
-  font-family:var(--impact);
-  font-weight:400;
-  text-transform:uppercase;
-  letter-spacing:.015em;
-  line-height:.94;
-  margin:0;
+/* ---------- type ---------- */
+h1,h2,h3{margin:0;font-family:var(--serif);font-weight:400;letter-spacing:-.015em;line-height:1.05}
+h1{font-size:clamp(54px,8vw,96px);letter-spacing:-.025em;line-height:.98;text-wrap:balance}
+h2{font-size:clamp(38px,4.8vw,56px);letter-spacing:-.02em;text-wrap:balance}
+h3{font-size:26px;letter-spacing:-.01em;line-height:1.1}
+em,.it{font-style:italic}
+p{margin:0}
+.lead{font-size:18px;line-height:1.55;color:var(--ink-2);font-weight:400}
+.muted{color:var(--muted)}
+.mono{font-family:var(--mono)}
+.eyebrow{
+  display:inline-flex;align-items:center;
+  font:600 13px/1 var(--sans);letter-spacing:.01em;
+  color:#2F4310;background:var(--green-soft);
+  border-radius:999px;padding:7px 12px;margin-bottom:18px;
 }
-.marker{font-family:var(--marker);font-weight:400}
-.small{font-size:11.5px;letter-spacing:.04em}
-.up{text-transform:uppercase;letter-spacing:.14em}
 
-/* ---------- chips, stickers, kbd ---------- */
-.chip{
-  display:inline-flex;align-items:center;gap:7px;
-  font:700 10.5px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;
-  color:var(--ink);background:var(--paper);
-  padding:7px 11px 6px;border:2px solid var(--ink);
-  border-radius:2px;
-  box-shadow:2px 3px 0 rgba(0,0,0,.55);
-  white-space:nowrap;
+/* ---------- buttons ---------- */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  height:48px;padding:0 22px;border-radius:999px;
+  font:600 15px/1 var(--sans);letter-spacing:-.005em;white-space:nowrap;
+  border:1px solid transparent;cursor:pointer;
+  transition:background .15s ease,border-color .15s ease,box-shadow .15s ease,transform .15s ease;
 }
-.chip .dot{width:7px;height:7px;border-radius:50%;background:var(--red);display:inline-block}
-.chip--ghost{background:transparent;color:var(--dust);border-color:var(--line);box-shadow:none}
-/* label + value pill — the app's About-pane treatment (VERSION 0.1.0) */
+.btn svg{width:16px;height:16px;flex:none}
+.btn--primary{background:var(--green);color:#16200A;box-shadow:var(--shadow-green)}
+.btn--primary:hover{background:var(--green-hover);transform:translateY(-1px);box-shadow:0 8px 18px -8px rgba(90,120,20,.5),var(--shadow-green)}
+.btn--secondary{background:var(--surface);color:var(--ink);border-color:var(--line-2);box-shadow:var(--shadow-sm)}
+.btn--secondary:hover{border-color:rgba(20,20,18,.28);transform:translateY(-1px)}
+.btn--sm{height:38px;padding:0 16px;font-size:14px}
+.btn-row{display:flex;gap:12px;justify-content:center;align-items:center;flex-wrap:wrap}
+.fineprint{margin-top:16px;font-size:13px;color:var(--muted)}
+.fineprint a{text-decoration:underline;text-underline-offset:3px;text-decoration-color:var(--line-2)}
+
+/* ---------- pills, keycaps ---------- */
 .pill{
-  display:inline-flex;align-items:baseline;gap:8px;
-  font:700 11px/1 var(--mono);letter-spacing:.06em;text-transform:uppercase;
-  color:var(--ink);background:var(--paper);
-  padding:7px 11px 6px;border:2px solid var(--ink);border-radius:2px;
-  box-shadow:2px 3px 0 rgba(0,0,0,.55);white-space:nowrap;
+  display:inline-flex;align-items:center;gap:8px;
+  font:500 13px/1 var(--sans);color:var(--ink-2);
+  background:var(--surface);border:1px solid var(--line);border-radius:999px;
+  padding:8px 13px;white-space:nowrap;box-shadow:var(--shadow-sm);
 }
-.pill b{font-weight:700;font-size:9px;letter-spacing:.18em;color:rgba(24,18,6,.62)}
-.pill--ghost{background:transparent;color:var(--dust);border-color:var(--line);box-shadow:none}
-.pill--ghost b{color:var(--faint)}
+.pill b{font-weight:600;color:var(--muted);font-size:11px;letter-spacing:.06em;text-transform:uppercase}
+.pill .dot{width:7px;height:7px;border-radius:50%;background:var(--red);display:inline-block}
+.badge{
+  display:inline-flex;align-items:center;gap:8px;
+  font:500 13px/1 var(--sans);color:var(--ink-2);
+  background:var(--surface);border:1px solid var(--line);border-radius:999px;
+  padding:7px 12px 7px 8px;box-shadow:var(--shadow-sm);
+}
+.badge .tag{
+  font:600 11.5px/1 var(--sans);letter-spacing:.01em;
+  color:#1F2E08;background:var(--lime);
+  border-radius:999px;padding:5px 9px;
+}
 kbd{
-  font:700 11.5px/1 var(--mono);letter-spacing:.06em;
-  color:var(--cream);
-  background:linear-gradient(#2d2a25,#1a1815 70%);
-  border:1px solid #000;border-radius:5px;
-  padding:5px 8px 4px;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.16),inset 0 -2px 0 rgba(0,0,0,.6),0 2px 3px rgba(0,0,0,.5);
-  white-space:nowrap;
+  display:inline-block;
+  font:600 12.5px/1 var(--sans);letter-spacing:.01em;color:var(--ink);
+  background:var(--surface);border:1px solid var(--line-2);border-bottom-width:2px;border-radius:6px;
+  padding:6px 8px 5px;white-space:nowrap;
 }
-.advisory{
-  display:inline-block;background:#f4efe2;color:#111;
-  border:3px solid #111;padding:7px 10px 6px;
-  font-family:var(--impact);text-transform:uppercase;text-align:center;line-height:1;
-  box-shadow:0 4px 10px rgba(0,0,0,.5);
-}
-.advisory b{display:block;font-size:15px;letter-spacing:.03em;font-weight:400}
-.advisory i{display:block;font-style:normal;font-size:8.5px;letter-spacing:.2em;margin-top:3px;border-top:2px solid #111;padding-top:3px}
+.plus{color:var(--faint);font-weight:500;font-size:13px}
 
-/* ---------- paper cards ---------- */
-.paper-card{
-  position:relative;color:var(--ink);
-  background:
-    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='p'><feTurbulence type='fractalNoise' baseFrequency='0.55' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='100%25' height='100%25' filter='url(%23p)' opacity='.16'/></svg>"),
-    linear-gradient(158deg,var(--paper-hi),var(--paper) 46%,var(--paper-lo));
-  background-blend-mode:multiply,normal;
-  clip-path:polygon(.6% 1.8%,12% .3%,28% 1.4%,47% .2%,66% 1.6%,84% .4%,99.4% 1.9%,99.8% 22%,98.9% 46%,99.7% 71%,99% 98.2%,82% 99.6%,60% 98.6%,38% 99.7%,17% 98.5%,.4% 99.4%,1% 74%,.2% 49%,1.1% 24%);
-  box-shadow:0 18px 34px rgba(0,0,0,.5);
-  padding:26px 26px 24px;
+/* ---------- cards ---------- */
+.card{
+  background:var(--surface);border:1px solid var(--line);border-radius:16px;
+  box-shadow:var(--shadow-sm);
 }
-.tape-strip{
-  position:absolute;width:104px;height:25px;
-  background:rgba(238,229,196,.82);
-  box-shadow:0 2px 5px rgba(0,0,0,.30);
-  clip-path:polygon(3% 0,97% 4%,100% 28%,98% 62%,100% 100%,4% 96%,0 70%,2% 30%);
-  mix-blend-mode:screen;opacity:.85;pointer-events:none;
+
+/* =========================================================
+   NAV
+   ========================================================= */
+.nav{
+  position:sticky;top:0;z-index:50;
+  background:rgba(247,246,242,.82);
+  -webkit-backdrop-filter:saturate(1.4) blur(12px);backdrop-filter:saturate(1.4) blur(12px);
+  border-bottom:1px solid var(--line);
 }
+.nav-inner{height:64px;display:flex;align-items:center;justify-content:space-between;gap:20px}
+.brand{display:flex;align-items:center;gap:9px;font-weight:600;font-size:16px;letter-spacing:-.015em}
+.brand svg{width:26px;height:18px;display:block}
+.nav-links{display:flex;gap:4px;align-items:center}
+.nav-links a{
+  font-size:14px;font-weight:500;color:var(--ink-2);padding:8px 12px;border-radius:8px;
+  transition:color .15s,background .15s;
+}
+.nav-links a:hover{color:var(--ink);background:rgba(20,20,18,.05)}
+.nav-cta{display:flex;gap:8px;align-items:center}
 
 /* =========================================================
    HERO
    ========================================================= */
-.topbar{
-  display:flex;justify-content:space-between;align-items:center;gap:14px;
-  padding:20px 0 0;flex-wrap:wrap;
-}
-.brandline{font-family:var(--marker);font-size:16px;color:var(--dust);transform:rotate(-1.1deg)}
-.brandline b{color:var(--paper);font-weight:400}
-.topbar .chips{display:flex;gap:9px;flex-wrap:wrap}
-
-.hero{padding:64px 0 24px;text-align:center;position:relative}
-.hero-eyebrow{
-  font-family:var(--marker);font-size:clamp(15px,2vw,19px);color:var(--paper);
-  transform:rotate(-1.4deg);display:inline-block;margin-bottom:18px;
-}
-h1.shout{
-  font-size:clamp(52px,10.5vw,124px);
-  text-wrap:balance;
-  text-shadow:0 0 26px rgba(236,227,203,.16),0 4px 0 rgba(0,0,0,.6);
-}
-h1 .l1{display:inline-block;transform:rotate(-.7deg)}
-h1 .l2{display:inline-block;transform:rotate(.5deg);color:var(--paper)}
+.hero{padding:92px 0 0;text-align:center;position:relative}
+.hero .badge{margin-bottom:26px}
+.hero h1 .l2{font-style:italic}
 .hero-hook{
-  font-family:var(--marker);
-  font-size:clamp(19px,3vw,27px);
-  color:var(--cream);
-  transform:rotate(-1.6deg);
-  margin:20px auto 0;
+  margin:22px auto 0;font-family:var(--serif);font-size:clamp(24px,2.8vw,32px);font-weight:400;letter-spacing:-.01em;color:var(--ink);
 }
-.hero-hook .strike{position:relative;white-space:nowrap}
-.hero-hook .strike::after{
-  content:"";position:absolute;left:-3%;right:-3%;top:54%;height:3px;
-  background:var(--red-hot);transform:rotate(-2deg);border-radius:2px;
-}
-.hero-sub{
-  max-width:64ch;margin:26px auto 0;color:var(--dust);
-  font-size:13.5px;
-}
-.hero-sub b{color:var(--cream);font-weight:700}
+.hero-hook .strike{text-decoration:line-through;text-decoration-thickness:2px;text-decoration-color:var(--red);color:var(--muted)}
+.hero-sub{max-width:62ch;margin:18px auto 0}
+.hero-sub b{font-weight:600;color:var(--ink)}
+.hero .btn-row{margin-top:32px}
+.hero-chips{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:28px}
 
-/* ---------- the deck ---------- */
-.deck-zone{position:relative;margin:44px auto 0;width:var(--deckw)}
+/* ---------- the deck stage ---------- */
+.stage{
+  position:relative;margin:56px auto 0;max-width:1000px;
+  background:linear-gradient(180deg,#F3EBD3 0%,#EAE0C2 100%);
+  border:1px solid var(--line);border-radius:28px;
+  padding:64px 24px 36px;
+  box-shadow:var(--shadow-md);
+  overflow:visible;
+}
+.stage::before{
+  content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:radial-gradient(60% 50% at 50% 42%,rgba(227,185,58,.22),transparent 70%);
+}
+.deck-zone{position:relative;margin:0 auto;width:var(--deckw)}
 .deck-note{
-  position:absolute;z-index:6;left:-30px;top:-34px;
-  font-family:var(--marker);font-size:19px;color:var(--paper);
-  transform:rotate(-7deg);text-align:left;line-height:1.25;
+  position:absolute;z-index:6;left:-8px;top:-52px;
+  font-family:var(--marker);font-size:20px;color:var(--ink);
+  transform:rotate(-5deg);text-align:left;line-height:1.2;
   pointer-events:none;
 }
-.deck-note svg{display:block;margin:2px auto 0 46px}
-.sticker-skull{
-  position:absolute;z-index:6;right:-18px;top:-24px;width:78px;height:78px;
-  transform:rotate(12deg);filter:drop-shadow(0 5px 8px rgba(0,0,0,.45));
-  pointer-events:none;
-}
-.sticker-advisory{
-  position:absolute;z-index:6;right:-8px;bottom:-18px;transform:rotate(4deg);
-  pointer-events:none;
-}
+.deck-note svg{display:block;margin:2px auto 0 52px}
 .deck{
   position:relative;width:100%;aspect-ratio:1064/656;
-  filter:drop-shadow(0 34px 44px rgba(0,0,0,.62));
+  filter:drop-shadow(0 28px 36px rgba(20,20,18,.30));
   user-select:none;-webkit-user-select:none;
 }
 .deck-img{position:absolute;inset:0;width:100%;height:100%}
@@ -247,7 +245,7 @@ h1 .l2{display:inline-block;transform:rotate(.5deg);color:var(--paper)}
   -webkit-tap-highlight-color:transparent;
 }
 .hot:focus{outline:none}
-.hot:focus-visible{outline:2px dashed var(--cream);outline-offset:4px}
+.hot:focus-visible{outline:2px solid var(--green-deep);outline-offset:4px}
 .hot[data-i="0"]{left:30.90%}
 .hot[data-i="1"]{left:41.00%}
 .hot[data-i="2"]{left:51.00%}
@@ -271,296 +269,243 @@ h1 .l2{display:inline-block;transform:rotate(.5deg);color:var(--paper)}
 .deck:hover .speed-mark,.speed-mark:focus-visible{opacity:1;pointer-events:auto}
 .speed-mark.off1x{opacity:1;pointer-events:auto;color:rgba(221,201,139,.92)}
 .speed-mark:focus{outline:none}
-.speed-mark:focus-visible{outline:2px dashed var(--cream);outline-offset:3px}
+.speed-mark:focus-visible{outline:2px solid var(--green-deep);outline-offset:3px}
 @media (hover:none){.speed-mark{opacity:1;pointer-events:auto}}
 
 /* tape counter / status */
 .counter{
-  margin:20px auto 0;display:inline-flex;align-items:center;gap:12px;
-  font:700 11px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;
-  color:var(--paper);
-  background:rgba(0,0,0,.5);border:1px solid var(--line);border-radius:3px;
-  padding:10px 16px;
-  box-shadow:inset 0 2px 8px rgba(0,0,0,.7);
+  margin:26px auto 0;display:inline-flex;align-items:center;gap:12px;
+  font:600 11.5px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;
+  color:var(--green);
+  background:#1B1A17;border:1px solid rgba(0,0,0,.4);border-radius:8px;
+  padding:11px 16px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 1px 2px rgba(20,20,18,.2);
   max-width:94vw;
 }
 .counter .led{width:8px;height:8px;border-radius:50%;background:#3a352b;flex:none}
-.counter.playing .led{background:var(--acid);box-shadow:0 0 8px var(--acid)}
-.counter.rec .led{background:var(--red-hot);box-shadow:0 0 8px var(--red-hot);animation:blink 1.1s steps(2,start) infinite}
+.counter.playing .led{background:var(--led);box-shadow:0 0 8px var(--led)}
+.counter.rec .led{background:var(--red);box-shadow:0 0 8px var(--red);animation:blink 1.1s steps(2,start) infinite}
 .counter .txt{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 @keyframes blink{to{opacity:.35}}
-.deck-caption{
-  margin-top:14px;color:var(--faint);font-size:11px;letter-spacing:.06em;
-}
-.hero-chips{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:30px}
+.deck-caption{margin:14px auto 0;max-width:62ch;font-size:13px;line-height:1.6;color:var(--muted)}
 
 /* =========================================================
-   RIBBON MARQUEE
+   MARQUEE
    ========================================================= */
-.ribbon{
-  margin:70px 0 0;transform:rotate(-1.5deg) scale(1.02);
-  background:var(--paper);color:var(--ink);
-  border-top:3px solid var(--ink);border-bottom:3px solid var(--ink);
+.marquee{
+  margin:64px 0 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);
   overflow:hidden;white-space:nowrap;
-  box-shadow:0 12px 30px rgba(0,0,0,.45);
+  -webkit-mask-image:linear-gradient(90deg,transparent,#000 12%,#000 88%,transparent);
+  mask-image:linear-gradient(90deg,transparent,#000 12%,#000 88%,transparent);
 }
-.ribbon-track{
-  display:inline-flex;gap:0;
-  animation:slide 30s linear infinite;
-  will-change:transform;
+.marquee-track{display:inline-flex;animation:slide 40s linear infinite;will-change:transform}
+.marquee span{
+  font:600 12.5px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);
+  padding:16px 0;
 }
-.ribbon span{
-  font-family:var(--impact);font-size:20px;letter-spacing:.06em;text-transform:uppercase;
-  padding:10px 0 8px;
-}
-.ribbon b{color:var(--red);padding:0 14px;font-weight:400}
+.marquee b{color:var(--lime);padding:0 18px;font-weight:600}
 @keyframes slide{to{transform:translateX(-50%)}}
 
 /* =========================================================
    SECTIONS
    ========================================================= */
-.sect{padding:84px 0 0}
-.sect-head{margin-bottom:34px}
-.sect-eyebrow{
-  font-family:var(--marker);font-size:18px;color:var(--paper);
-  display:inline-block;transform:rotate(-1.2deg);margin:0 0 8px;
-}
-.sect-title{font-size:clamp(34px,5.4vw,58px);text-shadow:0 3px 0 rgba(0,0,0,.55)}
-.sect-kicker{color:var(--dust);max-width:62ch;margin:14px 0 0}
+.sect{padding:104px 0 0}
+.sect-head{margin-bottom:40px;max-width:640px}
+.sect-head.center{margin-left:auto;margin-right:auto;text-align:center}
+.sect-head .lead{margin-top:14px}
 
 /* --- big three --- */
-.trio{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;align-items:stretch}
-.trio .paper-card{display:flex;flex-direction:column;gap:10px}
-.trio .paper-card:nth-child(1){transform:rotate(-.7deg)}
-.trio .paper-card:nth-child(2){transform:rotate(.5deg)}
-.trio .paper-card:nth-child(3){transform:rotate(-.4deg)}
-.card-combo{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.card-combo kbd{background:linear-gradient(#efe6c8,#d8c48c);color:var(--ink);border-color:var(--ink);box-shadow:inset 0 1px 0 rgba(255,255,255,.5),0 2px 0 var(--ink)}
-.card-title{font-size:26px;letter-spacing:.02em;color:var(--ink)}
-.card-body{color:var(--ink-soft);font-size:12.5px;line-height:1.75;margin:0}
+.trio{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;align-items:stretch}
+.trio .card{display:flex;flex-direction:column;gap:10px;padding:26px 26px 22px}
+.card-combo{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px}
+.card-body{color:var(--ink-2);font-size:15px;line-height:1.6}
+.card-body b{font-weight:600;color:var(--ink)}
 .card-tag{
-  margin-top:auto;padding-top:10px;
-  font-family:var(--marker);font-size:15px;color:var(--red);
-  transform:rotate(-1deg);
+  margin-top:auto;padding-top:14px;border-top:1px solid var(--line);
+  font-size:13px;color:var(--muted);
 }
-.rec-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--red-hot);margin-right:7px;box-shadow:0 0 7px rgba(199,69,55,.8);animation:blink 1.2s steps(2,start) infinite}
+.rec-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--red);margin-right:8px;vertical-align:1px;box-shadow:0 0 0 3px rgba(199,69,55,.14);animation:blink 1.2s steps(2,start) infinite}
 
 /* --- tracklist --- */
-.tl-wrap{position:relative;max-width:860px;margin:0 auto}
-.tracklist-card{transform:rotate(-.5deg);padding:34px 36px 30px}
+.tracklist{padding:8px 28px 14px}
 .tl-head{
   display:flex;justify-content:space-between;align-items:baseline;gap:14px;
-  border-bottom:3px solid var(--ink);padding-bottom:10px;margin-bottom:8px;flex-wrap:wrap;
+  padding:16px 0 14px;border-bottom:1px solid var(--line-2);flex-wrap:wrap;
 }
-.tl-head .shout{font-size:30px;color:var(--ink)}
-.tl-head .marker{font-size:16px;color:var(--red);transform:rotate(-1deg)}
-.track{display:flex;align-items:baseline;gap:12px;padding:9px 0;border-bottom:1px solid rgba(24,18,6,.16)}
+.tl-head .name{font-family:var(--serif);font-size:22px;letter-spacing:-.01em}
+.tl-head .meta{font:500 12px/1 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.track{
+  display:grid;grid-template-columns:44px 1fr auto;align-items:baseline;gap:8px 16px;
+  padding:14px 0;border-bottom:1px solid var(--line);
+}
 .track:last-of-type{border-bottom:0}
-.track .no{font-family:var(--marker);font-size:14px;color:var(--red);min-width:30px}
-.track .t{font-family:var(--impact);font-size:16.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink);white-space:nowrap}
-.track .d{color:var(--ink-soft);font-size:11.5px;letter-spacing:.02em}
-.track .lead{flex:1;border-bottom:2px dotted rgba(24,18,6,.38);transform:translateY(-4px);min-width:24px}
-.track .spec{font:700 11.5px/1.4 var(--mono);color:var(--ink);white-space:nowrap;font-variant-numeric:tabular-nums}
+.track .no{font:600 12px/1.4 var(--mono);color:var(--green-deep)}
+.track .t{font-weight:600;font-size:15px;letter-spacing:-.01em;color:var(--ink)}
+.track .d{display:block;color:var(--muted);font-size:14px;margin-top:2px}
+.track .spec{font:500 12px/1.5 var(--mono);color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums;text-align:right}
 .tl-foot{
-  margin-top:16px;padding-top:12px;border-top:3px solid var(--ink);
+  margin-top:4px;padding:14px 0 6px;border-top:1px solid var(--line-2);
   display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;
-  font:700 10.5px/1.6 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-soft);
+  font:500 12px/1.6 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);
 }
+.tracklist--b{border-style:dashed;border-color:var(--line-2);background:transparent;box-shadow:none}
+.tracklist--b .track .t{color:var(--ink-2)}
+.tracklist--b .track .no{color:var(--muted)}
 
 /* --- hotkey contract --- */
-.contract{
-  max-width:760px;margin:0 auto;
-  background:linear-gradient(180deg,var(--panel2),var(--panel));
-  border:1px solid var(--line);border-radius:4px;
-  box-shadow:0 24px 44px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.05);
-  padding:10px 28px;
-}
-.hk-row{
-  display:flex;align-items:center;gap:18px;
-  padding:17px 0;border-bottom:1px dashed var(--line);
-}
+.contract{padding:6px 28px}
+.hk-row{display:flex;align-items:center;gap:22px;padding:18px 0;border-bottom:1px solid var(--line)}
 .hk-row:last-child{border-bottom:0}
-.hk-keys{display:flex;align-items:center;gap:7px;min-width:196px;flex-wrap:wrap}
-.hk-plus{color:var(--faint);font-weight:700}
-.hk-does{color:var(--dust);font-size:12.5px}
-.hk-does b{color:var(--cream)}
-.contract-note{
-  max-width:760px;margin:22px auto 0;text-align:center;
-  font-family:var(--marker);font-size:17px;color:var(--paper);transform:rotate(-.8deg);
-}
+.hk-keys{display:flex;align-items:center;gap:6px;min-width:200px;flex-wrap:wrap}
+.hk-does{color:var(--ink-2);font-size:15px}
+.hk-does b{font-weight:600;color:var(--ink)}
+.contract-note{margin:22px auto 0;text-align:center;font-size:15px;color:var(--muted);max-width:60ch}
 
 /* --- liner notes --- */
-.liner{
-  max-width:860px;margin:0 auto;
-  columns:2;column-gap:42px;
-  color:var(--dust);font-size:12px;line-height:1.85;
-}
-.liner p{break-inside:avoid;margin:0 0 16px;padding-left:16px;position:relative}
-.liner p::before{content:"▸";position:absolute;left:0;color:var(--paper)}
-.liner b{color:var(--cream);letter-spacing:.05em}
+.liner{display:grid;grid-template-columns:repeat(3,1fr);gap:36px 32px}
+.liner p{border-top:1px solid var(--line-2);padding-top:18px;color:var(--ink-2);font-size:15px;line-height:1.6}
+.liner b{display:block;font-weight:600;color:var(--ink);font-size:15px;margin-bottom:6px;letter-spacing:-.01em}
 
-/* --- side B / CTA --- */
-.sideb{text-align:center;padding-bottom:20px}
-.stamp{
-  display:inline-block;margin-top:8px;
-  font-family:var(--impact);font-size:clamp(26px,4.6vw,44px);text-transform:uppercase;letter-spacing:.05em;
-  color:var(--red-hot);border:5px solid var(--red-hot);border-radius:8px;
-  padding:12px 26px 8px;transform:rotate(-5deg);
-  mask-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='r'><feTurbulence type='fractalNoise' baseFrequency='0.16' numOctaves='3' stitchTiles='stitch'/><feColorMatrix type='matrix' values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .9 .22'/></filter><rect width='100%25' height='100%25' filter='url(%23r)'/></svg>");
-  -webkit-mask-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='r'><feTurbulence type='fractalNoise' baseFrequency='0.16' numOctaves='3' stitchTiles='stitch'/><feColorMatrix type='matrix' values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .9 .22'/></filter><rect width='100%25' height='100%25' filter='url(%23r)'/></svg>");
+/* --- roadmap chips / CTA --- */
+.chip-row{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:28px}
+.cta{
+  margin-top:104px;background:var(--surface-2);border:1px solid var(--line);border-radius:28px;
+  padding:72px 24px;text-align:center;
 }
-.sideb-copy{max-width:56ch;margin:26px auto 0;color:var(--dust)}
-.sideb-copy b{color:var(--cream)}
-.sideb .chips{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:26px}
-.dl-zone{margin-top:46px;text-align:center}
-.dl-row{display:flex;gap:18px;justify-content:center;align-items:center;flex-wrap:wrap}
-.btn-dl{
-  display:inline-block;
-  font:700 13px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;
-  color:var(--ink);background:var(--paper);
-  padding:15px 22px 13px;border:2px solid var(--ink);border-radius:2px;
-  box-shadow:3px 4px 0 rgba(0,0,0,.55);text-decoration:none;
-  transition:transform .12s ease,box-shadow .12s ease;
-}
-.btn-dl:hover{transform:translate(-1px,-1px);box-shadow:4px 5px 0 rgba(0,0,0,.55)}
-.btn-dl--primary{
-  position:relative;
-  font-family:var(--impact);font-weight:400;font-size:clamp(18px,2.6vw,23px);
-  letter-spacing:.07em;line-height:1;
-  padding:21px 36px 17px;border-width:3px;
-  transform:rotate(-1.2deg);
-  box-shadow:5px 7px 0 rgba(0,0,0,.55);
-}
-.btn-dl--primary:hover{transform:rotate(0deg) translate(-1px,-2px);box-shadow:7px 9px 0 rgba(0,0,0,.55)}
-.btn-dl--primary .tape-strip{width:68px;height:19px}
-.btn-dl--ghost{background:transparent;color:var(--dust);border-color:var(--line);box-shadow:none}
-.btn-dl--ghost:hover{color:var(--cream);border-color:var(--dust);transform:none;box-shadow:none}
-.dl-note{margin-top:14px;font:700 10px/1.7 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--faint)}
-/* side B roadmap — same J-card, opposite tilt, pencilled-in ink */
-.tracklist-card--b{transform:rotate(.6deg)}
-.tracklist-card--b .track .t{color:var(--ink-soft)}
-.roadmap-chips{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:34px}
+.cta .lead{max-width:56ch;margin:16px auto 0}
+.cta .btn-row{margin-top:30px}
 
 /* --- footer --- */
-footer{
-  margin-top:90px;border-top:1px solid var(--line);
-  padding:26px 0 34px;
-}
+footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
 .foot-inner{
   display:flex;justify-content:space-between;align-items:center;gap:18px;flex-wrap:wrap;
-  font:700 10px/1.7 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--faint);
+  font-size:13px;color:var(--muted);
 }
-.barcode{
-  width:120px;height:34px;flex:none;
-  background:repeating-linear-gradient(90deg,var(--cream) 0 2px,transparent 2px 4px,var(--cream) 4px 7px,transparent 7px 9px,var(--cream) 9px 10px,transparent 10px 14px);
-  opacity:.75;
-}
-.foot-tagline{color:var(--dust)}
+.foot-inner .mono{font:500 11.5px/1.6 var(--mono);letter-spacing:.08em;text-transform:uppercase}
+.foot-links{display:flex;gap:18px}
+.foot-links a:hover{color:var(--ink)}
 
 /* ---------- responsive ---------- */
-@media (max-width:900px){
-  .trio{grid-template-columns:1fr;max-width:520px;margin:0 auto}
-  .liner{columns:1}
+@media (max-width:960px){
+  .trio{grid-template-columns:1fr;max-width:560px;margin:0 auto}
+  .liner{grid-template-columns:1fr 1fr}
 }
-@media (max-width:640px){
-  .hero{padding-top:44px}
-  .deck-note{left:2px;top:-44px;font-size:16px}
-  .sticker-skull{width:56px;height:56px;right:-4px;top:-20px}
-  .sticker-advisory{right:0;bottom:-14px;transform:rotate(3deg) scale(.85)}
-  .tracklist-card{padding:24px 18px 22px}
-  .track .t{white-space:normal}
-  .track .d{display:none}
-  .hk-row{flex-direction:column;align-items:flex-start;gap:8px;padding:14px 0}
+@media (max-width:760px){
+  :root{--deckw:calc(100vw - 74px)}   /* wrap 24+24, stage 12+12, border 1+1 */
+  .nav-links{display:none}
+  .nav-inner{height:60px}
+  .hero{padding-top:60px}
+  .stage{padding:56px 12px 28px;border-radius:20px}
+  .deck-note{left:0;top:-48px;font-size:17px}
+  .liner{grid-template-columns:1fr;gap:26px}
+  .tracklist,.contract{padding-left:18px;padding-right:18px}
+  .track{grid-template-columns:36px 1fr}
+  .track .spec{grid-column:2;text-align:left}
+  .hk-row{flex-direction:column;align-items:flex-start;gap:10px;padding:16px 0}
   .hk-keys{min-width:0}
-  .contract{padding:6px 18px}
+  .cta{padding:56px 20px;border-radius:20px}
+  .sect{padding-top:80px}
 }
 @media (prefers-reduced-motion:reduce){
   html{scroll-behavior:auto}
-  .ribbon-track{animation:none}
+  .marquee-track{animation:none}
   .counter.rec .led,.rec-dot{animation:none}
   .reel img{transition:none!important}
   .cap img,.cap .recess,.speed-mark{transition:none!important}
+  .btn{transition:none}
 }
 </style>
 
-<div class="stage">
-<div class="wrap">
-
-  <!-- ======================= top bar ======================= -->
-  <div class="topbar">
-    <div class="brandline"><b>YAPPER</b> tape co. — recorded on a Mac, 2026</div>
-    <div class="chips">
-      <span class="pill pill--ghost"><b>platform</b>macOS 26+</span>
-      <span class="pill pill--ghost"><b>version</b>0.1.0 · side A</span>
-      <a class="pill" href="https://github.com/Chefy3x/Yapper/releases/latest/download/Yapper.dmg" style="text-decoration:none"><b>get</b>download ⬇</a>
+<!-- ======================= nav ======================= -->
+<nav class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="#top" aria-label="Yapper">
+      <svg viewBox="0 0 26 18" fill="none" aria-hidden="true">
+        <rect x="1" y="1" width="24" height="16" rx="3.5" stroke="#141412" stroke-width="2"/>
+        <circle cx="8.5" cy="9" r="3" stroke="#141412" stroke-width="2"/>
+        <circle cx="17.5" cy="9" r="3" stroke="#141412" stroke-width="2"/>
+        <path d="M6 15h14" stroke="#BAD951" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      Yapper
+    </a>
+    <div class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#shortcuts">Shortcuts</a>
+      <a href="#privacy">Privacy</a>
+      <a href="#roadmap">Roadmap</a>
+      <a href="https://github.com/Chefy3x/Yapper">GitHub</a>
+    </div>
+    <div class="nav-cta">
+      <a class="btn btn--primary btn--sm" href="https://github.com/Chefy3x/Yapper/releases/latest/download/Yapper.dmg">Download</a>
     </div>
   </div>
+</nav>
+
+<div id="top"></div>
+<div class="wrap">
 
   <!-- ======================= hero ======================= -->
   <header class="hero">
-    <span class="hero-eyebrow">a menu-bar tape deck for macOS</span>
-    <h1 class="shout"><span class="l1">Your AI won't</span><br><span class="l2">shut up.</span></h1>
-    <div class="hero-hook">good — <span class="strike">stop reading</span> &nbsp;start listening.</div>
-    <p class="hero-sub">Yapper reads <b>Claude, ChatGPT, Codex</b> — or anything you highlight — out loud
+    <span class="badge"><span class="tag">macOS</span>a menu-bar tape deck for macOS</span>
+    <h1><span class="l1">Your AI won't</span><br><span class="l2">shut up.</span></h1>
+    <div class="hero-hook">good — <span class="strike">stop reading</span> start listening.</div>
+    <p class="lead hero-sub">Yapper reads <b>Claude, ChatGPT, Codex</b> — or anything you highlight — out loud
     in a real voice. Tap <b>Right ⌘</b> and walk away: the answer follows you across the room
     while the screen stays where it belongs.</p>
 
-    <!-- the working deck -->
-    <div class="deck-zone">
-      <div class="deck-note" id="deckNote">this page talks —<br>press play
-        <svg width="46" height="34" viewBox="0 0 46 34" fill="none" aria-hidden="true">
-          <path d="M6 2 C 14 16, 26 24, 40 27" stroke="#ddc98b" stroke-width="2.6" stroke-linecap="round"/>
-          <path d="M32 28.5 L 41 27.6 L 35.5 20.5" stroke="#ddc98b" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-        </svg>
-      </div>
-
-      <div class="deck" id="deck" role="group" aria-label="Yapper cassette transport — plays a spoken tour of this page">
-        <img class="deck-img" src="__DECK__" alt="Yapper cassette deck — a black lo-fi tape player with a hand-labeled YAPPER cassette" draggable="false">
-        <div class="reel reel--l"><div class="backing"></div><img id="reelL" src="__REELL__" alt="" draggable="false"></div>
-        <div class="reel reel--r"><div class="backing"></div><img id="reelR" src="__REELR__" alt="" draggable="false"></div>
-        <div class="cap" data-i="0"><span class="recess"></span><img src="__CAPREW__"  alt="" draggable="false"></div>
-        <div class="cap" data-i="1"><span class="recess"></span><img src="__CAPPLAY__" alt="" draggable="false"></div>
-        <div class="cap" data-i="2"><span class="recess"></span><img src="__CAPSTOP__" alt="" draggable="false"></div>
-        <div class="cap" data-i="3"><span class="recess"></span><img src="__CAPFF__"   alt="" draggable="false"></div>
-        <div class="cap" data-i="4"><span class="recess"></span><img src="__CAPREC__"  alt="" draggable="false"></div>
-        <button class="hot" data-i="0" aria-label="Rewind — previous track"    title="Rewind — previous track"></button>
-        <button class="hot" data-i="1" aria-label="Play / pause"               title="Play / pause"></button>
-        <button class="hot" data-i="2" aria-label="Stop"                       title="Stop"></button>
-        <button class="hot" data-i="3" aria-label="Fast-forward — next track"  title="Fast-forward — next track"></button>
-        <button class="hot" data-i="4" aria-label="Record — conversation mode" title="REC — conversation mode"></button>
-        <button class="speed-mark" id="speedMark" aria-label="Cycle playback speed" title="Playback speed">1×</button>
-      </div>
-
-      <div class="sticker-advisory advisory"><b>AI Advisory</b><i>synthetic voices</i></div>
+    <div class="btn-row" id="download">
+      <a class="btn btn--primary" href="https://github.com/Chefy3x/Yapper/releases/latest/download/Yapper.dmg">
+        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 2v8m0 0L4.5 6.5M8 10l3.5-3.5M3 13h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Download for macOS
+      </a>
+      <a class="btn btn--secondary" href="https://github.com/Chefy3x/Yapper">Source on GitHub</a>
     </div>
+    <p class="fineprint">Free &amp; open source · macOS 13+ · Apple silicon &amp; Intel · notarized by Apple</p>
 
-    <div class="counter" id="counter" aria-live="polite"><span class="led"></span><span class="txt" id="counterTxt">TRK 1/9 · ■ STOPPED — PRESS ▶</span></div>
-    <p class="deck-caption">in the app, REW/FF seek ±10 s — here they skip tracks. artistic license.<br>
-    yes, that's the real voice: ElevenLabs River, the preset Yapper ships. no network? your browser's voice steps in.</p>
+    <!-- the working deck -->
+    <div class="stage">
+      <div class="deck-zone">
+        <div class="deck-note" id="deckNote">this page talks —<br>press play
+          <svg width="46" height="34" viewBox="0 0 46 34" fill="none" aria-hidden="true">
+            <path d="M6 2 C 14 16, 26 24, 40 27" stroke="#141412" stroke-width="2.4" stroke-linecap="round"/>
+            <path d="M32 28.5 L 41 27.6 L 35.5 20.5" stroke="#141412" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          </svg>
+        </div>
+
+        <div class="deck" id="deck" role="group" aria-label="Yapper cassette transport — plays a spoken tour of this page">
+          <img class="deck-img" src="__DECK__" alt="Yapper cassette deck — a black lo-fi tape player with a hand-labeled YAPPER cassette" draggable="false">
+          <div class="reel reel--l"><div class="backing"></div><img id="reelL" src="__REELL__" alt="" draggable="false"></div>
+          <div class="reel reel--r"><div class="backing"></div><img id="reelR" src="__REELR__" alt="" draggable="false"></div>
+          <div class="cap" data-i="0"><span class="recess"></span><img src="__CAPREW__"  alt="" draggable="false"></div>
+          <div class="cap" data-i="1"><span class="recess"></span><img src="__CAPPLAY__" alt="" draggable="false"></div>
+          <div class="cap" data-i="2"><span class="recess"></span><img src="__CAPSTOP__" alt="" draggable="false"></div>
+          <div class="cap" data-i="3"><span class="recess"></span><img src="__CAPFF__"   alt="" draggable="false"></div>
+          <div class="cap" data-i="4"><span class="recess"></span><img src="__CAPREC__"  alt="" draggable="false"></div>
+          <button class="hot" data-i="0" aria-label="Rewind — previous track"    title="Rewind — previous track"></button>
+          <button class="hot" data-i="1" aria-label="Play / pause"               title="Play / pause"></button>
+          <button class="hot" data-i="2" aria-label="Stop"                       title="Stop"></button>
+          <button class="hot" data-i="3" aria-label="Fast-forward — next track"  title="Fast-forward — next track"></button>
+          <button class="hot" data-i="4" aria-label="Record — conversation mode" title="REC — conversation mode"></button>
+          <button class="speed-mark" id="speedMark" aria-label="Cycle playback speed" title="Playback speed">1×</button>
+        </div>
+      </div>
+
+      <div class="counter" id="counter" aria-live="polite"><span class="led"></span><span class="txt" id="counterTxt">TRK 1/9 · ■ STOPPED — PRESS ▶</span></div>
+      <p class="deck-caption">In the app, REW/FF seek ±10 s — here they skip tracks. Artistic license.<br>
+      Yes, that's the real voice: ElevenLabs River, the preset Yapper ships. No network? Your browser's voice steps in.</p>
+    </div>
 
     <div class="hero-chips">
       <span class="pill"><b>engine</b>ElevenLabs</span>
       <span class="pill"><b>offline</b>built-in fallback</span>
       <span class="pill"><b>code blocks</b>never read</span>
     </div>
-
-    <div class="dl-zone" id="download">
-      <div class="dl-row">
-        <a class="btn-dl btn-dl--primary" href="https://github.com/Chefy3x/Yapper/releases/latest/download/Yapper.dmg">
-          <span class="tape-strip" style="top:-10px;left:-18px;transform:rotate(-45deg)"></span>
-          <span class="tape-strip" style="bottom:-9px;right:-18px;transform:rotate(-45deg)"></span>
-          ⬇ Download for macOS
-        </a>
-        <a class="btn-dl btn-dl--ghost" href="https://github.com/Chefy3x/Yapper">Source on GitHub</a>
-      </div>
-      <p class="dl-note">free &amp; open source · macOS 26+ · Apple silicon · notarized by Apple</p>
-    </div>
   </header>
 </div>
 
-<!-- ======================= ribbon ======================= -->
-<div class="ribbon" aria-hidden="true">
-  <div class="ribbon-track" id="ribbonTrack">
+<!-- ======================= marquee ======================= -->
+<div class="marquee" aria-hidden="true">
+  <div class="marquee-track" id="ribbonTrack">
     <span>voice in<b>◦</b>voice out<b>◦</b>reads Claude<b>◦</b>reads ChatGPT<b>◦</b>reads Codex<b>◦</b>reads whatever you highlight<b>◦</b>no cloud middleman<b>◦</b>pauses like a walkman<b>◦</b></span><span>voice in<b>◦</b>voice out<b>◦</b>reads Claude<b>◦</b>reads ChatGPT<b>◦</b>reads Codex<b>◦</b>reads whatever you highlight<b>◦</b>no cloud middleman<b>◦</b>pauses like a walkman<b>◦</b></span>
   </div>
 </div>
@@ -568,33 +513,30 @@ footer{
 <div class="wrap">
 
   <!-- ======================= big three ======================= -->
-  <section class="sect">
+  <section class="sect" id="features">
     <div class="sect-head">
-      <span class="sect-eyebrow">what's on the tape</span>
-      <h2 class="shout sect-title">Three moves. That's the manual.</h2>
+      <span class="eyebrow">what's on the tape</span>
+      <h2>Three moves. That's the manual.</h2>
     </div>
     <div class="trio">
-      <div class="paper-card">
-        <span class="tape-strip" style="top:-12px;left:22px;transform:rotate(-5deg)"></span>
-        <div class="card-combo"><kbd>Right ⌘</kbd><span class="hk-plus marker" style="color:var(--red)">tap</span></div>
-        <h3 class="shout card-title">Read latest</h3>
+      <div class="card">
+        <div class="card-combo"><kbd>Right ⌘</kbd><span class="plus">tap</span></div>
+        <h3>Read latest</h3>
         <p class="card-body">One tap pulls the newest reply out of the focused chat and starts talking.
         Tap again to pause, again to resume. Double-tap to force-read whatever chat is in front —
         it supersedes anything already playing.</p>
         <div class="card-tag">works while you make coffee</div>
       </div>
-      <div class="paper-card">
-        <span class="tape-strip" style="top:-12px;right:26px;transform:rotate(4deg)"></span>
-        <div class="card-combo"><kbd>Right ⌘</kbd><span class="hk-plus">+</span><kbd>S</kbd></div>
-        <h3 class="shout card-title">Read selection</h3>
+      <div class="card">
+        <div class="card-combo"><kbd>Right ⌘</kbd><span class="plus">+</span><kbd>S</kbd></div>
+        <h3>Read selection</h3>
         <p class="card-body">Highlight anything, anywhere — an email, a doc, a 40-page changelog —
         and it's audio. Works in any app that can select text, browsers and terminals included.</p>
         <div class="card-tag">every article is a podcast now</div>
       </div>
-      <div class="paper-card">
-        <span class="tape-strip" style="top:-12px;left:38%;transform:rotate(-3deg)"></span>
-        <div class="card-combo"><kbd>Right ⌘</kbd><span class="hk-plus">+</span><kbd>⏎</kbd></div>
-        <h3 class="shout card-title"><span class="rec-dot"></span>Conversation mode</h3>
+      <div class="card">
+        <div class="card-combo"><kbd>Right ⌘</kbd><span class="plus">+</span><kbd>⏎</kbd></div>
+        <h3><span class="rec-dot"></span>Conversation mode</h3>
         <p class="card-body">Press REC and every new AI reply auto-plays the moment it finishes
         generating. Replies queue in order and never talk over each other; skip ahead with
         <b>Right ⌘ + →</b>. Toggle off, the queue clears.</p>
@@ -605,151 +547,136 @@ footer{
 
   <!-- ======================= tracklist ======================= -->
   <section class="sect">
-    <div class="sect-head" style="text-align:center">
-      <span class="sect-eyebrow">liner notes</span>
-      <h2 class="shout sect-title">Side A — full track list</h2>
+    <div class="sect-head center">
+      <span class="eyebrow">liner notes</span>
+      <h2>Side A — full track list</h2>
     </div>
-    <div class="tl-wrap">
-      <svg class="sticker-skull" viewBox="0 0 80 80" aria-hidden="true">
-        <circle cx="40" cy="40" r="37" fill="#a8c636"/>
-        <circle cx="40" cy="40" r="37" fill="none" stroke="#7f9722" stroke-width="2"/>
-        <path d="M40 18c-11 0-18 7.5-18 17 0 6 3 10 7 12v7c0 2 1.5 3.5 3.5 3.5h15c2 0 3.5-1.5 3.5-3.5v-7c4-2 7-6 7-12 0-9.5-7-17-18-17z" fill="#141406"/>
-        <circle cx="32" cy="36" r="5" fill="#a8c636"/>
-        <circle cx="48" cy="36" r="5" fill="#a8c636"/>
-        <path d="M40 42l-3 6h6z" fill="#a8c636"/>
-        <rect x="34" y="52" width="3" height="5" rx="1" fill="#a8c636"/>
-        <rect x="39" y="52" width="3" height="5" rx="1" fill="#a8c636"/>
-        <rect x="44" y="52" width="3" height="5" rx="1" fill="#a8c636"/>
-      </svg>
-      <div class="paper-card tracklist-card">
-      <div class="tl-head">
-        <span class="shout">YAPPER · C-90</span>
-        <span class="marker">rec: '26 · mix 1 · lo-fi</span>
-      </div>
-      <div class="track"><span class="no">A1</span><span class="t">Real voices</span><span class="d">ElevenLabs Flash v2.5 &amp; Multilingual v2 — presets or any voice ID you own</span><span class="lead"></span><span class="spec">~75 ms to first sound</span></div>
-      <div class="track"><span class="no">A2</span><span class="t">Sentence streaming</span><span class="d">first sentence synthesized alone, the rest batched behind it</span><span class="lead"></span><span class="spec">talks before it's done thinking</span></div>
-      <div class="track"><span class="no">A3</span><span class="t">Markdown cleanup</span><span class="d">headers, lists, links stripped to prose; paragraph pauses kept</span><span class="lead"></span><span class="spec">prose in, prose out</span></div>
-      <div class="track"><span class="no">A4</span><span class="t">Code block skip</span><span class="d">fenced code is never read, never announced</span><span class="lead"></span><span class="spec">silence &gt; syntax</span></div>
-      <div class="track"><span class="no">A5</span><span class="t">The scrubber</span><span class="d">seek anywhere in a read; transport nudges ±10 s</span><span class="lead"></span><span class="spec">re-hear that one sentence</span></div>
-      <div class="track"><span class="no">A6</span><span class="t">Speed</span><span class="d">cycle the marking printed on the shell — hover the tape, it's under C-90</span><span class="lead"></span><span class="spec">1× → 2×</span></div>
-      <div class="track"><span class="no">A7</span><span class="t">History</span><span class="d">every read replayable from cached audio, re-synthesized if it expired</span><span class="lead"></span><span class="spec">1 h – 7 d, then the tape burns</span></div>
-      <div class="track"><span class="no">A8</span><span class="t">Two shells</span><span class="d">Minimal floating bar, or the cassette you're looking at</span><span class="lead"></span><span class="spec">same engine, your call</span></div>
-      <div class="track"><span class="no">A9</span><span class="t">Offline fallback</span><span class="d">network dies mid-sentence? the built-in macOS voice takes the mic</span><span class="lead"></span><span class="spec">never fails silent</span></div>
-      <div class="track"><span class="no">A10</span><span class="t">Menu bar home</span><span class="d">a waveform that only moves when something's speaking</span><span class="lead"></span><span class="spec">no dock icon, no clutter</span></div>
-      <div class="tl-foot">
-        <span>total running time: your whole workday</span>
-        <span>recorded live · no overdubs</span>
-      </div>
+    <div class="wrap--narrow" style="padding:0">
+      <div class="card tracklist">
+        <div class="tl-head">
+          <span class="name">YAPPER · C-90</span>
+          <span class="meta">rec: '26 · mix 1 · lo-fi</span>
+        </div>
+        <div class="track"><span class="no">A1</span><span><span class="t">Real voices</span><span class="d">ElevenLabs Flash v2.5 &amp; Multilingual v2 — presets or any voice ID you own</span></span><span class="spec">~75 ms to first sound</span></div>
+        <div class="track"><span class="no">A2</span><span><span class="t">Sentence streaming</span><span class="d">first sentence synthesized alone, the rest batched behind it</span></span><span class="spec">talks before it's done thinking</span></div>
+        <div class="track"><span class="no">A3</span><span><span class="t">Markdown cleanup</span><span class="d">headers, lists, links stripped to prose; paragraph pauses kept</span></span><span class="spec">prose in, prose out</span></div>
+        <div class="track"><span class="no">A4</span><span><span class="t">Code block skip</span><span class="d">fenced code is never read, never announced</span></span><span class="spec">silence &gt; syntax</span></div>
+        <div class="track"><span class="no">A5</span><span><span class="t">The scrubber</span><span class="d">seek anywhere in a read; transport nudges ±10 s</span></span><span class="spec">re-hear that one sentence</span></div>
+        <div class="track"><span class="no">A6</span><span><span class="t">Speed</span><span class="d">cycle the marking printed on the shell — hover the tape, it's under C-90</span></span><span class="spec">1× → 2×</span></div>
+        <div class="track"><span class="no">A7</span><span><span class="t">History</span><span class="d">every read replayable from cached audio, re-synthesized if it expired</span></span><span class="spec">1 h – 7 d, then the tape burns</span></div>
+        <div class="track"><span class="no">A8</span><span><span class="t">Two shells</span><span class="d">Minimal floating bar, or the cassette you're looking at</span></span><span class="spec">same engine, your call</span></div>
+        <div class="track"><span class="no">A9</span><span><span class="t">Offline fallback</span><span class="d">network dies mid-sentence? the built-in macOS voice takes the mic</span></span><span class="spec">never fails silent</span></div>
+        <div class="track"><span class="no">A10</span><span><span class="t">Menu bar home</span><span class="d">a waveform that only moves when something's speaking</span></span><span class="spec">no dock icon, no clutter</span></div>
+        <div class="tl-foot">
+          <span>total running time: your whole workday</span>
+          <span>recorded live · no overdubs</span>
+        </div>
       </div>
     </div>
   </section>
 
   <!-- ======================= hotkey contract ======================= -->
-  <section class="sect">
-    <div class="sect-head" style="text-align:center">
-      <span class="sect-eyebrow">the right ⌘ contract</span>
-      <h2 class="shout sect-title">One key. Five moves.</h2>
-      <p class="sect-kicker" style="margin-left:auto;margin-right:auto">The right Command key — the one your thumb already rests on.
+  <section class="sect" id="shortcuts">
+    <div class="sect-head center">
+      <span class="eyebrow">the right ⌘ contract</span>
+      <h2>One key. Five moves.</h2>
+      <p class="lead">The right Command key — the one your thumb already rests on.
       No two-hand chords, no collisions with app shortcuts.</p>
     </div>
-    <div class="contract">
-      <div class="hk-row"><span class="hk-keys"><kbd>Right ⌘</kbd></span><span class="hk-does"><b>Read latest</b> — or pause / resume whatever's playing</span></div>
-      <div class="hk-row"><span class="hk-keys"><kbd>Right ⌘</kbd><span class="hk-plus">×2</span></span><span class="hk-does"><b>Force-read</b> the focused chat, superseding current audio</span></div>
-      <div class="hk-row"><span class="hk-keys"><kbd>Right ⌘</kbd><span class="hk-plus">+</span><kbd>S</kbd></span><span class="hk-does"><b>Read selection</b> — any highlighted text, any app</span></div>
-      <div class="hk-row"><span class="hk-keys"><kbd>Right ⌘</kbd><span class="hk-plus">+</span><kbd>⏎</kbd></span><span class="hk-does"><b>Conversation Mode</b> on / off</span></div>
-      <div class="hk-row"><span class="hk-keys"><kbd>Right ⌘</kbd><span class="hk-plus">+</span><kbd>→</kbd></span><span class="hk-does"><b>Skip</b> to the next queued reply</span></div>
+    <div class="wrap--narrow" style="padding:0">
+      <div class="card contract">
+        <div class="hk-row"><span class="hk-keys"><kbd>Right ⌘</kbd></span><span class="hk-does"><b>Read latest</b> — or pause / resume whatever's playing</span></div>
+        <div class="hk-row"><span class="hk-keys"><kbd>Right ⌘</kbd><span class="plus">×2</span></span><span class="hk-does"><b>Force-read</b> the focused chat, superseding current audio</span></div>
+        <div class="hk-row"><span class="hk-keys"><kbd>Right ⌘</kbd><span class="plus">+</span><kbd>S</kbd></span><span class="hk-does"><b>Read selection</b> — any highlighted text, any app</span></div>
+        <div class="hk-row"><span class="hk-keys"><kbd>Right ⌘</kbd><span class="plus">+</span><kbd>⏎</kbd></span><span class="hk-does"><b>Conversation Mode</b> on / off</span></div>
+        <div class="hk-row"><span class="hk-keys"><kbd>Right ⌘</kbd><span class="plus">+</span><kbd>→</kbd></span><span class="hk-does"><b>Skip</b> to the next queued reply</span></div>
+      </div>
     </div>
-    <p class="contract-note">hold it and click, type, ⌘-tab, whatever — it's still a normal command key.
-    everything passes straight through.</p>
+    <p class="contract-note">Hold it and click, type, ⌘-tab, whatever — it's still a normal command key.
+    Everything passes straight through.</p>
   </section>
 
   <!-- ======================= liner notes / fine print ======================= -->
-  <section class="sect">
-    <div class="sect-head" style="text-align:center">
-      <span class="sect-eyebrow">the fine print</span>
-      <h2 class="shout sect-title">Recorded locally.</h2>
+  <section class="sect" id="privacy">
+    <div class="sect-head">
+      <span class="eyebrow">the fine print</span>
+      <h2>Recorded locally.</h2>
     </div>
     <div class="liner">
-      <p><b>NO CLOUD MIDDLEMAN.</b> Your ElevenLabs key lives in the macOS Keychain. The only thing that
+      <p><b>No cloud middleman.</b> Your ElevenLabs key lives in the macOS Keychain. The only thing that
       ever leaves the machine is the cleaned text, sent straight to ElevenLabs with your key. No relay
       server, no accounts, no telemetry.</p>
-      <p><b>YOUR WORDS EXPIRE.</b> Spoken text exists only in local history — purged on your schedule,
+      <p><b>Your words expire.</b> Spoken text exists only in local history — purged on your schedule,
       one hour to seven days, enforced hourly. No other transcript ever touches the disk.</p>
-      <p><b>CLIPBOARD SACRED.</b> Conversation Mode captures a reply by pressing the app's own Copy
+      <p><b>Clipboard sacred.</b> Conversation Mode captures a reply by pressing the app's own Copy
       button, then restores your clipboard byte-for-byte — images and files included.</p>
-      <p><b>NO TRUNCATED TAPES.</b> Audio is published to the cache only when complete. A stopped or
+      <p><b>No truncated tapes.</b> Audio is published to the cache only when complete. A stopped or
       failed read can never come back to haunt a replay.</p>
-      <p><b>ONE PERMISSION, ONCE.</b> Yapper asks for macOS Accessibility so it can see the chat on your
+      <p><b>One permission, once.</b> Yapper asks for macOS Accessibility so it can see the chat on your
       screen — granted once, live immediately, no relaunch.</p>
-      <p><b>41 TESTS STAND GUARD.</b> The markdown cleaner, sentence segmentation, the conversation state
+      <p><b>41 tests stand guard.</b> The markdown cleaner, sentence segmentation, the conversation state
       machine, and history retention are all pinned down by a logic suite that runs on every build.</p>
     </div>
   </section>
 
   <!-- ======================= side B ======================= -->
-  <section class="sect">
-    <div class="sect-head" style="text-align:center">
-      <span class="sect-eyebrow" style="font-size:22px">side B</span>
-      <h2 class="shout sect-title">Not yet recorded.</h2>
-      <p class="sect-kicker" style="margin-left:auto;margin-right:auto">The pencil side of the J-card.
+  <section class="sect" id="roadmap">
+    <div class="sect-head center">
+      <span class="eyebrow">side B</span>
+      <h2>Not yet recorded.</h2>
+      <p class="lead">The pencil side of the J-card.
       Tracks get cut in the order they earn it — no dates, no promises, updates arrive on their own.</p>
     </div>
-    <div class="tl-wrap">
-      <div class="paper-card tracklist-card tracklist-card--b">
-      <div class="tl-head">
-        <span class="shout">YAPPER · C-90 · SIDE B</span>
-        <span class="marker">rec: TBD · demos only</span>
-      </div>
-      <div class="track"><span class="no">B1</span><span class="t">Headphone buttons</span><span class="d">your AirPods' pause button, wired straight to the tape</span><span class="lead"></span><span class="spec">pause from the couch</span></div>
-      <div class="track"><span class="no">B2</span><span class="t">Sentence skip</span><span class="d">step back one sentence, not ten seconds</span><span class="lead"></span><span class="spec">±1 sentence</span></div>
-      <div class="track"><span class="no">B3</span><span class="t">History search</span><span class="d">type three words, find the reply</span><span class="lead"></span><span class="spec">grep for the tape</span></div>
-      <div class="track"><span class="no">B4</span><span class="t">Rebindable hotkeys</span><span class="d">the Right ⌘ contract, remappable — if demand shows up</span><span class="lead"></span><span class="spec">your key, your rules</span></div>
-      <div class="track"><span class="no">B5</span><span class="t">Third voice tier</span><span class="d">OpenAI TTS slotted between ElevenLabs and the Mac voice</span><span class="lead"></span><span class="spec">three voices deep</span></div>
-      <div class="track"><span class="no">B6</span><span class="t">Sleep manners</span><span class="d">lid closes, tape pauses; wake up, it resumes</span><span class="lead"></span><span class="spec">naps politely</span></div>
-      <div class="track"><span class="no">B7</span><span class="t">Voice in</span><span class="d">talk back — the other half of the loop</span><span class="lead"></span><span class="spec">voice in · voice out</span></div>
-      <div class="tl-foot">
-        <span>total running time: unknown</span>
-        <span>pencilled in · order may shuffle</span>
-      </div>
+    <div class="wrap--narrow" style="padding:0">
+      <div class="card tracklist tracklist--b">
+        <div class="tl-head">
+          <span class="name">YAPPER · C-90 · SIDE B</span>
+          <span class="meta">rec: TBD · demos only</span>
+        </div>
+        <div class="track"><span class="no">B1</span><span><span class="t">Headphone buttons</span><span class="d">your AirPods' pause button, wired straight to the tape</span></span><span class="spec">pause from the couch</span></div>
+        <div class="track"><span class="no">B2</span><span><span class="t">Sentence skip</span><span class="d">step back one sentence, not ten seconds</span></span><span class="spec">±1 sentence</span></div>
+        <div class="track"><span class="no">B3</span><span><span class="t">History search</span><span class="d">type three words, find the reply</span></span><span class="spec">grep for the tape</span></div>
+        <div class="track"><span class="no">B4</span><span><span class="t">Rebindable hotkeys</span><span class="d">the Right ⌘ contract, remappable — if demand shows up</span></span><span class="spec">your key, your rules</span></div>
+        <div class="track"><span class="no">B5</span><span><span class="t">Third voice tier</span><span class="d">OpenAI TTS slotted between ElevenLabs and the Mac voice</span></span><span class="spec">three voices deep</span></div>
+        <div class="track"><span class="no">B6</span><span><span class="t">Sleep manners</span><span class="d">lid closes, tape pauses; wake up, it resumes</span></span><span class="spec">naps politely</span></div>
+        <div class="track"><span class="no">B7</span><span><span class="t">Voice in</span><span class="d">talk back — the other half of the loop</span></span><span class="spec">voice in · voice out</span></div>
+        <div class="tl-foot">
+          <span>total running time: unknown</span>
+          <span>pencilled in · order may shuffle</span>
+        </div>
       </div>
     </div>
-    <div class="roadmap-chips">
-      <span class="chip">an independent production</span>
-      <span class="chip chip--ghost">reads aloud · stays out of your way</span>
+    <div class="chip-row">
+      <span class="pill">an independent production</span>
+      <span class="pill">reads aloud · stays out of your way</span>
     </div>
   </section>
 
   <!-- ======================= bottom CTA ======================= -->
-  <section class="sect">
-    <div class="sect-head" style="text-align:center">
-      <span class="sect-eyebrow">end of the reel</span>
-      <h2 class="shout sect-title">Take the tape home.</h2>
+  <section class="cta">
+    <span class="eyebrow">end of the reel</span>
+    <h2>Take the tape home.</h2>
+    <p class="lead">Free and open source. One download, one permission, and your AI starts talking.</p>
+    <div class="btn-row">
+      <a class="btn btn--primary" href="https://github.com/Chefy3x/Yapper/releases/latest/download/Yapper.dmg">
+        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 2v8m0 0L4.5 6.5M8 10l3.5-3.5M3 13h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Download for macOS
+      </a>
+      <a class="btn btn--secondary" href="https://github.com/Chefy3x/Yapper">Source on GitHub</a>
     </div>
-    <div class="dl-zone" style="margin-top:0">
-      <div class="dl-row">
-        <a class="btn-dl btn-dl--primary" href="https://github.com/Chefy3x/Yapper/releases/latest/download/Yapper.dmg">
-          <span class="tape-strip" style="top:-10px;left:-18px;transform:rotate(-45deg)"></span>
-          <span class="tape-strip" style="bottom:-9px;right:-18px;transform:rotate(-45deg)"></span>
-          ⬇ Download for macOS
-        </a>
-        <a class="btn-dl btn-dl--ghost" href="https://github.com/Chefy3x/Yapper">Source on GitHub</a>
-      </div>
-      <p class="dl-note">free &amp; open source · macOS 26+ · Apple silicon · notarized by Apple</p>
-    </div>
+    <p class="fineprint">Free &amp; open source · macOS 13+ · Apple silicon &amp; Intel · notarized by Apple</p>
   </section>
 
   <!-- ======================= footer ======================= -->
   <footer>
     <div class="foot-inner">
-      <span>YAPPER · C-90 · POSITION A</span>
-      <span class="foot-tagline">© 2026 Yapper · made for macOS · this page contains no cloud</span>
-      <span class="barcode" aria-hidden="true"></span>
+      <span class="mono">YAPPER · C-90 · POSITION A</span>
+      <span>© 2026 Yapper · made for macOS · this page contains no cloud</span>
+      <span class="foot-links"><a href="https://github.com/Chefy3x/Yapper">GitHub</a><a href="https://github.com/Chefy3x/Yapper/releases">Releases</a></span>
     </div>
   </footer>
 
 </div>
-</div>
-
 <script>
 (function(){
   "use strict";
