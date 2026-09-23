@@ -231,8 +231,14 @@ final class MiniPlayerController: NSObject {
 
         hideTranscript()
 
-        let size = transcriptSize(for: parent)
-        let p = NSPanel(contentRect: NSRect(origin: .zero, size: size),
+        // Place the card against the player's body, then wrap the panel around it with the notes'
+        // shadow margin, so the margin never shifts the card.
+        let placement = transcriptPlacement(for: parent)
+        let m = TranscriptView.shadowMargin
+        let frame = NSRect(x: placement.card.minX - m.leading, y: placement.card.minY - m.bottom,
+                           width: placement.card.width + m.leading + m.trailing,
+                           height: placement.card.height + m.top + m.bottom)
+        let p = NSPanel(contentRect: NSRect(origin: .zero, size: frame.size),
                         styleMask: [.borderless, .nonactivatingPanel, .fullSizeContentView],
                         backing: .buffered, defer: false)
         p.isOpaque = false
@@ -244,14 +250,21 @@ final class MiniPlayerController: NSObject {
         p.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
 
         let hosting = FirstMouseHostingView(rootView: content)
-        hosting.frame = NSRect(origin: .zero, size: size)
+        hosting.frame = NSRect(origin: .zero, size: frame.size)
         hosting.autoresizingMask = [.width, .height]
         p.contentView = hosting
 
-        p.setFrameOrigin(transcriptOrigin(for: parent, size: size))
-        parent.addChildWindow(p, ordered: .above)
+        p.setFrameOrigin(frame.origin)
+        // A shadow margin takes clicks wherever it isn't fully clear, so where one panel's margin
+        // overlaps the other's body, the one underneath loses those clicks. Stack on top the panel
+        // whose margin reaches less far across the gap. Both cast downward: above the player, the
+        // notes go underneath, so the player never loses a control and the deck art never takes
+        // their shadow. Below the Minimal card, whose bottom margin is its deepest, they go on top.
+        let notesReach = placement.below ? m.top : m.bottom
+        let playerReach = placement.below ? bodyInsets.bottom : bodyInsets.top
+        let stacking: NSWindow.OrderingMode = playerReach > notesReach ? .above : .below
         p.alphaValue = 0
-        p.orderFrontRegardless()
+        parent.addChildWindow(p, ordered: stacking)      // also orders it in
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.15
             p.animator().alphaValue = 1
@@ -274,27 +287,25 @@ final class MiniPlayerController: NSObject {
                       height: parent.frame.height - i.top - i.bottom)
     }
 
-    private func transcriptSize(for parent: NSPanel) -> NSSize {
-        // Track the deck's width so the pair reads as one object, within sane reading limits.
-        let w = min(max(playerBody(of: parent).width, 300), 520)
-        let screenH = (parent.screen ?? NSScreen.main)?.visibleFrame.height ?? 800
-        return NSSize(width: w, height: min(380, max(220, screenH * 0.4)))
-    }
-
-    /// Sits above the player, left-aligned with it; flips below when there's no headroom, and is
-    /// clamped on-screen either way.
-    private func transcriptOrigin(for parent: NSPanel, size: NSSize) -> NSPoint {
+    /// The notes card (not its panel): sits above the player, left-aligned with its body; flips
+    /// below when there's no headroom, and is clamped on-screen either way. Its shadow margin may
+    /// overhang the screen edge, like the player's.
+    private func transcriptPlacement(for parent: NSPanel) -> (card: NSRect, below: Bool) {
         let gap: CGFloat = 8
         let body = playerBody(of: parent)
         let visible = (parent.screen ?? NSScreen.main)?.visibleFrame
             ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        // Track the deck's width so the pair reads as one object, within sane reading limits.
+        let size = NSSize(width: min(max(body.width, 300), 520),
+                          height: min(380, max(220, visible.height * 0.4)))
         var y = body.maxY + gap
-        if y + size.height > visible.maxY {
+        let below = y + size.height > visible.maxY
+        if below {
             y = body.minY - gap - size.height
         }
         y = min(max(y, visible.minY), max(visible.maxY - size.height, visible.minY))
         let x = min(max(body.minX, visible.minX), max(visible.maxX - size.width, visible.minX))
-        return NSPoint(x: x, y: y)
+        return (NSRect(x: x, y: y, width: size.width, height: size.height), below)
     }
 
     private func ensurePanel(with content: AnyView) {

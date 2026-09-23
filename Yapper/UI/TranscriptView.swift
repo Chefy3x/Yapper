@@ -19,6 +19,20 @@ struct TranscriptView: View {
     @State private var following = true
     @State private var hoveredID: Int? = nil
 
+    private static let shadowRadius: CGFloat = 12
+    private static let shadowY: CGFloat = 6
+    private static let shadowOpacity = 0.45
+    /// Transparent border around the card that the drop shadow draws into. It is part of the
+    /// view's own size so the panel includes it — a panel cut to the card clips the shadow away.
+    /// SwiftUI's shadow radius behaves like a Gaussian σ; at this darker opacity the shadow needs
+    /// ~2.2σ past its offset to fade under 2/255 (the player's 0.25 gets there by 1.9σ). Every
+    /// pixel of the margin that isn't fully clear takes clicks, which is why the radius is 12 and
+    /// not a wider 18: that would need a 40pt border.
+    static let shadowMargin: EdgeInsets = {
+        let reach = (shadowRadius * 2.2).rounded(.up)
+        return EdgeInsets(top: reach - shadowY, leading: reach, bottom: reach + shadowY, trailing: reach)
+    }()
+
     private var currentID: Int? {
         streamer.transcript.first { $0.contains(streamer.currentTime) }?.id
             ?? streamer.transcript.last { $0.start <= streamer.currentTime }?.id
@@ -37,7 +51,11 @@ struct TranscriptView: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .strokeBorder(Tape.line, lineWidth: 1)
         )
-        .shadow(color: .black.opacity(0.45), radius: 18, y: 8)
+        // Flatten first so the card casts one shadow — otherwise every line of text casts its own
+        // onto the notes.
+        .compositingGroup()
+        .shadow(color: .black.opacity(Self.shadowOpacity), radius: Self.shadowRadius, y: Self.shadowY)
+        .padding(Self.shadowMargin)
     }
 
     private var header: some View {
