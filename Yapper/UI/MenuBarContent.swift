@@ -79,21 +79,15 @@ struct MenuBarContent: View {
 
             Divider()
 
-            Button {
-                state.pendingHistoryOpen = true
-                openSettingsWindow()
-                NSApp.activate(ignoringOtherApps: true)
-            } label: {
+            // SettingsView sees the flag and jumps to its History tab.
+            SettingsButton(prepare: { state.pendingHistoryOpen = true }) {
                 Label("History", systemImage: "clock.arrow.circlepath")
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .buttonStyle(.plain)
             .padding(.horizontal, 12)
 
-            Button {
-                openSettingsWindow()
-                NSApp.activate(ignoringOtherApps: true)
-            } label: {
+            SettingsButton {
                 Label("Settings…", systemImage: "gearshape")
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -124,11 +118,64 @@ struct MenuBarContent: View {
         }
         .frame(width: 280)   // widened for the shortcut strip's key column + label
     }
+}
 
-    /// Opens the Settings scene. `@Environment(\.openSettings)` is macOS 14+,
-    /// so use the AppKit action that works back to Ventura (which renamed
-    /// "Preferences" to "Settings", hence the `showSettingsWindow:` selector).
-    private func openSettingsWindow() {
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+/// A button that opens the Settings scene and brings it to the front.
+///
+/// SwiftUI stopped honouring the `showSettingsWindow:` action on macOS 14: it logs "Please use
+/// SettingsLink for opening the Settings scene" and opens nothing. So 14+ goes through
+/// `openSettings`, and the selector is kept only for Ventura, where it is still the way in.
+/// Either way the popover is dismissed explicitly: it stays hanging under the menu bar otherwise.
+private struct SettingsButton<Label: View>: View {
+    @Environment(\.dismiss) private var dismiss
+    private let prepare: @MainActor () -> Void
+    private let label: Label
+
+    init(prepare: @escaping @MainActor () -> Void = {}, @ViewBuilder label: () -> Label) {
+        self.prepare = prepare
+        self.label = label()
     }
+
+    var body: some View {
+        if #available(macOS 14, *) {
+            OpenSettingsButton(prepare: prepare, label: label)
+        } else {
+            Button {
+                prepare()
+                bringYapperForward()
+                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                dismiss()
+            } label: {
+                label
+            }
+        }
+    }
+}
+
+@available(macOS 14, *)
+private struct OpenSettingsButton<Label: View>: View {
+    @Environment(\.openSettings) private var openSettings
+    @Environment(\.dismiss) private var dismiss
+    let prepare: @MainActor () -> Void
+    let label: Label
+
+    var body: some View {
+        Button {
+            prepare()
+            bringYapperForward()
+            openSettings()
+            dismiss()
+        } label: {
+            label
+        }
+    }
+}
+
+/// Yapper is an accessory app and the popover is a non-activating panel, so whatever app was
+/// frontmost stays active through the click and Settings would surface behind it. macOS 14's
+/// cooperative `NSApp.activate()` is refused from here, so use the forceful call; at file scope
+/// it sits in the macOS 13 availability context, which keeps its 14+ deprecation quiet.
+@MainActor
+private func bringYapperForward() {
+    NSApp.activate(ignoringOtherApps: true)
 }
