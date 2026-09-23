@@ -30,6 +30,25 @@ struct MiniPlayerView: View {
 
     private static let accent = Color(red: 105/255, green: 144/255, blue: 191/255)   // KeepCo blue
 
+    /// The visible card.
+    static let cardSize = CGSize(width: 320, height: 80)
+    private static let shadowRadius: CGFloat = 14
+    private static let shadowY: CGFloat = 6
+    /// Transparent border around the card that the drop shadow draws into. It is part of the
+    /// view's own size so the hosting view sizes the panel to include it — a panel cut to the
+    /// card clips the shadow away entirely. SwiftUI's shadow radius behaves like a Gaussian σ
+    /// (still ~11% black 8pt out), so the border reaches ~1.9σ past the offset shadow, where
+    /// it has faded under 1%.
+    static let shadowMargin: EdgeInsets = {
+        let reach = (shadowRadius * 1.9).rounded(.up)
+        return EdgeInsets(top: reach - shadowY, leading: reach, bottom: reach + shadowY, trailing: reach)
+    }()
+    /// What the floating panel must be to show the card plus its shadow.
+    static var panelSize: CGSize {
+        CGSize(width: cardSize.width + shadowMargin.leading + shadowMargin.trailing,
+               height: cardSize.height + shadowMargin.top + shadowMargin.bottom)
+    }
+
     private var speedLabel: String {
         "\(String(format: "%g", Double(streamer.rate)))×"
     }
@@ -130,13 +149,17 @@ struct MiniPlayerView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .frame(width: 320, height: 80)
+        .frame(width: Self.cardSize.width, height: Self.cardSize.height)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
         )
-        .shadow(color: .black.opacity(0.25), radius: 14, y: 6)
+        // Flatten first so the card casts one shadow — otherwise every text run, icon, and the
+        // scrubber casts its own onto the card.
+        .compositingGroup()
+        .shadow(color: .black.opacity(0.25), radius: Self.shadowRadius, y: Self.shadowY)
+        .padding(Self.shadowMargin)
     }
 
     private var timeLabel: String {

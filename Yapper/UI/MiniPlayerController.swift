@@ -17,10 +17,25 @@ final class MiniPlayerController: NSObject {
     private var dismissTask: Task<Void, Never>?
     private let delegateShim = PanelDelegateShim()
 
-    private static let minimalSize = NSSize(width: 336, height: 96)
+    private static let minimalSize = MiniPlayerView.panelSize   // card + shadow margin
     private static let edgeMargin: CGFloat = 16
     private static let slideDuration: TimeInterval = 0.2
     private static let dismissDelay: TimeInterval = 3.0
+
+    /// Where the visible body sits inside the panel: the minimal card floats in a transparent
+    /// shadow margin, the cassette deck fills its panel. Corner placement, edge clamping, the
+    /// saved position and the liner notes all measure the body, so the margin never shifts the
+    /// card on screen.
+    private var bodyInsets: NSEdgeInsets {
+        guard (state?.settings.miniPlayerTheme ?? .minimal) == .minimal else { return NSEdgeInsetsZero }
+        let m = MiniPlayerView.shadowMargin
+        return NSEdgeInsets(top: m.top, left: m.leading, bottom: m.bottom, right: m.trailing)
+    }
+
+    private var bodySize: NSSize {
+        let i = bodyInsets
+        return NSSize(width: panelSize.width - i.left - i.right, height: panelSize.height - i.top - i.bottom)
+    }
 
     /// Panel size depends on the chosen theme (and, for the cassette, the user's size setting).
     private var panelSize: NSSize {
@@ -251,9 +266,17 @@ final class MiniPlayerController: NSObject {
         p.orderOut(nil)
     }
 
+    /// The visible body of the player on screen. The notes line up with this, not the panel edge.
+    private func playerBody(of parent: NSPanel) -> NSRect {
+        let i = bodyInsets
+        return NSRect(x: parent.frame.minX + i.left, y: parent.frame.minY + i.bottom,
+                      width: parent.frame.width - i.left - i.right,
+                      height: parent.frame.height - i.top - i.bottom)
+    }
+
     private func transcriptSize(for parent: NSPanel) -> NSSize {
         // Track the deck's width so the pair reads as one object, within sane reading limits.
-        let w = min(max(parent.frame.width, 300), 520)
+        let w = min(max(playerBody(of: parent).width, 300), 520)
         let screenH = (parent.screen ?? NSScreen.main)?.visibleFrame.height ?? 800
         return NSSize(width: w, height: min(380, max(220, screenH * 0.4)))
     }
@@ -262,14 +285,15 @@ final class MiniPlayerController: NSObject {
     /// clamped on-screen either way.
     private func transcriptOrigin(for parent: NSPanel, size: NSSize) -> NSPoint {
         let gap: CGFloat = 8
+        let body = playerBody(of: parent)
         let visible = (parent.screen ?? NSScreen.main)?.visibleFrame
             ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        var y = parent.frame.maxY + gap
+        var y = body.maxY + gap
         if y + size.height > visible.maxY {
-            y = parent.frame.minY - gap - size.height
+            y = body.minY - gap - size.height
         }
         y = min(max(y, visible.minY), max(visible.maxY - size.height, visible.minY))
-        let x = min(max(parent.frame.minX, visible.minX), max(visible.maxX - size.width, visible.minX))
+        let x = min(max(body.minX, visible.minX), max(visible.maxX - size.width, visible.minX))
         return NSPoint(x: x, y: y)
     }
 
@@ -330,10 +354,12 @@ final class MiniPlayerController: NSObject {
         let cornerOrigin = corner(in: visible, for: state?.settings.miniPlayerDefaultCorner ?? .bottomRight)
         // Honor the user's dragged position only if it still fits fully on the current screen;
         // otherwise (stale value, display/resolution change) reset to the corner default. Clamp at
-        // the end as a final guarantee the panel is never parked below or beyond the visible frame.
+        // the end as a final guarantee the body is never parked below or beyond the visible frame.
+        // All of that is in body coordinates; the panel then sits around the body.
         let saved = persistedOrigin()
         let preferred = (saved.map { isFullyVisible($0, in: visible) } == true) ? saved! : cornerOrigin
-        let finalOrigin = clampToVisible(preferred, in: visible)
+        let bodyOrigin = clampToVisible(preferred, in: visible)
+        let finalOrigin = NSPoint(x: bodyOrigin.x - bodyInsets.left, y: bodyOrigin.y - bodyInsets.bottom)
         let startOrigin = NSPoint(x: finalOrigin.x, y: finalOrigin.y - 30)
 
         panel.setFrameOrigin(startOrigin)
@@ -343,7 +369,9 @@ final class MiniPlayerController: NSObject {
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = Self.slideDuration
             ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
-            panel.animator().setFrameOrigin(finalOrigin)
+            // setFrame, not setFrameOrigin: the animator proxy silently drops setFrameOrigin, which
+            // left the panel at the start point — and saved that as the position, 30pt lower each read.
+            panel.animator().setFrame(NSRect(origin: finalOrigin, size: panel.frame.size), display: true)
             panel.animator().alphaValue = 1
         }
     }
@@ -358,38 +386,44 @@ final class MiniPlayerController: NSObject {
         }
     }
 
-    /// True when a panel placed at `origin` sits entirely within the visible frame.
+    /// True when a body placed at `origin` sits entirely within the visible frame.
     private func isFullyVisible(_ origin: NSPoint, in visible: NSRect) -> Bool {
         origin.x >= visible.minX &&
         origin.y >= visible.minY &&
-        origin.x + panelSize.width <= visible.maxX &&
-        origin.y + panelSize.height <= visible.maxY
+        origin.x + bodySize.width <= visible.maxX &&
+        origin.y + bodySize.height <= visible.maxY
     }
 
-    /// Keeps the panel fully inside `visible` — never below the bottom edge, never past a side.
+    /// Keeps the body fully inside `visible` — never below the bottom edge, never past a side.
+    /// (Its transparent shadow margin may overhang; there's nothing there to lose.)
     private func clampToVisible(_ origin: NSPoint, in visible: NSRect) -> NSPoint {
-        let maxX = visible.maxX - panelSize.width
-        let maxY = visible.maxY - panelSize.height
+        let maxX = visible.maxX - bodySize.width
+        let maxY = visible.maxY - bodySize.height
         // If the screen is somehow smaller than the panel, minX/minY still wins (top-left aligned).
         let x = min(max(origin.x, visible.minX), max(maxX, visible.minX))
         let y = min(max(origin.y, visible.minY), max(maxY, visible.minY))
         return NSPoint(x: x, y: y)
     }
 
+    /// Body origin for the default corner.
     private func corner(in rect: NSRect, for corner: MiniPlayerCorner) -> NSPoint {
         let m = Self.edgeMargin
+        let size = bodySize
         switch corner {
-        case .bottomRight: return NSPoint(x: rect.maxX - panelSize.width - m, y: rect.minY + m)
-        case .bottomLeft:  return NSPoint(x: rect.minX + m,                   y: rect.minY + m)
-        case .topRight:    return NSPoint(x: rect.maxX - panelSize.width - m, y: rect.maxY - panelSize.height - m)
-        case .topLeft:     return NSPoint(x: rect.minX + m,                   y: rect.maxY - panelSize.height - m)
+        case .bottomRight: return NSPoint(x: rect.maxX - size.width - m, y: rect.minY + m)
+        case .bottomLeft:  return NSPoint(x: rect.minX + m,              y: rect.minY + m)
+        case .topRight:    return NSPoint(x: rect.maxX - size.width - m, y: rect.maxY - size.height - m)
+        case .topLeft:     return NSPoint(x: rect.minX + m,              y: rect.maxY - size.height - m)
         }
     }
 
     // MARK: - Position persistence
 
-    private func persistOrigin(_ origin: NSPoint) {
+    /// Saves where the body sits, not the panel, so the card lands in the same spot whatever
+    /// shadow margin surrounds it.
+    private func persistOrigin(_ panelOrigin: NSPoint) {
         guard let settings = state?.settings else { return }
+        let origin = NSPoint(x: panelOrigin.x + bodyInsets.left, y: panelOrigin.y + bodyInsets.bottom)
         UserDefaults.standard.set(Double(origin.x), forKey: SettingsStore.Key.miniPlayerCornerX.rawValue)
         UserDefaults.standard.set(Double(origin.y), forKey: SettingsStore.Key.miniPlayerCornerY.rawValue)
         _ = settings // silence "unused" warning while we don't need to call into the store
