@@ -25,6 +25,7 @@ final class SettingsStore: ObservableObject {
         case onboardingCompleted
         case voiceInputEnabled
         case whisperModelID
+        case speechModelMovedToParakeet
         case handsFreeEnabled
         case pauseMediaWhileTalking
         case learnFromEdits
@@ -106,7 +107,7 @@ final class SettingsStore: ObservableObject {
     @Published var voiceInputEnabled: Bool {
         didSet { defaults.set(voiceInputEnabled, forKey: Key.voiceInputEnabled.rawValue) }
     }
-    /// WhisperKit model variant. Defaults per architecture — see `WhisperModel.recommended`.
+    /// Speech model (Whisper variant or Parakeet). Defaults per architecture — see `WhisperModel.recommended`.
     @Published var whisperModelID: String {
         didSet { defaults.set(whisperModelID, forKey: Key.whisperModelID.rawValue) }
     }
@@ -194,7 +195,17 @@ final class SettingsStore: ObservableObject {
         let themeRaw = defaults.string(forKey: Key.miniPlayerTheme.rawValue) ?? MiniPlayerTheme.minimal.rawValue
         self.miniPlayerTheme = MiniPlayerTheme(rawValue: themeRaw) ?? .minimal
         self.voiceInputEnabled = defaults.object(forKey: Key.voiceInputEnabled.rawValue) as? Bool ?? true
-        self.whisperModelID = defaults.string(forKey: Key.whisperModelID.rawValue) ?? WhisperModel.recommended.id
+        var modelID = defaults.string(forKey: Key.whisperModelID.rawValue) ?? WhisperModel.recommended.id
+        // Once: anyone still on the old Apple Silicon default moves to Parakeet, which matched it
+        // for accuracy at a tenth of the time. A deliberate pick of another model stays.
+        if !defaults.bool(forKey: Key.speechModelMovedToParakeet.rawValue) {
+            defaults.set(true, forKey: Key.speechModelMovedToParakeet.rawValue)
+            if modelID == WhisperModel.formerDefaultID, WhisperModel.recommended.engine == .parakeet {
+                modelID = WhisperModel.recommended.id
+                defaults.set(modelID, forKey: Key.whisperModelID.rawValue)
+            }
+        }
+        self.whisperModelID = modelID
         self.handsFreeEnabled = defaults.bool(forKey: Key.handsFreeEnabled.rawValue)
         self.pauseMediaWhileTalking = defaults.object(forKey: Key.pauseMediaWhileTalking.rawValue) as? Bool ?? true
         self.learnFromEdits = defaults.object(forKey: Key.learnFromEdits.rawValue) as? Bool ?? true

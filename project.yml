@@ -7,8 +7,8 @@ include:
 options:
   bundleIdPrefix: app.yapper
   deploymentTarget:
-    # 13.3: llama.cpp's framework (Voice In formatting) is built for it.
-    macOS: "13.3"
+    # 14: FluidAudio (Parakeet speech-to-text) needs Sonoma; llama.cpp needs 13.3.
+    macOS: "14.0"
   createIntermediateGroups: true
   defaultConfig: Debug
 settings:
@@ -39,6 +39,11 @@ packages:
   # llama.cpp's official xcframework; see Vendor/LlamaCpp/Package.swift.
   LlamaCpp:
     path: Vendor/LlamaCpp
+  # Parakeet speech-to-text (Core ML, Neural Engine) and inverse text normalisation. Apache-2.0;
+  # the Parakeet weights are CC-BY-4.0 and credited in Settings → About.
+  FluidAudio:
+    url: https://github.com/FluidInference/FluidAudio
+    exactVersion: "0.17.5"
 schemes:
   Yapper:
     build:
@@ -81,6 +86,7 @@ targets:
       - package: Sparkle
       - package: WhisperKit
       - package: LlamaCpp
+      - package: FluidAudio
       # Embedded, never linked: only the Perl helper process loads it.
       - target: MediaRemoteAdapter
         embed: true
@@ -146,6 +152,7 @@ targets:
       - package: Sparkle
       - package: WhisperKit
       - package: LlamaCpp
+      - package: FluidAudio
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.yapper.YapperTests

@@ -101,3 +101,23 @@ struct FormatGuardTests {
         #expect(check("Okay so the plan is, number one, we fix it, and number two, we ship it.", output) == .accept(output))
     }
 }
+
+struct FormatPlanTests {
+    @Test func correctionsAndListsGetTheFullBudget() {
+        #expect(FormatEngine.plan("Let's meet at 3, no wait, 4 tomorrow.", cleanup: true) == FormatEngine.budget)
+        #expect(FormatEngine.plan("I need three things for the trip today.", cleanup: false) == FormatEngine.budget)
+    }
+
+    @Test func fillerAloneGetsLittleAndOnlyWhenShort() {
+        #expect(FormatEngine.plan("So I was like thinking we could go.", cleanup: true)
+                == (FormatEngine.fillerViaModel ? FormatEngine.fillerBudget : nil))
+        let long = Array(repeating: "so we were like talking", count: 10).joined(separator: " ")
+        #expect(FormatEngine.plan(long, cleanup: true) == nil)
+        #expect(FormatEngine.plan("So I was like thinking we could go.", cleanup: false) == nil)
+    }
+
+    @Test func plainDictationSkipsTheModel() {
+        #expect(FormatEngine.plan("Can you take a look at this when you get a chance?", cleanup: true) == nil)
+        #expect(FormatEngine.plan("Ship it.", cleanup: true) == nil)
+    }
+}

@@ -39,3 +39,42 @@ struct SpokenTimesTests {
         #expect(t("no numbers here") == "no numbers here")
     }
 }
+
+struct SpokenTimeWordsTests {
+    private func t(_ s: String) -> String { SpokenTimes.normalizeSpoken(s) }
+
+    @Test func timesInWords() {
+        #expect(t("The train leaves at twenty one oh four.") == "The train leaves at 21:04.")
+        #expect(t("let's meet at four thirty") == "let's meet at 4:30")
+        #expect(t("call me around eleven fifteen") == "call me around 11:15")
+        #expect(t("it starts four forty five pm") == "it starts 4:45 pm")
+        #expect(t("at like seven oh five") == "at like 7:05")
+    }
+
+    @Test func leavesOtherNumbersAlone() {
+        #expect(t("at four") == "at four")
+        #expect(t("I have four thirty dollar tickets") == "I have four thirty dollar tickets")
+        #expect(t("at four thirty people") == "at four thirty people")
+        #expect(t("one two three") == "one two three")
+    }
+}
+
+struct NumberStyleTests {
+    private func r(_ spoken: String, _ written: String) -> String { NumberStyle.restrain(spoken: spoken, written: written) }
+
+    @Test func smallNumbersStayWords() {
+        #expect(r("Just water one plant.", "Just water 1 plant.") == "Just water one plant.")
+        #expect(r("the first room and the second", "the 1st room and the 2nd") == "the first room and the second")
+        #expect(r("sort them one by one", "sort them 1 by 1") == "sort them one by one")
+        #expect(r("One more thing.", "1 more thing.") == "One more thing.")
+        #expect(r("the second one looks better", "the 2nd 1 looks better") == "the second one looks better")
+    }
+
+    @Test func biggerOnesKeepTheirDigits() {
+        #expect(r("we have twenty five users", "we have 25 users") == "we have 25 users")
+        #expect(r("it costs five dollars", "it costs $5") == "it costs $5")
+        #expect(r("up five percent", "up 5%") == "up 5%")
+        #expect(r("about two hundred", "about 200") == "about 200")
+        #expect(r("version twelve", "version 12") == "version 12")
+    }
+}

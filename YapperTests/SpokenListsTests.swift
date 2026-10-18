@@ -24,6 +24,12 @@ struct SpokenListsTests {
                 == "1. Pull main\n2. Run the tests\n\nThen let me know how it goes.")
     }
 
+    @Test func aMarkerSaidAsItsOwnSentence() {
+        #expect(list("Let's try a list right quick. Number one, we tried this. Number two, it's working. Number three. Yeah.")
+                == "Let's try a list right quick.\n1. We tried this\n2. It's working\n3. Yeah")
+        #expect(list("I came first. Then we left.") == nil)
+    }
+
     @Test func closerEndsTheRun() {
         #expect(list("First, wash it. Second, dry it. Finally, fold it.") == "1. Wash it\n2. Dry it\n3. Fold it")
     }

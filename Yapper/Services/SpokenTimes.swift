@@ -37,6 +37,58 @@ enum SpokenTimes {
         "way", "court", "ct", "place", "pl", "parkway", "highway", "hwy", "suite", "apt", "unit", "floor",
     ]
 
+    // MARK: Times said in words (Parakeet writes these out)
+
+    private static let hourWords = ["one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+                                    "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen",
+                                    "eighteen", "nineteen", "twenty", "twenty one", "twenty two", "twenty three"]
+    private static let units = ["one", "two", "three", "four", "five", "six", "seven", "eight", "nine"]
+    private static let teens = ["ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen",
+                                "seventeen", "eighteen", "nineteen"]
+    private static let tens = ["twenty": 20, "thirty": 30, "forty": 40, "fifty": 50]
+
+    private static let spokenClock: NSRegularExpression = {
+        let hour = hourWords.sorted { $0.count > $1.count }.map { $0.replacingOccurrences(of: " ", with: "[ -]") }.joined(separator: "|")
+        let unit = units.joined(separator: "|")
+        let minute = #"oh[ -](?:"# + unit + #")|(?:"# + teens.joined(separator: "|") + #")|(?:twenty|thirty|forty|fifty)(?:[ -](?:"# + unit + #"))?"#
+        let pattern = #"\b((?:"# + lead + #")\s+(?:like\s+|about\s+|around\s+)?)(?<h>"# + hour + #")[ -](?<m>"# + minute + #")\b"#
+            + #"|\b(?<h2>"# + hour + #")[ -](?<m2>"# + minute + #")(?=\s?[ap]\.?\s?m\b)"#
+        return try! NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
+    }()
+
+    private static func value(ofHour words: String) -> Int? {
+        let w = words.lowercased().replacingOccurrences(of: "-", with: " ")
+        return hourWords.firstIndex(of: w).map { $0 + 1 }
+    }
+
+    private static func value(ofMinute words: String) -> Int? {
+        let parts = words.lowercased().replacingOccurrences(of: "-", with: " ").split(separator: " ").map(String.init)
+        if parts.first == "oh", parts.count == 2, let u = units.firstIndex(of: parts[1]) { return u + 1 }
+        if parts.count == 1, let t = teens.firstIndex(of: parts[0]) { return t + 10 }
+        guard let ten = tens[parts[0]] else { return nil }
+        if parts.count == 2, let u = units.firstIndex(of: parts[1]) { return ten + u + 1 }
+        return parts.count == 1 ? ten : nil
+    }
+
+    /// "at four thirty" → "at 4:30", "at twenty one oh four" → "at 21:04", "four fifteen pm" →
+    /// "4:15 pm". Same reasons-to-believe as the digit forms: a time word before, or a.m./p.m. after.
+    static func normalizeSpoken(_ text: String) -> String {
+        let ns = text as NSString
+        var out = ""
+        var cursor = 0
+        for match in spokenClock.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
+            let hRange = match.range(withName: "h").location != NSNotFound ? match.range(withName: "h") : match.range(withName: "h2")
+            let mRange = match.range(withName: "m").location != NSNotFound ? match.range(withName: "m") : match.range(withName: "m2")
+            guard let h = value(ofHour: ns.substring(with: hRange)), let m = value(ofMinute: ns.substring(with: mRange)),
+                  !looksLikeQuantity(after: match.range.location + match.range.length, in: ns) else { continue }
+            out += ns.substring(with: NSRange(location: cursor, length: hRange.location - cursor))
+            out += String(format: "%d:%02d", h, m)
+            cursor = mRange.location + mRange.length
+        }
+        out += ns.substring(from: cursor)
+        return out
+    }
+
     static func normalize(_ text: String) -> String {
         guard text.contains(where: \.isNumber) else { return text }
         var out = text

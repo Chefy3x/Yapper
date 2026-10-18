@@ -119,7 +119,8 @@ enum SpokenLists {
         let afterMarker = words[last].range.upperBound
         let rest = text[afterMarker...]
         let trimmed = rest.drop(while: { $0 == " " })
-        if trimmed.hasPrefix(",") || trimmed.hasPrefix(":") {
+        // "Number three, …", "First: …", and "Number three. Yeah." — said as its own sentence.
+        if trimmed.hasPrefix(",") || trimmed.hasPrefix(":") || trimmed.hasPrefix(".") {
             return text.index(after: trimmed.startIndex)
         }
         guard last + 1 < words.count else { return nil }

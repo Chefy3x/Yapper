@@ -8,6 +8,9 @@ import SQLite3
 struct WisprCleanupEval {
     static let path = ProcessInfo.processInfo.environment["YAPPER_WISPR_EVAL"]
     static let sample = Int(ProcessInfo.processInfo.environment["YAPPER_WISPR_EVAL_N"] ?? "") ?? 150
+    /// YAPPER_FORMAT_MODEL=<gguf file name in the Formatter folder> to score another model.
+    static let modelURL = ProcessInfo.processInfo.environment["YAPPER_FORMAT_MODEL"]
+        .map { FormatterModel.folder.appendingPathComponent($0) } ?? FormatterModel.fileURL
 
     private func pairs() -> [(asr: String, wispr: String)] {
         guard let path = Self.path else { return [] }
@@ -50,9 +53,11 @@ struct WisprCleanupEval {
         return out
     }
 
-    @Test(.enabled(if: path != nil && FormatterModel.isDownloaded)) func compareWithWisprFlow() async throws {
+    @Test(.enabled(if: path != nil && FileManager.default.fileExists(atPath: modelURL.path)))
+    func compareWithWisprFlow() async throws {
         let rows = pairs()
-        let runner = LlamaRunner(modelURL: FormatterModel.fileURL)
+        print("EVAL model \(Self.modelURL.lastPathComponent)")
+        let runner = LlamaRunner(modelURL: Self.modelURL)
         try await runner.load()
         var wisprDeleted = 0
         var stats: [String: (ours: Int, agree: Int)] = ["rules": (0, 0), "rules+model": (0, 0)]

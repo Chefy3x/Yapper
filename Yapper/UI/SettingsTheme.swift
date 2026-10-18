@@ -224,6 +224,8 @@ enum ShortcutReference {
         return [
             ([cap], "Read latest / pause"),
             ([cap, .text("hold")], "Talk — release to type"),
+            ([cap, .text("hold"), .text("Space")], "Lock the mic — press again to type"),
+            ([cap, .text("V")], "Paste the last dictation again"),
             ([cap, .text("S")], "Read selected text"),
             ([cap, .symbol("return")], "Conversation Mode"),
             ([cap, .symbol("arrow.right")], "Skip ahead"),

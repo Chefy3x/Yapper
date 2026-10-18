@@ -52,12 +52,19 @@ final class AppState: ObservableObject {
     let media = MediaController()
     let editWatcher = EditWatcher()
     let formatter = SmartFormatter()
+    /// The Yapper key press that finished a locked dictation; its tap or hold is spent.
+    private var pressEndedLockedDictation = false
     lazy var voiceInput = VoiceInputCoordinator(
         settings: settings,
         vocabulary: vocabulary,
         capture: AudioCapture(),
         delivery: PasteDelivery(),
-        makeTranscriber: { model, onStatus in WhisperTranscriber(model: model, onStatus: onStatus) },
+        makeTranscriber: { model, onStatus in
+            switch model.engine {
+            case .parakeet: ParakeetTranscriber(model: model, onStatus: onStatus)
+            case .whisper: WhisperTranscriber(model: model, onStatus: onStatus)
+            }
+        },
         lastRecording: LastRecording()
     )
 
@@ -137,10 +144,11 @@ final class AppState: ObservableObject {
         voiceInput.onDelivered = { [weak self] text, receipt in
             Log.voice.info("Delivered \(text.count, privacy: .public) chars to the focused app")
             guard let self else { return }
-            if self.settings.learnFromEdits { self.editWatcher.watch(receipt, delivered: text) }
+            if self.settings.learnFromEdits { self.editWatcher.watch(receipt, delivered: receipt.text.isEmpty ? text : receipt.text) }
             guard self.conversationModeEnabled else { return }
             self.mediaGate.awaitingReplyUntil = Date().addingTimeInterval(MediaResumeGate.replyWait)
         }
+        voiceInput.captureTarget = { await DeliveryTarget.current() }
         voiceInput.screenWords = { [weak self] in
             guard let self, self.settings.useScreenWords else { return [] }
             let text = await ScreenVocabulary.visibleText()
@@ -431,6 +439,7 @@ final class AppState: ObservableObject {
     private func wireHotkeys() {
         hotkeys.onReadLatestOrToggle = { [weak self] in
             guard let self else { return }
+            if self.pressEndedLockedDictation { self.pressEndedLockedDictation = false; return }
             self.hotkeyFired.send(.readLatestOrToggle)
             // Double-tap: force a fresh Read Latest of the CURRENT window, superseding whatever
             // is playing or paused. Without this, tapping after a pause always resumes the old
@@ -511,6 +520,7 @@ final class AppState: ObservableObject {
         }
         hotkeys.onPushToTalkBegan = { [weak self] in
             guard let self else { return }
+            if self.pressEndedLockedDictation { self.pressEndedLockedDictation = false; return }
             self.hotkeyFired.send(.pushToTalk)
             self.pendingResumeTask?.cancel()   // a hold is not a tap; never resume under it
             self.pendingResumeTask = nil
@@ -519,10 +529,23 @@ final class AppState: ObservableObject {
         }
         hotkeys.onKeyDown = { [weak self] in
             guard let self else { return }
+            // While locked, the next press finishes the dictation, and is nothing else: not a
+            // read, not a new hold.
+            if self.voiceInput.isLocked {
+                self.pressEndedLockedDictation = true
+                self.voiceInput.finishLocked()
+                return
+            }
+            self.pressEndedLockedDictation = false
             // Other media playing counts too: the early mic would transcribe the video.
             self.voiceInput.keyPressed(playbackActive: self.tts.isPlaying || self.media.isOtherMediaPlaying)
         }
         hotkeys.onKeyAbandoned = { [weak self] in self?.voiceInput.keyAbandoned() }
+        hotkeys.onLockRequested = { [weak self] in self?.voiceInput.lock() }
+        hotkeys.canLockMic = { [weak self] in
+            guard let self else { return false }
+            return self.voiceInput.state == .listening(.pushToTalk)
+        }
         hotkeys.onRepasteLast = { [weak self] in
             Log.hotkey.info("Yapper key+V -> Re-paste last transcript")
             self?.voiceInput.repasteLast()

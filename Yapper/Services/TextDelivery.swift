@@ -3,17 +3,44 @@ import CoreGraphics
 
 /// What a paste landed in, so the field can be watched for the user's edits afterwards.
 struct DeliveryReceipt: Sendable {
+    /// What was actually typed: the transcript, fitted to the text around the cursor.
+    var text: String = ""
     /// Nil when the app doesn't expose its focused element through Accessibility.
     var field: FocusedField?
     /// The field's text right after the paste, the baseline edits are measured against.
     var valueAfter: String?
+    /// When the focused app took the text: the moment it appeared, for the lag log.
+    var readAt: Date?
+}
+
+/// Where the user was when they started talking: the app, and the field if it could be read.
+struct DeliveryTarget: Sendable {
+    let pid: pid_t
+    let appName: String?
+    let field: FocusedField?
+
+    /// The frontmost app and its focused field, right now.
+    @AXWorker
+    static func current() -> DeliveryTarget? {
+        guard let app = NSWorkspace.shared.frontmostApplication,
+              app.bundleIdentifier != Bundle.main.bundleIdentifier else { return nil }
+        let field = FocusedField.current()
+        return DeliveryTarget(pid: app.processIdentifier, appName: app.localizedName,
+                              field: field?.pid == app.processIdentifier ? field : nil)
+    }
 }
 
 /// What the coordinator needs to get text on screen. The real one pastes; tests capture.
 protocol TextDelivering: Sendable {
-    /// Puts `text` into the focused field of the frontmost app. Never presses Return.
+    /// Puts `text` into the field the user was in when they started talking (`target`), or the
+    /// focused field of the frontmost app. Never presses Return.
     @discardableResult
-    func deliver(_ text: String) async throws -> DeliveryReceipt
+    func deliver(_ text: String, target: DeliveryTarget?) async throws -> DeliveryReceipt
+}
+
+extension TextDelivering {
+    @discardableResult
+    func deliver(_ text: String) async throws -> DeliveryReceipt { try await deliver(text, target: nil) }
 }
 
 /// Types a transcript into whatever has keyboard focus by pasting it. Paste is the one route
@@ -53,9 +80,43 @@ struct PasteDelivery: TextDelivering {
     static let retryAfter: TimeInterval = 0.75
 
     @discardableResult
-    func deliver(_ text: String) async throws -> DeliveryReceipt {
+    func deliver(_ text: String, target: DeliveryTarget?) async throws -> DeliveryReceipt {
         let vKey = await MainActor.run { KeyboardLayout.keyCode() }   // TIS is main-thread only
-        return try await Self.paste(text, vKey: vKey)
+        if let target { await Self.bringBack(target) }
+        // Fit the words to what's around the cursor: mid-sentence they continue it.
+        let context = await Self.cursorContext()
+        let fitted = await MainActor.run {
+            InsertionFit.fit(text, before: context?.before, after: context?.after) { WordKnowledge.isDictionaryWord($0) }
+        }
+        var receipt = try await Self.paste(fitted, vKey: vKey)
+        receipt.text = fitted
+        return receipt
+    }
+
+    /// Wispr Flow and Superwhisper both paste where you started talking, not where you are when
+    /// the text is ready: switching apps while a long dictation transcribes shouldn't send it
+    /// somewhere else. Only when that app is still running; otherwise the text goes to the
+    /// current one.
+    static let bringBackTimeout: TimeInterval = 1.0
+
+    @AXWorker
+    private static func bringBack(_ target: DeliveryTarget) {
+        guard NSWorkspace.shared.frontmostApplication?.processIdentifier != target.pid,
+              let app = NSRunningApplication(processIdentifier: target.pid), !app.isTerminated else { return }
+        app.activate()
+        let started = Date()
+        while NSWorkspace.shared.frontmostApplication?.processIdentifier != target.pid,
+              Date().timeIntervalSince(started) < bringBackTimeout {
+            Thread.sleep(forTimeInterval: 0.02)
+        }
+        target.field?.refocus()
+        Thread.sleep(forTimeInterval: 0.05)   // let the window take key focus before ⌘V
+        Log.voice.info("Pasting back into \(target.appName ?? "the app you started in", privacy: .public)")
+    }
+
+    @AXWorker
+    private static func cursorContext() -> (before: String, after: String)? {
+        FocusedField.current()?.cursorContext()
     }
 
     @AXWorker
@@ -128,7 +189,8 @@ struct PasteDelivery: TextDelivering {
             Thread.sleep(forTimeInterval: max(afterReadGrace, minimumSettle - elapsed))
             restoreIfUnchanged(pb, prior: prior, ourChangeCount: ourChangeCount)
             Log.voice.info("Paste \(how, privacy: .public) after \(Int(Date().timeIntervalSince(postedAt) * 1000), privacy: .public)ms")
-            return DeliveryReceipt(field: field, valueAfter: field?.value)
+            let readAt = promise.reads.first { $0 >= postedAt } ?? (readsBeforePaste > 0 ? postedAt : nil)
+            return DeliveryReceipt(field: field, valueAfter: field?.value, readAt: readAt)
         }
         // Nobody read it. Leave the words where the user can still get them, as plain data,
         // since the promise dies with this call. Unless something else has claimed the

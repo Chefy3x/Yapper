@@ -47,7 +47,7 @@ struct WhisperLongDictationProbe {
 
     @Test(.enabled(if: enabled)) func longQuietDictation() async throws {
         let samples = try speech()
-        let transcriber = WhisperTranscriber(model: .recommended) { _ in }
+        let transcriber = WhisperTranscriber(model: .named(WhisperModel.formerDefaultID)) { _ in }
         let prompt = TranscriptCorrector.prompt(terms: [], screenWords: [
             "WhisperKit", "Yapper", "Claude", "Hopper", "Superwhisper", "REA", "MediaRemote", "Qwen",
             "XcodeGen", "Sparkle", "ElevenLabs", "Vercel", "Zephyra", "GPT5", "MCP", "kubectl", "SwiftUI", "Wispr",
@@ -87,7 +87,7 @@ struct WhisperLongDictationProbe {
             String(format: "%.3f", tail.dropFirst(i).prefix(5).max() ?? 0) }.joined(separator: " "))
         let conditioned = AudioConditioner.condition(samples)
         print("PROBE conditioned: removed \(conditioned.removedSeconds)s gain \(conditioned.gain)")
-        let transcriber = WhisperTranscriber(model: .recommended) { _ in }
+        let transcriber = WhisperTranscriber(model: .named(WhisperModel.formerDefaultID)) { _ in }
         for (name, audio) in [("raw", samples), ("conditioned", conditioned.samples)] {
             let segments = try await transcriber.rawSegments(samples: audio, prompt: nil)
             print("PROBE \(name): " + TranscriptFilter.join(segments, audioHasSpeech: true, audioSeconds: Double(audio.count) / 16_000))

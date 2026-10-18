@@ -67,10 +67,32 @@ enum FormatEngine {
     /// Whole formatting step, prompt included. Past it the raw transcript goes out: a dictation
     /// that lands late feels broken in a way an unformatted one doesn't.
     static let budget: TimeInterval = 3.0
+    /// Filler alone gets far less. It shows up in nearly every dictation, the rules have already
+    /// taken the stutters and um/uh out, and most of the time the model hands the text back
+    /// unchanged; it isn't worth more than a blink of lag.
+    static let fillerBudget: TimeInterval = 0.6
+    /// Past this many words, filler alone doesn't send a dictation to the model at all: retyping
+    /// a long one can't finish inside the filler budget.
+    static let fillerMaxWords = 40
+    /// Whether filler alone sends a dictation to the model. Off: on the user's own dictations it
+    /// mostly handed the text back unchanged or ran out of time, adding up to 0.6 s for nothing,
+    /// while the rules already take out um/uh, stutters and repeats. Comes back when the model
+    /// only has to name the words to cut, which is fast at any length.
+    static let fillerViaModel = false
+
+    /// What sends a dictation to the model, and so how long it may take.
+    static func plan(_ text: String, cleanup: Bool) -> TimeInterval? {
+        guard text.split(whereSeparator: \.isWhitespace).count >= 4 else { return nil }
+        if FormatCues.hasCorrection(text) || FormatCues.hasList(text) { return budget }
+        guard fillerViaModel, cleanup, FormatCues.hasFiller(text),
+              text.split(whereSeparator: \.isWhitespace).count <= fillerMaxWords else { return nil }
+        return fillerBudget
+    }
 
     static func format(_ text: String, mode: FormatMode, cleanup: Bool = false, runner: LlamaRunner,
-                       budget: TimeInterval = budget) async -> (text: String, outcome: FormatOutcome) {
-        guard FormatCues.needsFormatting(text, cleanup: cleanup) else { return (text, .skipped) }
+                       budget override: TimeInterval? = nil) async -> (text: String, outcome: FormatOutcome) {
+        guard let planned = plan(text, cleanup: cleanup) else { return (text, .skipped) }
+        let budget = override ?? planned
         // A rough token count for the reply: the dictation itself plus list markup.
         let maxTokens = text.split(whereSeparator: \.isWhitespace).count * 2 + 48
         do {
@@ -127,7 +149,7 @@ final class SmartFormatter: ObservableObject {
     /// The transcript, formatted when it asks for it and the result passes the guard; otherwise
     /// exactly what came in.
     func format(_ text: String, bundleID: String?, cleanup: Bool) async -> String {
-        guard status == .ready, FormatCues.needsFormatting(text, cleanup: cleanup) else { return text }
+        guard status == .ready, FormatEngine.plan(text, cleanup: cleanup) != nil else { return text }
         let runner = self.runner ?? LlamaRunner(modelURL: FormatterModel.fileURL)
         self.runner = runner
         let mode = FormatMode.forApp(bundleID: bundleID)

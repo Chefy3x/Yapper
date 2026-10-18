@@ -26,6 +26,11 @@ final class VoiceInputCoordinator: ObservableObject {
     }
 
     @Published private(set) var state: State = .idle
+    /// A talk hold locked with Space: the mic stays open after the key comes up, until the next
+    /// press of the key.
+    @Published private(set) var isLocked = false
+    /// A locked dictation may run this long; a forgotten lock shouldn't record all afternoon.
+    static let lockedCeiling: TimeInterval = 20 * 60
     @Published private(set) var modelStatus: WhisperModelStatus = .notDownloaded
     @Published private(set) var microphoneStatus: MicrophonePermission.Status = .notDetermined
 
@@ -37,6 +42,8 @@ final class VoiceInputCoordinator: ObservableObject {
     var onDelivered: ((String, DeliveryReceipt) -> Void)?
     /// Reads words off the focused window to bias this turn's decode. Nil leaves them out.
     var screenWords: (@MainActor () async -> [String])?
+    /// The app and field the user was in when they started talking, so the paste goes back there.
+    var captureTarget: (@MainActor () async -> DeliveryTarget?)?
     /// Lays out lists and applies self-corrections before the paste. Nil, or text returned
     /// unchanged, delivers the transcript as heard.
     var format: (@MainActor (String) async -> String)?
@@ -74,6 +81,10 @@ final class VoiceInputCoordinator: ObservableObject {
     private var tailTask: Task<Void, Never>?
     /// This turn's screen words, read while the user talks so they cost the turn nothing.
     private var screenWordsTask: Task<[String], Never>?
+    /// Where this turn's text goes, read when the turn started.
+    private var targetTask: Task<DeliveryTarget?, Never>?
+    /// When the user let go (or hands-free heard them stop): the start of the lag they feel.
+    private var releasedAt: Date?
     /// Silent-start watch for the capture that is currently open.
     private var firstSilentLevelAt: Date?
     private var heardSignal = false
@@ -87,7 +98,7 @@ final class VoiceInputCoordinator: ObservableObject {
          makeTranscriber: @escaping TranscriberFactory,
          vadConfig: VoiceActivityDetector.Config = .init(),
          minUtterance: TimeInterval = 0.35,
-         releaseTail: TimeInterval = 0.2,
+         releaseTail: TimeInterval = 0.12,
          silentStartTimeout: TimeInterval = 0.5,
          permissionStatus: @escaping @MainActor () -> MicrophonePermission.Status = { MicrophonePermission.status() },
          lastRecording: LastRecording? = nil) {
@@ -234,8 +245,26 @@ final class VoiceInputCoordinator: ObservableObject {
         startListening(.pushToTalk)
     }
 
+    /// Space during a hold. For the five-minute thought that shouldn't mean five minutes holding a key.
+    func lock() {
+        guard case .listening(.pushToTalk) = state, tailTask == nil, !isLocked else { return }
+        isLocked = true
+        armWatchdog(for: .pushToTalk, ceiling: Self.lockedCeiling)
+        onEvent?("Mic locked — press \(settings.yapperKey.keycap) to finish")
+        Log.voice.info("Mic locked")
+    }
+
+    /// The press that ends a locked dictation. Transcribes like a release.
+    func finishLocked() {
+        guard isLocked else { return }
+        isLocked = false
+        endPushToTalk()
+    }
+
     func endPushToTalk() {
+        guard !isLocked else { return }   // the key coming up after Space: keep listening
         guard case .listening(.pushToTalk) = state, tailTask == nil else { return }
+        releasedAt = Date()
         guard releaseTail > 0 else { finishTurn(transcribe: true); return }
         tailTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(self?.releaseTail ?? 0))
@@ -336,6 +365,7 @@ final class VoiceInputCoordinator: ObservableObject {
         case .speechStarted?:
             Log.voice.debug("Hands-free: speech onset")
         case .turnEnded?:
+            releasedAt = Date()
             finishTurn(transcribe: true)
         case .timedOut?:
             Log.voice.info("Hands-free: nobody spoke; closing the mic")
@@ -347,6 +377,7 @@ final class VoiceInputCoordinator: ObservableObject {
 
     private func readScreen() {
         screenWordsTask?.cancel()
+        targetTask = captureTarget.map { capture in Task { await capture() } }
         guard let screenWords else { screenWordsTask = nil; return }
         screenWordsTask = Task { await screenWords() }
     }
@@ -416,11 +447,11 @@ final class VoiceInputCoordinator: ObservableObject {
 
     /// The VAD only advances when audio arrives. If the tap goes silent (device yanked, engine
     /// wedged) nothing would ever close the mic — so a coarse timer backstops it.
-    private func armWatchdog(for mode: Mode) {
+    private func armWatchdog(for mode: Mode, ceiling override: TimeInterval? = nil) {
         watchdog?.cancel()
-        let ceiling = mode == .handsFree
+        let ceiling = override ?? (mode == .handsFree
             ? vadConfig.armTimeout + vadConfig.maxUtterance + 2
-            : vadConfig.maxUtterance + 30
+            : vadConfig.maxUtterance + 30)
         watchdog = Task { [weak self] in
             try? await Task.sleep(for: .seconds(ceiling))
             guard let self, !Task.isCancelled, self.state.isListening else { return }
@@ -431,6 +462,7 @@ final class VoiceInputCoordinator: ObservableObject {
 
     @discardableResult
     private func stopCapture(discard: Bool) -> [Float] {
+        isLocked = false
         watchdog?.cancel()
         watchdog = nil
         let samples = capture.stop()
@@ -459,11 +491,16 @@ final class VoiceInputCoordinator: ObservableObject {
         onEvent?("Transcribing…")
         let screenTask = screenWordsTask
         screenWordsTask = nil
+        let target = targetTask
+        targetTask = nil
+        let released = releasedAt ?? Date()
+        releasedAt = nil
         let store = lastRecording
         turnTask = Task { [weak self] in
             // Kept alongside the decode, so one that fails or crashes can be run again.
             let saving = Task { await store?.save(samples) }
-            await self?.transcribeAndDeliver(samples, using: transcriber, screenTask: screenTask)
+            await self?.transcribeAndDeliver(samples, using: transcriber, screenTask: screenTask,
+                                             targetTask: target, releasedAt: released)
             await saving.value
             self?.state = .idle
         }
@@ -499,7 +536,10 @@ final class VoiceInputCoordinator: ObservableObject {
     }
 
     private func transcribeAndDeliver(_ samples: [Float], using transcriber: Transcribing,
-                                      screenTask: Task<[String], Never>?) async {
+                                      screenTask: Task<[String], Never>?,
+                                      targetTask: Task<DeliveryTarget?, Never>? = nil,
+                                      releasedAt: Date? = nil) async {
+        let decodeStarted = Date()
         let terms = vocabulary.terms
         let replacements = vocabulary.replacements
         let againHint = lastRecording == nil ? "" : ". Menu → Transcribe Last Recording Again to retry"
@@ -510,6 +550,7 @@ final class VoiceInputCoordinator: ObservableObject {
             let prompt = TranscriptCorrector.prompt(terms: terms, screenWords: screen)
             if !screen.isEmpty { Log.voice.info("\(screen.count, privacy: .public) words from the screen for respelling") }
             let heard = try await transcriber.transcribe(samples: samples, prompt: prompt)
+            let decoded = Date()
             guard !Task.isCancelled else { return }
             guard !heard.isEmpty else {
                 onEvent?("Didn't catch that" + againHint)
@@ -527,9 +568,11 @@ final class VoiceInputCoordinator: ObservableObject {
                 onEvent?("Didn't catch that" + againHint)
                 return
             }
+            let formatted = Date()
+            let target = await targetTask?.value
             let receipt: DeliveryReceipt
             do {
-                receipt = try await delivery.deliver(text)
+                receipt = try await delivery.deliver(text, target: target)
             } catch PasteDelivery.DeliveryError.notPasted {
                 // The words survived on the clipboard; say so instead of "failed".
                 vocabulary.record(original: heard, delivered: text)
@@ -537,6 +580,11 @@ final class VoiceInputCoordinator: ObservableObject {
                 return
             }
             vocabulary.record(original: heard, delivered: text)
+            if let releasedAt, let shown = receipt.readAt {
+                // .notice: the lag the user feels, end to end, broken into its stages.
+                let ms = { (a: Date, b: Date) in Int(b.timeIntervalSince(a) * 1000) }
+                Log.voice.notice("Turn: released → text on screen \(ms(releasedAt, shown), privacy: .public)ms (tail+stop \(ms(releasedAt, decodeStarted), privacy: .public), transcribe \(ms(decodeStarted, decoded), privacy: .public), tidy \(ms(decoded, formatted), privacy: .public), paste \(ms(formatted, shown), privacy: .public))")
+            }
             let words = text.split(whereSeparator: \.isWhitespace).count
             onEvent?("Typed \(words) word\(words == 1 ? "" : "s") — press Return to send")
             onDelivered?(text, receipt)

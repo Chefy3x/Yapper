@@ -37,7 +37,9 @@ struct VoiceInputCoordinatorTests {
     final class DeliveryLog: @unchecked Sendable { var delivered: [String] = [] }
     struct FakeDelivery: TextDelivering {
         let log: DeliveryLog
-        func deliver(_ text: String) async throws -> DeliveryReceipt { log.delivered.append(text); return DeliveryReceipt() }
+        func deliver(_ text: String, target: DeliveryTarget?) async throws -> DeliveryReceipt {
+            log.delivered.append(text); return DeliveryReceipt(text: text)
+        }
     }
 
     struct Rig {
@@ -99,6 +101,30 @@ struct VoiceInputCoordinatorTests {
         await waitUntil(rig.delivered.delivered.count == 1)
         #expect(rig.delivered.delivered == ["second try"])
         #expect(rig.transcriber.lastSampleCount == 24_000)
+    }
+
+    @Test func aLockedDictationOutlivesTheKeyAndEndsOnTheNextPress() async {
+        let rig = makeRig()
+        await settle()
+        rig.coordinator.beginPushToTalk()
+        await settle(0.4)
+        rig.coordinator.lock()
+        #expect(rig.coordinator.isLocked)
+        rig.coordinator.endPushToTalk()   // the key comes up
+        await settle(0.2)
+        #expect(rig.coordinator.state == .listening(.pushToTalk))
+        #expect(rig.transcriber.calls == 0)
+        rig.coordinator.finishLocked()    // the next press
+        await waitUntil(rig.delivered.delivered.count == 1)
+        #expect(rig.delivered.delivered == ["hello world"])
+        #expect(!rig.coordinator.isLocked)
+    }
+
+    @Test func lockOnlyAppliesToATalkHold() async {
+        let rig = makeRig()
+        await settle()
+        rig.coordinator.lock()
+        #expect(!rig.coordinator.isLocked)
     }
 
     @Test func transcribeAgainWithNothingKeptSaysSo() async {

@@ -1,17 +1,34 @@
 import Foundation
 import WhisperKit
 
-/// A WhisperKit CoreML variant Yapper knows how to offer. Downloaded on first use into
-/// Application Support; never bundled — the accurate one is 1.5 GB.
+/// A speech-to-text model Yapper knows how to offer: a WhisperKit CoreML variant, or Parakeet
+/// through FluidAudio. Downloaded on first use; never bundled.
 struct WhisperModel: Identifiable, Hashable, Sendable {
-    let id: String            // WhisperKit variant name in the argmaxinc/whisperkit-coreml repo
+    enum Engine: Sendable { case whisper, parakeet }
+
+    let id: String            // WhisperKit variant name in the argmaxinc/whisperkit-coreml repo, or "parakeet-ultra"
     let displayName: String
     let blurb: String
     let approxSize: String
+    var engine: Engine = .whisper
 
     static let repo = "argmaxinc/whisperkit-coreml"
 
-    static let catalog: [WhisperModel] = [
+    static let parakeet = WhisperModel(
+        id: "parakeet-ultra", displayName: "Parakeet (fastest)",
+        blurb: "As accurate as Large v3 Turbo and about ten times faster. 25 languages, most of them European. NVIDIA Parakeet, CC-BY-4.0.",
+        approxSize: "≈ 600 MB", engine: .parakeet)
+
+    /// Parakeet runs on the Neural Engine, so it's offered on Apple Silicon only.
+    static var catalog: [WhisperModel] {
+        #if arch(arm64)
+        return [parakeet] + whisperCatalog
+        #else
+        return whisperCatalog
+        #endif
+    }
+
+    static let whisperCatalog: [WhisperModel] = [
         .init(id: "openai_whisper-tiny.en", displayName: "Tiny (English)",
               blurb: "Fastest, least accurate. Fine for short commands.", approxSize: "≈ 40 MB"),
         .init(id: "openai_whisper-base.en", displayName: "Base (English)",
@@ -25,11 +42,14 @@ struct WhisperModel: Identifiable, Hashable, Sendable {
     /// The universal binary runs its native slice, so compile-time arch is the runtime machine.
     static var recommended: WhisperModel {
         #if arch(arm64)
-        return catalog[3]
+        return parakeet
         #else
-        return catalog[1]
+        return whisperCatalog[1]
         #endif
     }
+
+    /// The previous Apple Silicon default, Large v3 Turbo; a stored choice of it predates Parakeet.
+    static let formerDefaultID = "openai_whisper-large-v3-v20240930_turbo"
 
     static func named(_ id: String) -> WhisperModel {
         catalog.first { $0.id == id } ?? recommended
@@ -55,6 +75,7 @@ struct WhisperModel: Identifiable, Hashable, Sendable {
     /// A finished download has the compiled CoreML bundles in place. A partial one may have the
     /// folder but not the models, so check for the decoder specifically.
     var isDownloaded: Bool {
+        if engine == .parakeet { return ParakeetTranscriber.isDownloaded }
         let fm = FileManager.default
         guard let items = try? fm.contentsOfDirectory(atPath: folder.path) else { return false }
         return items.contains { $0.hasSuffix(".mlmodelc") && $0.lowercased().contains("decoder") }

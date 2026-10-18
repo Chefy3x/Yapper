@@ -51,6 +51,29 @@ struct FocusedField: Sendable {
         return Self.string(element, kAXValueAttribute)
     }
 
+    /// The field's text before and after the cursor (or the selection a paste will replace),
+    /// trimmed to what fitting needs. Nil when the app doesn't expose it.
+    @AXWorker
+    func cursorContext() -> (before: String, after: String)? {
+        guard !isSecure, let value else { return nil }
+        var raw: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, &raw) == .success,
+              let raw, CFGetTypeID(raw) == AXValueGetTypeID() else { return nil }
+        var range = CFRange()
+        guard AXValueGetValue(raw as! AXValue, .cfRange, &range) else { return nil }
+        let ns = value as NSString
+        guard range.location >= 0, range.location + range.length <= ns.length else { return nil }
+        let before = ns.substring(to: range.location)
+        let after = ns.substring(from: range.location + range.length)
+        return (String(before.suffix(300)), String(after.prefix(100)))
+    }
+
+    /// Put keyboard focus back on this element, after its app was brought forward again.
+    @AXWorker
+    func refocus() {
+        AXUIElementSetAttributeValue(element, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+    }
+
     @AXWorker
     private static func string(_ element: AXUIElement, _ attribute: String) -> String? {
         var raw: CFTypeRef?

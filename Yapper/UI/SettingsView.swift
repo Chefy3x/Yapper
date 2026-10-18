@@ -1257,7 +1257,7 @@ private struct ConversationPanel: View {
                         .foregroundStyle(.secondary)
                         .textCase(.uppercase)
                 }
-                Text("While on, Yapper watches the apps you've checked and speaks each new assistant response as it finishes — even when that app isn't focused. Browsers are read only when their active tab is an AI site. Toggle anytime with \(settings.yapperKey.keycap) + Return; skip ahead with \(settings.yapperKey.keycap) + →.\n\nVoice in closes the loop: hold \(settings.yapperKey.keycap) and talk, release, and the words land in whatever is focused. Speech is transcribed on this Mac by Whisper — nothing leaves the machine. With hands-free on, the mic opens by itself after each reply finishes reading and closes when you pause. Yapper never presses Return; sending is always yours.")
+                Text("While on, Yapper watches the apps you've checked and speaks each new assistant response as it finishes — even when that app isn't focused. Browsers are read only when their active tab is an AI site. Toggle anytime with \(settings.yapperKey.keycap) + Return; skip ahead with \(settings.yapperKey.keycap) + →.\n\nVoice in closes the loop: hold \(settings.yapperKey.keycap) and talk, release, and the words land in whatever is focused. Speech is transcribed on this Mac — nothing leaves the machine. With hands-free on, the mic opens by itself after each reply finishes reading and closes when you pause. Yapper never presses Return; sending is always yours.")
                     .font(skin.body(skin == .tape ? 11.5 : 12))
                     .foregroundStyle(skin == .tape ? AnyShapeStyle(Tape.dust) : AnyShapeStyle(.secondary))
                     .lineSpacing(3)
@@ -1345,7 +1345,7 @@ private struct WatchedAppRow: View {
 
 // MARK: - Voice In
 
-/// Local speech-to-text controls: master switch, mic permission, Whisper model, hands-free.
+/// Local speech-to-text controls: master switch, mic permission, speech model, hands-free.
 private struct VoiceInSection: View {
     @EnvironmentObject private var settings: SettingsStore
     @EnvironmentObject private var state: AppState
@@ -1537,7 +1537,7 @@ private struct VoiceInSection: View {
                 .frame(width: 22)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Clean up stumbles").font(skin.body(skin == .tape ? 12.5 : 13, .semibold))
-                Text("Takes out um and uh, stutters, and words said twice. With Smart formatting on, also filler like \"like\" and \"you know\", and sentences you started over.")
+                Text("Takes out um and uh, stutters, words said twice, and filler like \"you know\" that's never meant. Instant, on every dictation.")
                     .font(skin.body(11))
                     .foregroundStyle(.secondary)
             }
@@ -1630,7 +1630,7 @@ private struct VoiceInSection: View {
 
 // MARK: - Vocabulary
 
-/// Terms that bias Whisper, rules that fix what it still mishears, and the fix-last-transcript
+/// Terms Yapper spells your way, rules that fix what the model still mishears, and the fix-last-transcript
 /// loop that learns both from one edit.
 private struct VocabularySection: View {
     @EnvironmentObject private var state: AppState
@@ -1658,18 +1658,18 @@ private struct VocabularySection: View {
                         .frame(width: 36, height: 36)
                         .background(Circle().fill(skin.iconChipBG))
                     RowLabel("Vocabulary",
-                             subtitle: "Names and jargon Whisper should expect, and fixes for what it still gets wrong. Stays on this Mac.")
+                             subtitle: "Names and jargon to spell your way, and fixes for what the speech model still gets wrong. Stays on this Mac.")
                     Spacer()
                 }
                 .padding(.bottom, 8)
 
                 RowDivider()
                 toggleRow(icon: "pencil.and.outline", title: "Learn from your edits",
-                          detail: "After Yapper types, it watches that field for a minute. A name or term you fix by hand becomes a word Whisper expects next time.",
+                          detail: "After Yapper types, it watches that field for a minute. A name or term you fix by hand becomes a word Yapper spells your way next time.",
                           isOn: $settings.learnFromEdits)
                 RowDivider()
                 toggleRow(icon: "text.viewfinder", title: "Use words on screen",
-                          detail: "While you talk, names and jargon in the window you're dictating into are given to Whisper so it spells them the same way. Read on this Mac, never kept.",
+                          detail: "While you talk, names and jargon in the window you're dictating into fix the spelling of near misses, so they come out the way the screen spells them. Read on this Mac, never kept.",
                           isOn: $settings.useScreenWords)
                 if WisprFlowImport.isAvailable {
                     RowDivider()
@@ -1689,7 +1689,7 @@ private struct VocabularySection: View {
 
     private var termsBlock: some View {
         VStack(alignment: .leading, spacing: 8) {
-            sectionTitle("Expected words", hint: "Fed to Whisper as context before every turn.")
+            sectionTitle("Expected words", hint: "Close misspellings of these are fixed after every turn.")
             HStack(spacing: 8) {
                 TextField("Add a name, product, or term", text: $newTerm)
                     .textFieldStyle(.roundedBorder)
@@ -1712,7 +1712,7 @@ private struct VocabularySection: View {
 
     private var replacementsBlock: some View {
         VStack(alignment: .leading, spacing: 8) {
-            sectionTitle("Corrections", hint: "When Whisper hears the left, Yapper types the right.")
+            sectionTitle("Corrections", hint: "When the speech model hears the left, Yapper types the right.")
             HStack(spacing: 8) {
                 TextField("Heard", text: $newHeard).textFieldStyle(.roundedBorder)
                 Image(systemName: "arrow.right").foregroundStyle(.tertiary)

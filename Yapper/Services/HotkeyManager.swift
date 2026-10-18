@@ -10,6 +10,8 @@ import CoreGraphics
 ///   5. Key + →                                             -> skipNext (only while playing/queued)
 ///   6. Key + D                                             -> AX tree dump (debug)
 ///   7. Key + V                                             -> paste the last transcript again
+///   8. Key + Space, while holding to talk                  -> lock the mic (release, keep talking;
+///      the next press of the key finishes)
 /// Chords 3, 4, 6 and 7 are swallowed (7 not when the key is Right ⌘, where it's plain paste) so the focused app never sees them. Chord 5 is swallowed only
 /// when a skip means something; otherwise it passes through, because ⌥→ is word-jump in every
 /// text field and stealing it would be a daily paper cut. Anything else pressed while the key
@@ -24,6 +26,7 @@ final class HotkeyManager {
         static let s: Int64 = 1
         static let d: Int64 = 2
         static let v: Int64 = 9
+        static let space: Int64 = 49
         static let returnKey: Int64 = 36
         static let keypadEnter: Int64 = 76
         static let rightArrow: Int64 = 124
@@ -44,6 +47,10 @@ final class HotkeyManager {
     var onDumpAXTree: (() -> Void)?
     var onSkipNext: (() -> Void)?
     var onRepasteLast: (() -> Void)?
+    /// Space during a talk hold: keep the mic open after the key comes up.
+    var onLockRequested: (() -> Void)?
+    /// Answers "is a talk hold in progress?" — decides whether Space is Yapper's or the app's.
+    var canLockMic: () -> Bool = { false }
     /// Answers "would a skip do anything right now?" — playing or queued. Decides whether
     /// Key + → is Yapper's or the app's.
     var skipIsMeaningful: () -> Bool = { false }
@@ -151,6 +158,12 @@ final class HotkeyManager {
             // If the Yapper key is held, watch for our chords. Otherwise pass through.
             guard gesture.isDown else {
                 return Unmanaged.passUnretained(event)
+            }
+            // Key + Space mid-hold: lock the mic (swallowed). The hold itself carries on, so
+            // releasing the key ends the hold without ending the dictation.
+            if keyCode == KeyCode.space, canLockMic() {
+                DispatchQueue.main.async { [weak self] in self?.onLockRequested?() }
+                return nil
             }
             // Any keyDown while the key is held cancels the pending "tap" interpretation
             // (and an in-progress hold-to-talk). It's a chord or ⌥-typing, never dictation.
