@@ -1553,6 +1553,7 @@ private struct VoiceInSection: View {
 /// loop that learns both from one edit.
 private struct VocabularySection: View {
     @EnvironmentObject private var state: AppState
+    @EnvironmentObject private var settings: SettingsStore
     @ObservedObject private var vocab: VocabularyStore
     @Environment(\.settingsSkin) private var skin
     @State private var newTerm = ""
@@ -1560,6 +1561,7 @@ private struct VocabularySection: View {
     @State private var newTyped = ""
     @State private var correction = ""
     @State private var learnedNote: String?
+    @State private var importNote: String?
 
     init() {
         _vocab = ObservedObject(wrappedValue: AppState.shared.vocabulary)
@@ -1580,6 +1582,18 @@ private struct VocabularySection: View {
                 }
                 .padding(.bottom, 8)
 
+                RowDivider()
+                toggleRow(icon: "pencil.and.outline", title: "Learn from your edits",
+                          detail: "After Yapper types, it watches that field for a minute. A name or term you fix by hand becomes a word Whisper expects next time.",
+                          isOn: $settings.learnFromEdits)
+                RowDivider()
+                toggleRow(icon: "text.viewfinder", title: "Use words on screen",
+                          detail: "While you talk, names and jargon in the window you're dictating into are given to Whisper so it spells them the same way. Read on this Mac, never kept.",
+                          isOn: $settings.useScreenWords)
+                if WisprFlowImport.isAvailable {
+                    RowDivider()
+                    wisprImportRow
+                }
                 RowDivider()
                 termsBlock
                 RowDivider()
@@ -1685,6 +1699,62 @@ private struct VocabularySection: View {
             }
         }
         .padding(.vertical, 6)
+    }
+
+    private func toggleRow(icon: String, title: String, detail: String, isOn: Binding<Bool>) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(skin.iconTint)
+                .frame(width: 22)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(skin.body(skin == .tape ? 12.5 : 13, .semibold))
+                Text(detail).font(skin.body(11)).foregroundStyle(.secondary)
+            }
+            Spacer()
+            Toggle("", isOn: isOn)
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .tint(skin.liveTint)
+                .disabled(!settings.voiceInputEnabled)
+        }
+        .padding(.vertical, 6)
+    }
+
+    private var wisprImportRow: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "square.and.arrow.down")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(skin.iconTint)
+                .frame(width: 22)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Import from Wispr Flow").font(skin.body(skin == .tape ? 12.5 : 13, .semibold))
+                Text(importNote ?? "Bring in the words and corrections Wispr Flow has learned. Snippets stay behind.")
+                    .font(skin.body(11))
+                    .foregroundStyle(importNote == nil ? .secondary : skin.liveTint)
+            }
+            Spacer()
+            Button("Import", action: importWispr).controlSize(.small)
+        }
+        .padding(.vertical, 6)
+    }
+
+    private func importWispr() {
+        do {
+            let entries = try WisprFlowImport.readEntries()
+            let plan = WisprFlowImport.plan(entries) { WordKnowledge.isDictionaryWord($0) }
+            let added = vocab.merge(terms: plan.terms, rules: plan.rules)
+            if added.terms == 0, added.rules == 0 {
+                importNote = "Nothing new: Yapper already has every word Wispr Flow knows."
+            } else {
+                var parts = ["\(added.terms) word\(added.terms == 1 ? "" : "s")"]
+                if added.rules > 0 { parts.append("\(added.rules) correction\(added.rules == 1 ? "" : "s")") }
+                importNote = "Imported " + parts.joined(separator: " and ") + "."
+            }
+            Log.voice.info("Wispr Flow import: \(added.terms, privacy: .public) terms, \(added.rules, privacy: .public) rules, \(plan.skippedSnippets, privacy: .public) snippets skipped")
+        } catch {
+            importNote = error.localizedDescription
+        }
     }
 
     private func sectionTitle(_ title: String, hint: String) -> some View {

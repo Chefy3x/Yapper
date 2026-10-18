@@ -27,6 +27,8 @@ final class SettingsStore: ObservableObject {
         case whisperModelID
         case handsFreeEnabled
         case pauseMediaWhileTalking
+        case learnFromEdits
+        case useScreenWords
         case inputDeviceUID
         case yapperKey
     }
@@ -116,6 +118,14 @@ final class SettingsStore: ObservableObject {
     @Published var pauseMediaWhileTalking: Bool {
         didSet { defaults.set(pauseMediaWhileTalking, forKey: Key.pauseMediaWhileTalking.rawValue) }
     }
+    /// Watch the field a transcript went into for a minute and learn the words the user fixes.
+    @Published var learnFromEdits: Bool {
+        didSet { defaults.set(learnFromEdits, forKey: Key.learnFromEdits.rawValue) }
+    }
+    /// Bias each decode toward the names and jargon visible in the window being dictated into.
+    @Published var useScreenWords: Bool {
+        didSet { defaults.set(useScreenWords, forKey: Key.useScreenWords.rawValue) }
+    }
     /// The one modifier that drives Yapper (tap / hold / chords). See `YapperKey`.
     @Published var yapperKey: YapperKey {
         didSet { defaults.set(yapperKey.rawValue, forKey: Key.yapperKey.rawValue) }
@@ -176,6 +186,8 @@ final class SettingsStore: ObservableObject {
         self.whisperModelID = defaults.string(forKey: Key.whisperModelID.rawValue) ?? WhisperModel.recommended.id
         self.handsFreeEnabled = defaults.bool(forKey: Key.handsFreeEnabled.rawValue)
         self.pauseMediaWhileTalking = defaults.object(forKey: Key.pauseMediaWhileTalking.rawValue) as? Bool ?? true
+        self.learnFromEdits = defaults.object(forKey: Key.learnFromEdits.rawValue) as? Bool ?? true
+        self.useScreenWords = defaults.object(forKey: Key.useScreenWords.rawValue) as? Bool ?? true
         self.inputDeviceUID = defaults.string(forKey: Key.inputDeviceUID.rawValue)
         self.yapperKey = YapperKey(rawValue: defaults.string(forKey: Key.yapperKey.rawValue) ?? "") ?? .default
         let storedScale = defaults.object(forKey: Key.cassetteScale.rawValue) as? Double ?? 1.0

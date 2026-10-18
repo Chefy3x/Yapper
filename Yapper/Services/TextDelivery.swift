@@ -1,10 +1,19 @@
 import AppKit
 import CoreGraphics
 
+/// What a paste landed in, so the field can be watched for the user's edits afterwards.
+struct DeliveryReceipt: Sendable {
+    /// Nil when the app doesn't expose its focused element through Accessibility.
+    var field: FocusedField?
+    /// The field's text right after the paste, the baseline edits are measured against.
+    var valueAfter: String?
+}
+
 /// What the coordinator needs to get text on screen. The real one pastes; tests capture.
 protocol TextDelivering: Sendable {
     /// Puts `text` into the focused field of the frontmost app. Never presses Return.
-    func deliver(_ text: String) async throws
+    @discardableResult
+    func deliver(_ text: String) async throws -> DeliveryReceipt
 }
 
 /// Types a transcript into whatever has keyboard focus by pasting it. Paste is the one route
@@ -30,7 +39,8 @@ struct PasteDelivery: TextDelivering {
 
     /// After the app reads the text, it gets this long to finish before the old contents return.
     static let afterReadGrace: TimeInterval = 0.1
-    /// No read by then means the paste didn't land (no text field focused, secure input on).
+    /// No read this long after the retry means the paste didn't land (no text field focused,
+    /// secure input on).
     static let readTimeout: TimeInterval = 1.5
     /// The old contents never come back sooner than this. A promise doesn't say who read it, and
     /// a clipboard manager polling at the wrong moment looks exactly like the target app, so a
@@ -38,15 +48,21 @@ struct PasteDelivery: TextDelivering {
     /// The same window covers a read that came before the paste: the pasteboard caches the
     /// data then, and the target's own read is never seen.
     static let minimumSettle: TimeInterval = 0.35
+    /// No read by then and the field looks unchanged: the ⌘V is sent once more. Long enough that
+    /// a slow app reading late is rare; the field check guards the rest against a double paste.
+    static let retryAfter: TimeInterval = 0.75
 
-    func deliver(_ text: String) async throws {
+    @discardableResult
+    func deliver(_ text: String) async throws -> DeliveryReceipt {
         let vKey = await MainActor.run { KeyboardLayout.keyCode() }   // TIS is main-thread only
-        try await Self.paste(text, vKey: vKey)
+        return try await Self.paste(text, vKey: vKey)
     }
 
     @AXWorker
-    private static func paste(_ text: String, vKey: CGKeyCode) throws {
+    private static func paste(_ text: String, vKey: CGKeyCode) throws -> DeliveryReceipt {
         guard NSWorkspace.shared.frontmostApplication != nil else { throw DeliveryError.noFrontmostApp }
+        let field = FocusedField.current()
+        let valueBefore = field?.value
         let pb = NSPasteboard.general
         let prior = AccessibilityReader.pasteboardSnapshot(pb)
         let promise = PastePromise(text: text)
@@ -78,17 +94,41 @@ struct PasteDelivery: TextDelivering {
         up.post(tap: .cghidEventTap)
 
         // The promise is served on the main thread, which stays free while this worker waits.
-        while Date().timeIntervalSince(postedAt) < readTimeout {
-            if promise.reads.contains(where: { $0 >= postedAt }) || readsBeforePaste > 0 { break }
-            Thread.sleep(forTimeInterval: 0.02)
+        func waitForRead(until deadline: TimeInterval) {
+            while Date().timeIntervalSince(postedAt) < deadline {
+                if promise.reads.contains(where: { $0 >= postedAt }) || readsBeforePaste > 0 { return }
+                Thread.sleep(forTimeInterval: 0.02)
+            }
         }
-        let readAfterPaste = promise.reads.contains { $0 >= postedAt }
-        if readAfterPaste || readsBeforePaste > 0 {
+        waitForRead(until: retryAfter)
+        var landed = promise.reads.contains { $0 >= postedAt } || readsBeforePaste > 0
+        var how = promise.reads.contains { $0 >= postedAt } ? "read by the focused app" : "read from cache"
+        if !landed, let field, let before = valueBefore, let now = field.value, now != before {
+            // Some apps take the text without asking for it again (a cached read we never saw).
+            landed = true
+            how = "seen in the field"
+        }
+        if !landed, field?.isTextInput ?? true {
+            // A ⌘V that arrived while focus was still settling, or while a modifier was down,
+            // goes nowhere. Wispr Flow and Superwhisper both send it once more; so does Yapper.
+            Log.voice.notice("Paste not read after \(Int(retryAfter * 1000), privacy: .public)ms; sending ⌘V again")
+            if let down2 = CGEvent(keyboardEventSource: src, virtualKey: vKey, keyDown: true),
+               let up2 = CGEvent(keyboardEventSource: src, virtualKey: vKey, keyDown: false) {
+                down2.flags = .maskCommand
+                up2.flags = .maskCommand
+                down2.post(tap: .cghidEventTap)
+                up2.post(tap: .cghidEventTap)
+            }
+            waitForRead(until: retryAfter + readTimeout)
+            landed = promise.reads.contains { $0 >= postedAt }
+            how = "read after a retry"
+        }
+        if landed {
             let elapsed = Date().timeIntervalSince(postedAt)
             Thread.sleep(forTimeInterval: max(afterReadGrace, minimumSettle - elapsed))
             restoreIfUnchanged(pb, prior: prior, ourChangeCount: ourChangeCount)
-            Log.voice.info("Paste read \(readAfterPaste ? "by the focused app" : "from cache", privacy: .public) after \(Int(Date().timeIntervalSince(postedAt) * 1000), privacy: .public)ms")
-            return
+            Log.voice.info("Paste \(how, privacy: .public) after \(Int(Date().timeIntervalSince(postedAt) * 1000), privacy: .public)ms")
+            return DeliveryReceipt(field: field, valueAfter: field?.value)
         }
         // Nobody read it. Leave the words where the user can still get them, as plain data,
         // since the promise dies with this call. Unless something else has claimed the
@@ -97,7 +137,7 @@ struct PasteDelivery: TextDelivering {
             pb.clearContents()
             pb.setString(text, forType: .string)
         }
-        Log.voice.notice("Paste not read within \(Int(readTimeout * 1000), privacy: .public)ms; transcript left on the clipboard")
+        Log.voice.notice("Paste not read; transcript left on the clipboard")
         throw DeliveryError.notPasted
     }
 

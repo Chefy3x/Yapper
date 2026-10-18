@@ -36,8 +36,19 @@ enum TranscriptFilter {
     /// True when the recording contains enough voiced frames to be someone talking, measured
     /// against the recording's own quiet floor so a noisy room doesn't count as speech.
     static func hasSpeech(_ samples: [Float], sampleRate: Double = 16_000) -> Bool {
-        let frame = Int(sampleRate * 0.02)
-        guard frame > 0, samples.count >= frame else { return false }
+        let levels = frameLevels(samples, sampleRate: sampleRate)
+        guard !levels.isEmpty else { return false }
+        let gate = speechGate(levels)
+        let voiced = levels.filter { $0 > gate }.count
+        return Double(voiced) * frameSeconds >= speechMinSeconds
+    }
+
+    static let frameSeconds = 0.02
+
+    /// RMS of each 20 ms frame. A trailing partial frame is dropped.
+    static func frameLevels(_ samples: [Float], sampleRate: Double = 16_000) -> [Float] {
+        let frame = Int(sampleRate * frameSeconds)
+        guard frame > 0, samples.count >= frame else { return [] }
         var levels: [Float] = []
         levels.reserveCapacity(samples.count / frame)
         var i = 0
@@ -47,12 +58,21 @@ enum TranscriptFilter {
             levels.append((sum / Float(frame)).squareRoot())
             i += frame
         }
-        let floor = levels.sorted()[levels.count / 5]   // 20th percentile ≈ room noise
+        return levels
+    }
+
+    /// The level a frame must clear to be voiced, learned from the recording's own quiet floor.
+    static func speechGate(_ levels: [Float]) -> Float {
+        let floor = roomFloor(levels)
         // Capped so a recording that is talking end to end (no quiet frames to learn the room
         // from) can't raise the bar above normal speaking level.
-        let gate = max(speechFrameRMS, min(floor * 2.5, 0.04))
-        let voiced = levels.filter { $0 > gate }.count
-        return Double(voiced) * 0.02 >= speechMinSeconds
+        return max(speechFrameRMS, min(floor * 2.5, 0.04))
+    }
+
+    /// 20th-percentile frame level: the room with nobody talking.
+    static func roomFloor(_ levels: [Float]) -> Float {
+        guard !levels.isEmpty else { return 0 }
+        return levels.sorted()[levels.count / 5]
     }
 
     /// Phrases Whisper emits for silence or music, lowercased and stripped of punctuation.

@@ -33,8 +33,10 @@ final class VoiceInputCoordinator: ObservableObject {
     var onBargeIn: (() -> Void)?
     /// One-line status for the menu bar's last-event line.
     var onEvent: ((String) -> Void)?
-    /// A transcript was pasted. Carries the text for logging / history hooks.
-    var onDelivered: ((String) -> Void)?
+    /// A transcript was pasted. Carries the text and what it landed in, for the edit watcher.
+    var onDelivered: ((String, DeliveryReceipt) -> Void)?
+    /// Reads words off the focused window to bias this turn's decode. Nil leaves them out.
+    var screenWords: (@MainActor () async -> [String])?
 
     typealias TranscriberFactory = @MainActor (WhisperModel, @escaping @Sendable (WhisperModelStatus) -> Void) -> Transcribing
 
@@ -65,6 +67,8 @@ final class VoiceInputCoordinator: ObservableObject {
     private var priming = false
     private var primeWatchdog: Task<Void, Never>?
     private var tailTask: Task<Void, Never>?
+    /// This turn's screen words, read while the user talks so they cost the turn nothing.
+    private var screenWordsTask: Task<[String], Never>?
     /// Silent-start watch for the capture that is currently open.
     private var firstSilentLevelAt: Date?
     private var heardSignal = false
@@ -210,6 +214,7 @@ final class VoiceInputCoordinator: ObservableObject {
             primeWatchdog = nil
             onBargeIn?()
             state = .listening(.pushToTalk)
+            readScreen()
             onEvent?("Listening… release to type")
             Log.voice.info("Listening (push-to-talk, mic open since key-down)")
             armWatchdog(for: .pushToTalk)
@@ -309,6 +314,7 @@ final class VoiceInputCoordinator: ObservableObject {
         resetSilentWatch()
         vad = mode == .handsFree ? VoiceActivityDetector(config: vadConfig) : nil
         state = .listening(mode)
+        readScreen()
         onEvent?(mode == .pushToTalk ? "Listening… release to type" : "Listening…")
         Log.voice.info("Listening (\(mode == .pushToTalk ? "push-to-talk" : "hands-free", privacy: .public))")
         armWatchdog(for: mode)
@@ -330,6 +336,12 @@ final class VoiceInputCoordinator: ObservableObject {
         case nil:
             break
         }
+    }
+
+    private func readScreen() {
+        screenWordsTask?.cancel()
+        guard let screenWords else { screenWordsTask = nil; return }
+        screenWordsTask = Task { await screenWords() }
     }
 
     // MARK: - Silent mic
@@ -417,7 +429,11 @@ final class VoiceInputCoordinator: ObservableObject {
         let samples = capture.stop()
         vad = nil
         listeningSince = nil
-        if discard { state = .idle }
+        if discard {
+            state = .idle
+            screenWordsTask?.cancel()
+            screenWordsTask = nil
+        }
         return samples
     }
 
@@ -434,11 +450,18 @@ final class VoiceInputCoordinator: ObservableObject {
         guard let transcriber else { state = .idle; return }
         state = .transcribing
         onEvent?("Transcribing…")
-        let prompt = TranscriptCorrector.prompt(terms: vocabulary.terms)
+        let terms = vocabulary.terms
         let replacements = vocabulary.replacements
+        let screenTask = screenWordsTask
+        screenWordsTask = nil
         turnTask = Task { [weak self] in
             defer { self?.state = .idle }
             do {
+                // Bounded by the walk's own time budget, and long finished on all but the
+                // shortest holds.
+                let screen = await screenTask?.value ?? []
+                let prompt = TranscriptCorrector.prompt(terms: terms, screenWords: screen)
+                if !screen.isEmpty { Log.voice.info("Prompt has \(screen.count, privacy: .public) words from the screen") }
                 let heard = try await transcriber.transcribe(samples: samples, prompt: prompt)
                 guard !Task.isCancelled else { return }
                 guard !heard.isEmpty else {
@@ -446,8 +469,10 @@ final class VoiceInputCoordinator: ObservableObject {
                     return
                 }
                 let text = TranscriptCorrector.apply(heard, replacements: replacements)
+                let receipt: DeliveryReceipt
                 do {
-                    try await self?.delivery.deliver(text)
+                    guard let self else { return }
+                    receipt = try await self.delivery.deliver(text)
                 } catch PasteDelivery.DeliveryError.notPasted {
                     // The words survived on the clipboard; say so instead of "failed".
                     self?.vocabulary.record(original: heard, delivered: text)
@@ -457,7 +482,7 @@ final class VoiceInputCoordinator: ObservableObject {
                 self?.vocabulary.record(original: heard, delivered: text)
                 let words = text.split(whereSeparator: \.isWhitespace).count
                 self?.onEvent?("Typed \(words) word\(words == 1 ? "" : "s") — press Return to send")
-                self?.onDelivered?(text)
+                self?.onDelivered?(text, receipt)
             } catch {
                 Log.voice.error("Voice turn failed: \(error.localizedDescription, privacy: .public)")
                 self?.onEvent?("Voice in failed: \(error.localizedDescription)")
@@ -472,5 +497,7 @@ final class VoiceInputCoordinator: ObservableObject {
         if state.isListening { _ = stopCapture(discard: true) }
         turnTask?.cancel()
         turnTask = nil
+        screenWordsTask?.cancel()
+        screenWordsTask = nil
     }
 }

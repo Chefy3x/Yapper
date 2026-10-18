@@ -36,7 +36,7 @@ struct VoiceInputCoordinatorTests {
     final class DeliveryLog: @unchecked Sendable { var delivered: [String] = [] }
     struct FakeDelivery: TextDelivering {
         let log: DeliveryLog
-        func deliver(_ text: String) async throws { log.delivered.append(text) }
+        func deliver(_ text: String) async throws -> DeliveryReceipt { log.delivered.append(text); return DeliveryReceipt() }
     }
 
     struct Rig {

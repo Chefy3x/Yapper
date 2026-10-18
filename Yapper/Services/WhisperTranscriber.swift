@@ -170,12 +170,15 @@ actor WhisperTranscriber: Transcribing {
         try await prepare()
         guard let pipe else { throw TranscriberError.notLoaded }
         let started = Date()
-        let segments = try await Self.decode(pipe, samples: samples, prompt: prompt)
+        // Judged on the raw recording: after a boost, room noise would pass for speech.
         let hasSpeech = TranscriptFilter.hasSpeech(samples)
-        let audioSeconds = Double(samples.count) / AudioCapture.targetSampleRate
+        let conditioned = hasSpeech ? AudioConditioner.condition(samples)
+            : AudioConditioner.Result(samples: samples, removedSeconds: 0, gain: 1)
+        let segments = try await Self.decode(pipe, samples: conditioned.samples, prompt: prompt)
+        let audioSeconds = Double(conditioned.samples.count) / AudioCapture.targetSampleRate
         let text = TranscriptFilter.join(segments, audioHasSpeech: hasSpeech, audioSeconds: audioSeconds)
         // .notice so the timing persists in the unified log: lag is measured, not guessed.
-        Log.voice.notice("Transcribed \(String(format: "%.1f", audioSeconds), privacy: .public)s of audio in \(String(format: "%.2f", Date().timeIntervalSince(started)), privacy: .public)s → \(text.count, privacy: .public) chars, \(segments.count, privacy: .public) segments, speech=\(hasSpeech, privacy: .public)")
+        Log.voice.notice("Transcribed \(String(format: "%.1f", audioSeconds), privacy: .public)s of audio (cut \(String(format: "%.1f", conditioned.removedSeconds), privacy: .public)s, gain \(String(format: "%.1f", conditioned.gain), privacy: .public)x) in \(String(format: "%.2f", Date().timeIntervalSince(started)), privacy: .public)s → \(text.count, privacy: .public) chars, \(segments.count, privacy: .public) segments, speech=\(hasSpeech, privacy: .public)")
         return text
     }
 

@@ -50,6 +50,7 @@ final class AppState: ObservableObject {
     lazy var conversationWatcher = ConversationWatcher(settings: settings)
     let vocabulary = VocabularyStore()
     let media = MediaController()
+    let editWatcher = EditWatcher()
     lazy var voiceInput = VoiceInputCoordinator(
         settings: settings,
         vocabulary: vocabulary,
@@ -131,10 +132,23 @@ final class AppState: ObservableObject {
             self.tts.stop()   // you're answering — the reply stops reading, queue included
         }
         voiceInput.onEvent = { [weak self] in self?.lastEvent = $0 }
-        voiceInput.onDelivered = { [weak self] text in
+        voiceInput.onDelivered = { [weak self] text, receipt in
             Log.voice.info("Delivered \(text.count, privacy: .public) chars to the focused app")
-            guard let self, self.conversationModeEnabled else { return }
+            guard let self else { return }
+            if self.settings.learnFromEdits { self.editWatcher.watch(receipt, delivered: text) }
+            guard self.conversationModeEnabled else { return }
             self.mediaGate.awaitingReplyUntil = Date().addingTimeInterval(MediaResumeGate.replyWait)
+        }
+        voiceInput.screenWords = { [weak self] in
+            guard let self, self.settings.useScreenWords else { return [] }
+            let text = await ScreenVocabulary.visibleText()
+            return ScreenVocabulary.candidates(in: text) { WordKnowledge.isDictionaryWord($0) }
+        }
+        editWatcher.onLearned = { [weak self] learned in
+            guard let self else { return }
+            self.vocabulary.applyLearned(learned)
+            let names = learned.map { "“\($0.typed)”" }.joined(separator: ", ")
+            self.lastEvent = "Learned \(names) from your edit"
         }
         voiceInput.$state.sink { [weak self] in self?.voiceInputState = $0 }.store(in: &voiceInputCancellables)
 
@@ -148,6 +162,8 @@ final class AppState: ObservableObject {
                 if state == .listening(.pushToTalk), self.settings.pauseMediaWhileTalking {
                     self.media.pauseIfPlaying()
                 }
+                // A new dictation ends the watch on the last one: learn from what's there now.
+                if state.isListening { self.editWatcher.finish() }
                 self.reconsiderMediaResume(voiceState: state)
             }
             .store(in: &voiceInputCancellables)

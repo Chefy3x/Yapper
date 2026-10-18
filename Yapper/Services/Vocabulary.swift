@@ -20,6 +20,19 @@ struct LastTranscript: Codable, Equatable, Sendable {
     var at: Date
 }
 
+/// Words learned from one edit, kept so the menu can offer to undo them.
+struct LearnedBatch: Equatable, Sendable {
+    var words: [String]
+    var at: Date
+    fileprivate var addedTerms: [String]
+    /// Corrections this batch wrote, each with the one it replaced (nil when it was new).
+    fileprivate var rules: [(new: Replacement, previous: Replacement?)]
+
+    static func == (lhs: LearnedBatch, rhs: LearnedBatch) -> Bool {
+        lhs.words == rhs.words && lhs.at == rhs.at
+    }
+}
+
 /// Persistent vocabulary: terms that bias Whisper's decoding, replacement rules that fix what it
 /// still mishears, and the last transcript for the learn-from-correction flow.
 /// Stored as JSON next to the audio cache; never leaves the machine.
@@ -28,6 +41,8 @@ final class VocabularyStore: ObservableObject {
     @Published var terms: [String] { didSet { save() } }
     @Published var replacements: [Replacement] { didSet { save() } }
     @Published private(set) var lastTranscript: LastTranscript?
+    /// The most recent words learned from an edit, until undone or superseded. Not persisted.
+    @Published private(set) var recentlyLearned: LearnedBatch?
 
     private struct File: Codable {
         var terms: [String] = []
@@ -98,6 +113,54 @@ final class VocabularyStore: ObservableObject {
         return learned
     }
 
+    /// Words the edit watcher saw the user fix. Each becomes an expected word, and a correction
+    /// when it's safe (see `LearnedWord.makesRule`).
+    func applyLearned(_ learned: [LearnedWord]) {
+        guard !learned.isEmpty else { return }
+        var batch = LearnedBatch(words: [], at: Date(), addedTerms: [], rules: [])
+        for word in learned {
+            if !terms.contains(where: { $0.caseInsensitiveCompare(word.typed) == .orderedSame }) {
+                addTerm(word.typed)
+                batch.addedTerms.append(word.typed)
+            }
+            if word.makesRule {
+                let previous = replacements.first { $0.heard.caseInsensitiveCompare(word.heard) == .orderedSame }
+                if previous?.typed != word.typed {
+                    addReplacement(heard: word.heard, typed: word.typed)
+                    batch.rules.append((Replacement(heard: word.heard, typed: word.typed), previous))
+                }
+            }
+            batch.words.append(word.typed)
+        }
+        recentlyLearned = batch
+    }
+
+    /// Takes back exactly what the last learned batch added, leaving later edits alone.
+    func undoLearned() {
+        guard let batch = recentlyLearned else { return }
+        recentlyLearned = nil
+        for term in batch.addedTerms { removeTerm(term) }
+        for (rule, previous) in batch.rules {
+            guard let idx = replacements.firstIndex(where: { $0.heard.caseInsensitiveCompare(rule.heard) == .orderedSame
+                                                             && $0.typed == rule.typed }) else { continue }
+            if let previous { replacements[idx].typed = previous.typed } else { replacements.remove(at: idx) }
+        }
+    }
+
+    func dismissLearned() { recentlyLearned = nil }
+
+    /// Adds what an import found, skipping anything already here. Returns how many were new.
+    @discardableResult
+    func merge(terms newTerms: [String], rules newRules: [Replacement]) -> (terms: Int, rules: Int) {
+        let termsBefore = terms.count
+        let rulesBefore = replacements
+        for term in newTerms { addTerm(term) }
+        for rule in newRules where !replacements.contains(where: { $0.heard.caseInsensitiveCompare(rule.heard) == .orderedSame }) {
+            addReplacement(heard: rule.heard, typed: rule.typed)
+        }
+        return (terms.count - termsBefore, replacements.count - rulesBefore.count)
+    }
+
     private func save() {
         let file = File(terms: terms, replacements: replacements, lastTranscript: lastTranscript)
         if let data = try? JSONEncoder().encode(file) {
@@ -128,8 +191,18 @@ enum TranscriptCorrector {
     /// Whisper's prompt is "text that came before": a comma-separated list of the user's
     /// terms reads as prior context and nudges spelling toward them. Capped well under the
     /// decoder's ~220-token prompt budget; newest terms win when the list is long.
-    static func prompt(terms: [String], maxCharacters: Int = 600) -> String? {
-        let cleaned = terms.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+    ///
+    /// `screenWords` are read off the focused window for this turn. They come before the user's
+    /// own terms, so when the budget runs out it's screen words that drop, never your vocabulary.
+    static func prompt(terms: [String], screenWords: [String] = [], maxCharacters: Int = 600) -> String? {
+        var seen: Set<String> = []
+        var cleaned: [String] = []
+        // Walk from the end so a word that is both on screen and in your terms keeps your slot.
+        for term in (screenWords + terms).reversed() {
+            let t = term.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !t.isEmpty, seen.insert(t.lowercased()).inserted else { continue }
+            cleaned.insert(t, at: 0)
+        }
         guard !cleaned.isEmpty else { return nil }
         var kept: [String] = []
         var length = 0

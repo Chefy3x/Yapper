@@ -68,6 +68,8 @@ struct MenuBarContent: View {
             // promise something the app can't currently do.
             .opacity(state.hasAccessibilityPermission ? 1 : 0.4)
 
+            LearnedWordsRow(vocab: state.vocabulary)
+
             if !state.lastEvent.isEmpty {
                 Divider()
                 VStack(alignment: .leading, spacing: 2) {
@@ -178,4 +180,27 @@ private struct OpenSettingsButton<Label: View>: View {
 @MainActor
 private func bringYapperForward() {
     NSApp.activate(ignoringOtherApps: true)
+}
+
+/// "Learned “Claude”" with a way to take it back, for a few minutes after an edit taught Yapper
+/// a word. Learning happens without asking, so undoing it has to be one click.
+private struct LearnedWordsRow: View {
+    @ObservedObject var vocab: VocabularyStore
+
+    var body: some View {
+        if let batch = vocab.recentlyLearned, Date().timeIntervalSince(batch.at) < 300 {
+            Divider()
+            HStack(spacing: 8) {
+                Image(systemName: "character.book.closed")
+                    .foregroundStyle(.secondary)
+                Text("Learned " + batch.words.map { "“\($0)”" }.joined(separator: ", "))
+                    .font(.callout)
+                    .lineLimit(2)
+                Spacer()
+                Button("Undo") { vocab.undoLearned() }
+                    .controlSize(.small)
+            }
+            .padding(.horizontal, 12)
+        }
+    }
 }
