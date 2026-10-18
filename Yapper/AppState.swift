@@ -157,9 +157,16 @@ final class AppState: ObservableObject {
         }
         voiceInput.captureTarget = { await DeliveryTarget.current() }
         voiceInput.screenWords = { [weak self] in
-            guard let self, self.settings.useScreenWords else { return [] }
+            guard let self else { return .empty }
+            let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+            let words = self.settings.useScreenWords
+            let code = self.settings.codeWords && CodeWords.isCodingApp(bundleID: bundleID)
+            guard words || code else { return .empty }
             let text = await ScreenVocabulary.visibleText()
-            return ScreenVocabulary.candidates(in: text) { WordKnowledge.isDictionaryWord($0) }
+            return ScreenReading(
+                words: words ? ScreenVocabulary.candidates(in: text) { WordKnowledge.isDictionaryWord($0) } : [],
+                identifiers: code ? CodeWords.identifiers(in: text) : [],
+                tagsFiles: code && CodeWords.tagsFiles(bundleID: bundleID))
         }
         voiceInput.format = { [weak self] text in
             guard let self else { return text }

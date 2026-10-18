@@ -62,8 +62,9 @@ final class VoiceInputCoordinator: ObservableObject {
     var onEvent: ((String) -> Void)?
     /// A transcript was pasted. Carries the text and what it landed in, for the edit watcher.
     var onDelivered: ((String, DeliveryReceipt) -> Void)?
-    /// Reads words off the focused window to bias this turn's decode. Nil leaves them out.
-    var screenWords: (@MainActor () async -> [String])?
+    /// Reads the focused window: words to bias this turn's decode, and code names to type the
+    /// way the code spells them. Nil leaves them out.
+    var screenWords: (@MainActor () async -> ScreenReading)?
     /// The app and field the user was in when they started talking, so the paste goes back there.
     var captureTarget: (@MainActor () async -> DeliveryTarget?)?
     /// Lays out lists and applies self-corrections before the paste. Nil, or text returned
@@ -112,7 +113,7 @@ final class VoiceInputCoordinator: ObservableObject {
     private var primeWatchdog: Task<Void, Never>?
     private var tailTask: Task<Void, Never>?
     /// This turn's screen words, read while the user talks so they cost the turn nothing.
-    private var screenWordsTask: Task<[String], Never>?
+    private var screenWordsTask: Task<ScreenReading, Never>?
     /// Where this turn's text goes, read when the turn started.
     private var targetTask: Task<DeliveryTarget?, Never>?
     /// When the user let go (or hands-free heard them stop): the start of the lag they feel.
@@ -594,13 +595,14 @@ final class VoiceInputCoordinator: ObservableObject {
         }
     }
 
-    /// Speech model, then corrections, respelling, times, formatting and snippets: everything
+    /// Speech model, then corrections, respelling, times, formatting, code names and snippets: everything
     /// between the recording and the paste. `heard` is empty when the model heard nothing; `text`
     /// is empty when nothing worth typing was left.
     private func process(_ samples: [Float], using transcriber: Transcribing,
-                         screen: [String]) async throws -> (heard: String, text: String, decoded: Date) {
+                         screen reading: ScreenReading) async throws -> (heard: String, text: String, decoded: Date) {
         let terms = vocabulary.terms
         let replacements = vocabulary.replacements
+        let screen = reading.words
         let prompt = TranscriptCorrector.prompt(terms: terms, screenWords: screen)
         if !screen.isEmpty { Log.voice.info("\(screen.count, privacy: .public) words from the screen for respelling") }
         let heard = try await transcriber.transcribe(samples: samples, prompt: prompt)
@@ -613,7 +615,9 @@ final class VoiceInputCoordinator: ObservableObject {
         // "at 401" → "at 4:01": Whisper writes spoken times as plain numbers.
         let timed = SpokenTimes.normalize(respelled)
         let formatted = await format?(timed) ?? timed
-        let text = formatted.isEmpty ? formatted : (expandSnippets?(formatted) ?? formatted)
+        // "user id" → userId, "at app state dot swift" → @AppState.swift, when the code is on screen.
+        let coded = CodeWords.apply(formatted, identifiers: reading.identifiers, tagFiles: reading.tagsFiles)
+        let text = coded.isEmpty ? coded : (expandSnippets?(coded) ?? coded)
         return (heard, text, decoded)
     }
 
@@ -621,12 +625,12 @@ final class VoiceInputCoordinator: ObservableObject {
     /// paste. Throws when the speech model isn't loaded.
     func transcribe(samples: [Float]) async throws -> (heard: String, text: String) {
         guard let transcriber, modelStatus.isReady else { throw WhisperTranscriber.TranscriberError.notLoaded }
-        let result = try await process(samples, using: transcriber, screen: [])
+        let result = try await process(samples, using: transcriber, screen: .empty)
         return (result.heard, result.text)
     }
 
     private func transcribeAndDeliver(_ samples: [Float], using transcriber: Transcribing,
-                                      screenTask: Task<[String], Never>?,
+                                      screenTask: Task<ScreenReading, Never>?,
                                       targetTask: Task<DeliveryTarget?, Never>? = nil,
                                       releasedAt: Date? = nil, startedAt: Date = Date(),
                                       isRetry: Bool = false) async {
@@ -642,8 +646,8 @@ final class VoiceInputCoordinator: ObservableObject {
         do {
             // Bounded by the walk's own time budget, and long finished on all but the
             // shortest holds.
-            let screen = await screenTask?.value ?? []
-            let (heard, text, decoded) = try await process(samples, using: transcriber, screen: screen)
+            let reading = await screenTask?.value ?? .empty
+            let (heard, text, decoded) = try await process(samples, using: transcriber, screen: reading)
             guard !Task.isCancelled else { return }
             report.heard = heard
             report.text = text

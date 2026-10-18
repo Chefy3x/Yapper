@@ -30,6 +30,7 @@ final class SettingsStore: ObservableObject {
         case pauseMediaWhileTalking
         case learnFromEdits
         case useScreenWords
+        case codeWords
         case smartFormattingEnabled
         case cleanUpSpeech
         case inputDeviceUID
@@ -133,6 +134,10 @@ final class SettingsStore: ObservableObject {
     @Published var useScreenWords: Bool {
         didSet { defaults.set(useScreenWords, forKey: Key.useScreenWords.rawValue) }
     }
+    /// In editors, terminals and AI chats: type on-screen code names the way the code spells them.
+    @Published var codeWords: Bool {
+        didSet { defaults.set(codeWords, forKey: Key.codeWords.rawValue) }
+    }
     /// Run dictations with a list or a self-correction through the on-device formatting model.
     @Published var smartFormattingEnabled: Bool {
         didSet { defaults.set(smartFormattingEnabled, forKey: Key.smartFormattingEnabled.rawValue) }
@@ -230,6 +235,7 @@ final class SettingsStore: ObservableObject {
         self.pauseMediaWhileTalking = defaults.object(forKey: Key.pauseMediaWhileTalking.rawValue) as? Bool ?? true
         self.learnFromEdits = defaults.object(forKey: Key.learnFromEdits.rawValue) as? Bool ?? true
         self.useScreenWords = defaults.object(forKey: Key.useScreenWords.rawValue) as? Bool ?? true
+        self.codeWords = defaults.object(forKey: Key.codeWords.rawValue) as? Bool ?? true
         // On by default: it only does anything once the model is downloaded.
         self.smartFormattingEnabled = defaults.object(forKey: Key.smartFormattingEnabled.rawValue) as? Bool ?? true
         self.cleanUpSpeech = defaults.object(forKey: Key.cleanUpSpeech.rawValue) as? Bool ?? true

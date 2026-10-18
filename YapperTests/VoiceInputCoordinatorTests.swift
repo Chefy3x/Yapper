@@ -451,6 +451,21 @@ extension VoiceInputCoordinatorTests {
         #expect(reports.first?.isRetry == false)
     }
 
+    @Test func codeNamesOnScreenAreTypedAsTheCodeSpellsThem() async {
+        let rig = makeRig()
+        await settle()
+        var reports: [TurnReport] = []
+        rig.coordinator.onTurnFinished = { reports.append($0) }
+        rig.transcriber.result = "check user id at app state dot swift"
+        rig.coordinator.screenWords = { ScreenReading(identifiers: ["userId", "AppState.swift"], tagsFiles: true) }
+        rig.coordinator.beginPushToTalk()
+        await settle(0.4)
+        rig.coordinator.endPushToTalk()
+        await waitUntil(reports.count == 1)
+        #expect(rig.delivered.delivered == ["check userId @AppState.swift"])
+        #expect(reports.first?.heard == "check user id at app state dot swift")
+    }
+
     @Test func anEmptyTurnReportsEmptyAndPastesNothing() async {
         let rig = makeRig()
         await settle()

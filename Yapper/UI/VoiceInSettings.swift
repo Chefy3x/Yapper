@@ -870,6 +870,10 @@ struct DictionaryPanel: View {
                     toggleRow(icon: "text.viewfinder", title: "Use words on screen",
                               detail: "Names in the window you're dictating into fix near-miss spellings. Read on this Mac, never kept.",
                               isOn: $settings.useScreenWords)
+                    RowDivider()
+                    toggleRow(icon: "chevron.left.forwardslash.chevron.right", title: "Code names and @ files",
+                              detail: "In editors, terminals and AI chats, say \"user id\" and get userId, or \"at app state dot swift\" and get @AppState.swift. Uses the names in the window; read on this Mac, never kept.",
+                              isOn: $settings.codeWords)
                     if WisprFlowImport.isAvailable {
                         RowDivider()
                         wisprImportRow
