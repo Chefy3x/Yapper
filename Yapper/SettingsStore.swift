@@ -34,6 +34,10 @@ final class SettingsStore: ObservableObject {
         case cleanUpSpeech
         case inputDeviceUID
         case yapperKey
+        case dictationRetention
+        case keepDictationAudio
+        case dictationSounds
+        case dictationHUD
     }
 
     @Published var activeVoiceID: String {
@@ -146,6 +150,22 @@ final class SettingsStore: ObservableObject {
     @Published var inputDeviceUID: String? {
         didSet { defaults.set(inputDeviceUID, forKey: Key.inputDeviceUID.rawValue) }
     }
+    /// How long Settings → Dictations keeps what you said.
+    @Published var dictationRetention: DictationRetention {
+        didSet { defaults.set(dictationRetention.rawValue, forKey: Key.dictationRetention.rawValue) }
+    }
+    /// Keep each dictation's recording (at most a week) so it can be played or transcribed again.
+    @Published var keepDictationAudio: Bool {
+        didSet { defaults.set(keepDictationAudio, forKey: Key.keepDictationAudio.rawValue) }
+    }
+    /// A short sound when the mic opens for a hold and when the words land.
+    @Published var dictationSounds: Bool {
+        didSet { defaults.set(dictationSounds, forKey: Key.dictationSounds.rawValue) }
+    }
+    /// The floating pill that shows the mic level while you talk.
+    @Published var dictationHUD: Bool {
+        didSet { defaults.set(dictationHUD, forKey: Key.dictationHUD.rawValue) }
+    }
 
     /// True when nothing has ever been persisted — a genuinely fresh install.
     ///
@@ -215,6 +235,10 @@ final class SettingsStore: ObservableObject {
         self.cleanUpSpeech = defaults.object(forKey: Key.cleanUpSpeech.rawValue) as? Bool ?? true
         self.inputDeviceUID = defaults.string(forKey: Key.inputDeviceUID.rawValue)
         self.yapperKey = YapperKey(rawValue: defaults.string(forKey: Key.yapperKey.rawValue) ?? "") ?? .default
+        self.dictationRetention = DictationRetention(rawValue: defaults.string(forKey: Key.dictationRetention.rawValue) ?? "") ?? .week
+        self.keepDictationAudio = defaults.object(forKey: Key.keepDictationAudio.rawValue) as? Bool ?? true
+        self.dictationSounds = defaults.object(forKey: Key.dictationSounds.rawValue) as? Bool ?? true
+        self.dictationHUD = defaults.object(forKey: Key.dictationHUD.rawValue) as? Bool ?? true
         let storedScale = defaults.object(forKey: Key.cassetteScale.rawValue) as? Double ?? 1.0
         self.cassetteScale = min(max(storedScale, Self.cassetteScaleRange.lowerBound),
                                  Self.cassetteScaleRange.upperBound)

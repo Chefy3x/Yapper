@@ -1,6 +1,28 @@
 import Foundation
 import Combine
 
+/// How one voice turn ended, for the dictation history, the HUD and the done sound.
+struct TurnReport: Sendable {
+    enum Outcome: Sendable, Equatable {
+        case pasted
+        case copied             // the paste didn't land; the words are on the clipboard
+        case empty              // nothing worth typing
+        case failed(String)
+    }
+    var outcome: Outcome
+    /// The speech model's words, before corrections, formatting and snippets.
+    var heard: String = ""
+    /// What was typed (or would have been).
+    var text: String = ""
+    /// The recording, start cue already taken out.
+    var samples: [Float]
+    var target: DeliveryTarget?
+    var startedAt: Date
+    var modelID: String
+    /// Transcribe Last Recording Again, rather than a new dictation.
+    var isRetry = false
+}
+
 /// Runs one voice turn end to end: open the mic, decide when the turn is over, transcribe on
 /// this Mac, paste the words into whatever is focused. Two ways in:
 ///
@@ -47,6 +69,16 @@ final class VoiceInputCoordinator: ObservableObject {
     /// Lays out lists and applies self-corrections before the paste. Nil, or text returned
     /// unchanged, delivers the transcript as heard.
     var format: (@MainActor (String) async -> String)?
+    /// Swaps spoken snippet triggers for their text: the last step before the paste.
+    var expandSnippets: (@MainActor (String) -> String)?
+    /// The mic level of every buffer while a turn is listening. Drives the recording HUD.
+    var onLevel: ((Float) -> Void)?
+    /// A turn that got as far as the speech model ended: pasted, copied, empty or failed.
+    /// Accidental holds and cancelled turns don't report.
+    var onTurnFinished: ((TurnReport) -> Void)?
+    /// Plays the start sound as a hold begins, returning when it started (nil: nothing played).
+    /// The mic is already open by then, so the sound is notched back out of the recording.
+    var playStartCue: (@MainActor () -> Date?)?
 
     typealias TranscriberFactory = @MainActor (WhisperModel, @escaping @Sendable (WhisperModelStatus) -> Void) -> Transcribing
 
@@ -89,6 +121,11 @@ final class VoiceInputCoordinator: ObservableObject {
     private var firstSilentLevelAt: Date?
     private var heardSignal = false
     private var reopenedForSilence = false
+    /// When the capture now running was opened, and when this turn's start cue began playing:
+    /// together they say where in the recording the cue sits.
+    private var captureOpenedAt: Date?
+    private var cueAt: Date?
+    private var turnStartedAt = Date()
     private var cancellables: Set<AnyCancellable> = []
 
     init(settings: SettingsStore,
@@ -123,15 +160,16 @@ final class VoiceInputCoordinator: ObservableObject {
     /// Wire settings and pre-load the model so the first hold is instant. Call once at launch.
     func bootstrap() {
         refreshMicrophonePermission()
+        // @Published fires before the property is written, so the sinks pass the new value on.
         settings.$whisperModelID
             .removeDuplicates()
             .dropFirst()
-            .sink { [weak self] _ in self?.reloadTranscriber() }
+            .sink { [weak self] id in self?.reloadTranscriber(modelID: id) }
             .store(in: &cancellables)
         settings.$voiceInputEnabled
             .removeDuplicates()
             .dropFirst()
-            .sink { [weak self] _ in self?.reloadTranscriber() }
+            .sink { [weak self] on in self?.reloadTranscriber(enabled: on) }
             .store(in: &cancellables)
         reloadTranscriber()
     }
@@ -144,11 +182,11 @@ final class VoiceInputCoordinator: ObservableObject {
 
     /// Drop the resident pipeline and build one for the current model. Loads it if the files
     /// are already on disk and Voice In is on; otherwise waits for `downloadModel()`.
-    private func reloadTranscriber() {
+    private func reloadTranscriber(modelID: String? = nil, enabled: Bool? = nil) {
         cancelTurn()
         transcriber = nil
-        let model = self.model
-        guard settings.voiceInputEnabled else {
+        let model = modelID.map(WhisperModel.named) ?? self.model
+        guard enabled ?? settings.voiceInputEnabled else {
             modelStatus = model.isDownloaded ? .downloaded : .notDownloaded
             return
         }
@@ -204,6 +242,7 @@ final class VoiceInputCoordinator: ObservableObject {
         }
         priming = true
         listeningSince = Date()
+        captureOpenedAt = listeningSince
         resetSilentWatch()
         primeWatchdog = Task { [weak self] in
             // A press that never resolves (an event tap hiccup) must not leave the mic open.
@@ -231,7 +270,9 @@ final class VoiceInputCoordinator: ObservableObject {
             primeWatchdog?.cancel()
             primeWatchdog = nil
             onBargeIn?()
+            turnStartedAt = listeningSince ?? Date()
             state = .listening(.pushToTalk)
+            cueAt = playStartCue?()
             readScreen()
             onEvent?("Listening… release to type")
             Log.voice.info("Listening (push-to-talk, mic open since key-down)")
@@ -243,6 +284,7 @@ final class VoiceInputCoordinator: ObservableObject {
         guard preflight(interactive: true) else { return }
         onBargeIn?()
         startListening(.pushToTalk)
+        if state == .listening(.pushToTalk) { cueAt = playStartCue?() }
     }
 
     /// Space during a hold. For the five-minute thought that shouldn't mean five minutes holding a key.
@@ -347,6 +389,9 @@ final class VoiceInputCoordinator: ObservableObject {
             }
         }
         listeningSince = Date()
+        captureOpenedAt = listeningSince
+        turnStartedAt = listeningSince ?? Date()
+        cueAt = nil
         resetSilentWatch()
         vad = mode == .handsFree ? VoiceActivityDetector(config: vadConfig) : nil
         state = .listening(mode)
@@ -358,6 +403,7 @@ final class VoiceInputCoordinator: ObservableObject {
 
     private func handleLevel(_ level: Float) {
         if priming || state.isListening { watchForSilentStart(level) }
+        if state.isListening { onLevel?(level) }
         guard case .listening(.handsFree) = state, var detector = vad else { return }
         let event = detector.process(level: level)
         vad = detector
@@ -416,6 +462,7 @@ final class VoiceInputCoordinator: ObservableObject {
                 Log.voice.error("Mic reopen failed: \(error.localizedDescription, privacy: .public)")
             }
         }
+        captureOpenedAt = Date()
         if case .listening(.handsFree) = state { vad = VoiceActivityDetector(config: vadConfig) }
     }
 
@@ -429,10 +476,16 @@ final class VoiceInputCoordinator: ObservableObject {
             onEvent?("Nothing to paste yet")
             return
         }
+        paste(text, announce: "Pasted your last transcript again")
+    }
+
+    /// Types `text` into whatever is focused, the way a dictation would. Settings → Dictations
+    /// uses it to paste an older one again.
+    func paste(_ text: String, announce: String) {
         Task { [weak self] in
             do {
                 try await self?.delivery.deliver(text)
-                self?.onEvent?("Pasted your last transcript again")
+                self?.onEvent?(announce)
             } catch {
                 self?.onEvent?(error.localizedDescription)
             }
@@ -478,8 +531,13 @@ final class VoiceInputCoordinator: ObservableObject {
 
     private func finishTurn(transcribe: Bool) {
         let heldFor = listeningSince.map { Date().timeIntervalSince($0) } ?? 0
-        let samples = stopCapture(discard: !transcribe)
+        var samples = stopCapture(discard: !transcribe)
+        let cue = cueAt.flatMap { at in captureOpenedAt.map { at.timeIntervalSince($0) } }
+        cueAt = nil
         guard transcribe else { return }
+        // The start sound played into an open mic. A few notches over its half second take it
+        // back out: well under a millisecond, and the speech around it is left as it was.
+        if let cue { StartCue.remove(from: &samples, cueOffset: cue, sampleRate: AudioCapture.targetSampleRate) }
         let seconds = Double(samples.count) / AudioCapture.targetSampleRate
         guard seconds >= minUtterance, heldFor >= minUtterance else {
             state = .idle
@@ -496,11 +554,12 @@ final class VoiceInputCoordinator: ObservableObject {
         let released = releasedAt ?? Date()
         releasedAt = nil
         let store = lastRecording
+        let started = turnStartedAt
         turnTask = Task { [weak self] in
             // Kept alongside the decode, so one that fails or crashes can be run again.
             let saving = Task { await store?.save(samples) }
             await self?.transcribeAndDeliver(samples, using: transcriber, screenTask: screenTask,
-                                             targetTask: target, releasedAt: released)
+                                             targetTask: target, releasedAt: released, startedAt: started)
             await saving.value
             self?.state = .idle
         }
@@ -527,7 +586,7 @@ final class VoiceInputCoordinator: ObservableObject {
         screenWordsTask = nil
         turnTask = Task { [weak self] in
             if let samples = await store.load(), !samples.isEmpty {
-                await self?.transcribeAndDeliver(samples, using: transcriber, screenTask: screenTask)
+                await self?.transcribeAndDeliver(samples, using: transcriber, screenTask: screenTask, isRetry: true)
             } else {
                 self?.onEvent?("Couldn't open the last recording")
             }
@@ -535,41 +594,67 @@ final class VoiceInputCoordinator: ObservableObject {
         }
     }
 
+    /// Speech model, then corrections, respelling, times, formatting and snippets: everything
+    /// between the recording and the paste. `heard` is empty when the model heard nothing; `text`
+    /// is empty when nothing worth typing was left.
+    private func process(_ samples: [Float], using transcriber: Transcribing,
+                         screen: [String]) async throws -> (heard: String, text: String, decoded: Date) {
+        let terms = vocabulary.terms
+        let replacements = vocabulary.replacements
+        let prompt = TranscriptCorrector.prompt(terms: terms, screenWords: screen)
+        if !screen.isEmpty { Log.voice.info("\(screen.count, privacy: .public) words from the screen for respelling") }
+        let heard = try await transcriber.transcribe(samples: samples, prompt: prompt)
+        let decoded = Date()
+        guard !heard.isEmpty, !Task.isCancelled else { return (heard, "", decoded) }
+        let corrected = TranscriptCorrector.apply(heard, replacements: replacements)
+        let respelled = TranscriptCorrector.respell(corrected, candidates: screen + terms) {
+            WordKnowledge.isDictionaryWord($0)
+        }
+        // "at 401" → "at 4:01": Whisper writes spoken times as plain numbers.
+        let timed = SpokenTimes.normalize(respelled)
+        let formatted = await format?(timed) ?? timed
+        let text = formatted.isEmpty ? formatted : (expandSnippets?(formatted) ?? formatted)
+        return (heard, text, decoded)
+    }
+
+    /// Settings → Dictations → Transcribe again: the same pipeline on a kept recording, with no
+    /// paste. Throws when the speech model isn't loaded.
+    func transcribe(samples: [Float]) async throws -> (heard: String, text: String) {
+        guard let transcriber, modelStatus.isReady else { throw WhisperTranscriber.TranscriberError.notLoaded }
+        let result = try await process(samples, using: transcriber, screen: [])
+        return (result.heard, result.text)
+    }
+
     private func transcribeAndDeliver(_ samples: [Float], using transcriber: Transcribing,
                                       screenTask: Task<[String], Never>?,
                                       targetTask: Task<DeliveryTarget?, Never>? = nil,
-                                      releasedAt: Date? = nil) async {
+                                      releasedAt: Date? = nil, startedAt: Date = Date(),
+                                      isRetry: Bool = false) async {
         let decodeStarted = Date()
-        let terms = vocabulary.terms
-        let replacements = vocabulary.replacements
         let againHint = lastRecording == nil ? "" : ". Menu → Transcribe Last Recording Again to retry"
+        var report = TurnReport(outcome: .empty, samples: samples, startedAt: startedAt,
+                                modelID: transcriber.modelID, isRetry: isRetry)
+        func finish(_ outcome: TurnReport.Outcome) async {
+            report.outcome = outcome
+            if report.target == nil { report.target = await targetTask?.value }
+            onTurnFinished?(report)
+        }
         do {
             // Bounded by the walk's own time budget, and long finished on all but the
             // shortest holds.
             let screen = await screenTask?.value ?? []
-            let prompt = TranscriptCorrector.prompt(terms: terms, screenWords: screen)
-            if !screen.isEmpty { Log.voice.info("\(screen.count, privacy: .public) words from the screen for respelling") }
-            let heard = try await transcriber.transcribe(samples: samples, prompt: prompt)
-            let decoded = Date()
+            let (heard, text, decoded) = try await process(samples, using: transcriber, screen: screen)
             guard !Task.isCancelled else { return }
-            guard !heard.isEmpty else {
+            report.heard = heard
+            report.text = text
+            guard !text.isEmpty else {   // silence, or nothing but "um"
                 onEvent?("Didn't catch that" + againHint)
-                return
-            }
-            let corrected = TranscriptCorrector.apply(heard, replacements: replacements)
-            let respelled = TranscriptCorrector.respell(corrected, candidates: screen + terms) {
-                WordKnowledge.isDictionaryWord($0)
-            }
-            // "at 401" → "at 4:01": Whisper writes spoken times as plain numbers.
-            let timed = SpokenTimes.normalize(respelled)
-            let text = await format?(timed) ?? timed
-            guard !Task.isCancelled else { return }
-            guard !text.isEmpty else {   // nothing but "um"
-                onEvent?("Didn't catch that" + againHint)
+                await finish(.empty)
                 return
             }
             let formatted = Date()
             let target = await targetTask?.value
+            report.target = target
             let receipt: DeliveryReceipt
             do {
                 receipt = try await delivery.deliver(text, target: target)
@@ -577,6 +662,7 @@ final class VoiceInputCoordinator: ObservableObject {
                 // The words survived on the clipboard; say so instead of "failed".
                 vocabulary.record(original: heard, delivered: text)
                 onEvent?(PasteDelivery.DeliveryError.notPasted.errorDescription ?? "")
+                await finish(.copied)
                 return
             }
             vocabulary.record(original: heard, delivered: text)
@@ -588,9 +674,11 @@ final class VoiceInputCoordinator: ObservableObject {
             let words = text.split(whereSeparator: \.isWhitespace).count
             onEvent?("Typed \(words) word\(words == 1 ? "" : "s") — press Return to send")
             onDelivered?(text, receipt)
+            await finish(.pasted)
         } catch {
             Log.voice.error("Voice turn failed: \(error.localizedDescription, privacy: .public)")
             onEvent?("Voice in failed: \(error.localizedDescription)" + againHint)
+            await finish(.failed(error.localizedDescription))
         }
     }
 

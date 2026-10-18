@@ -6,11 +6,20 @@ struct Replacement: Codable, Identifiable, Equatable, Sendable {
     var id: UUID = UUID()
     var heard: String
     var typed: String
+    /// Where the rule came from. Nil for rules written before this was tracked: treated as typed in.
+    var origin: VocabOrigin? = nil
 
     /// Two rules are the same rule when they say the same thing; the id is only for lists.
     static func == (lhs: Replacement, rhs: Replacement) -> Bool {
         lhs.heard == rhs.heard && lhs.typed == rhs.typed
     }
+}
+
+/// How a word or correction got into the dictionary, so Settings can mark the ones Yapper added.
+enum VocabOrigin: String, Codable, Sendable {
+    case manual     // typed in Settings
+    case learned    // from an edit to something Yapper typed
+    case imported   // from Wispr Flow
 }
 
 /// The most recent transcript, kept so the user can correct it and teach Yapper the fix.
@@ -41,6 +50,8 @@ final class VocabularyStore: ObservableObject {
     @Published var terms: [String] { didSet { save() } }
     @Published var replacements: [Replacement] { didSet { save() } }
     @Published private(set) var lastTranscript: LastTranscript?
+    /// How each term arrived, keyed by its lowercased spelling. Terms typed in have no entry.
+    @Published private(set) var termOrigins: [String: VocabOrigin] = [:] { didSet { save() } }
     /// The most recent words learned from an edit, until undone or superseded. Not persisted.
     @Published private(set) var recentlyLearned: LearnedBatch?
 
@@ -48,6 +59,7 @@ final class VocabularyStore: ObservableObject {
         var terms: [String] = []
         var replacements: [Replacement] = []
         var lastTranscript: LastTranscript?
+        var termOrigins: [String: VocabOrigin]?
     }
 
     private let url: URL
@@ -58,6 +70,7 @@ final class VocabularyStore: ObservableObject {
         terms = file.terms
         replacements = file.replacements
         lastTranscript = file.lastTranscript
+        termOrigins = file.termOrigins ?? [:]
     }
 
     static func defaultURL() -> URL {
@@ -69,23 +82,30 @@ final class VocabularyStore: ObservableObject {
 
     // MARK: Editing
 
-    func addTerm(_ raw: String) {
+    func addTerm(_ raw: String, origin: VocabOrigin = .manual) {
         let term = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !term.isEmpty, !terms.contains(where: { $0.caseInsensitiveCompare(term) == .orderedSame }) else { return }
+        if origin != .manual { termOrigins[term.lowercased()] = origin }
         terms.append(term)
     }
 
-    func removeTerm(_ term: String) { terms.removeAll { $0 == term } }
+    func removeTerm(_ term: String) {
+        terms.removeAll { $0 == term }
+        if !terms.contains(where: { $0.lowercased() == term.lowercased() }) { termOrigins[term.lowercased()] = nil }
+    }
 
-    func addReplacement(heard: String, typed: String) {
+    func origin(ofTerm term: String) -> VocabOrigin { termOrigins[term.lowercased()] ?? .manual }
+
+    func addReplacement(heard: String, typed: String, origin: VocabOrigin = .manual) {
         let h = heard.trimmingCharacters(in: .whitespacesAndNewlines)
         let t = typed.trimmingCharacters(in: .whitespacesAndNewlines)
         // Case-only rules ("yapper" → "Yapper") are the most common kind — proper nouns.
         guard !h.isEmpty, !t.isEmpty, h != t else { return }
         if let idx = replacements.firstIndex(where: { $0.heard.caseInsensitiveCompare(h) == .orderedSame }) {
             replacements[idx].typed = t
+            replacements[idx].origin = origin
         } else {
-            replacements.append(Replacement(heard: h, typed: t))
+            replacements.append(Replacement(heard: h, typed: t, origin: origin))
         }
     }
 
@@ -105,8 +125,8 @@ final class VocabularyStore: ObservableObject {
         guard let last = lastTranscript else { return [] }
         let learned = TranscriptCorrector.learn(original: last.delivered, corrected: corrected)
         for rule in learned {
-            addReplacement(heard: rule.heard, typed: rule.typed)
-            addTerm(rule.typed)
+            addReplacement(heard: rule.heard, typed: rule.typed, origin: .learned)
+            addTerm(rule.typed, origin: .learned)
         }
         lastTranscript = LastTranscript(original: last.original, delivered: corrected, at: last.at)
         save()
@@ -120,13 +140,13 @@ final class VocabularyStore: ObservableObject {
         var batch = LearnedBatch(words: [], at: Date(), addedTerms: [], rules: [])
         for word in learned {
             if !terms.contains(where: { $0.caseInsensitiveCompare(word.typed) == .orderedSame }) {
-                addTerm(word.typed)
+                addTerm(word.typed, origin: .learned)
                 batch.addedTerms.append(word.typed)
             }
             if word.makesRule {
                 let previous = replacements.first { $0.heard.caseInsensitiveCompare(word.heard) == .orderedSame }
                 if previous?.typed != word.typed {
-                    addReplacement(heard: word.heard, typed: word.typed)
+                    addReplacement(heard: word.heard, typed: word.typed, origin: .learned)
                     batch.rules.append((Replacement(heard: word.heard, typed: word.typed), previous))
                 }
             }
@@ -143,7 +163,12 @@ final class VocabularyStore: ObservableObject {
         for (rule, previous) in batch.rules {
             guard let idx = replacements.firstIndex(where: { $0.heard.caseInsensitiveCompare(rule.heard) == .orderedSame
                                                              && $0.typed == rule.typed }) else { continue }
-            if let previous { replacements[idx].typed = previous.typed } else { replacements.remove(at: idx) }
+            if let previous {
+                replacements[idx].typed = previous.typed
+                replacements[idx].origin = previous.origin
+            } else {
+                replacements.remove(at: idx)
+            }
         }
     }
 
@@ -154,15 +179,16 @@ final class VocabularyStore: ObservableObject {
     func merge(terms newTerms: [String], rules newRules: [Replacement]) -> (terms: Int, rules: Int) {
         let termsBefore = terms.count
         let rulesBefore = replacements
-        for term in newTerms { addTerm(term) }
+        for term in newTerms { addTerm(term, origin: .imported) }
         for rule in newRules where !replacements.contains(where: { $0.heard.caseInsensitiveCompare(rule.heard) == .orderedSame }) {
-            addReplacement(heard: rule.heard, typed: rule.typed)
+            addReplacement(heard: rule.heard, typed: rule.typed, origin: .imported)
         }
         return (terms.count - termsBefore, replacements.count - rulesBefore.count)
     }
 
     private func save() {
-        let file = File(terms: terms, replacements: replacements, lastTranscript: lastTranscript)
+        let file = File(terms: terms, replacements: replacements, lastTranscript: lastTranscript,
+                        termOrigins: termOrigins.isEmpty ? nil : termOrigins)
         if let data = try? JSONEncoder().encode(file) {
             try? data.write(to: url, options: .atomic)
         }

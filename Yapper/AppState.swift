@@ -52,6 +52,11 @@ final class AppState: ObservableObject {
     let media = MediaController()
     let editWatcher = EditWatcher()
     let formatter = SmartFormatter()
+    /// Every dictation, for Settings → Dictations. Not the read-aloud `history`.
+    let dictations = DictationHistoryStore()
+    let snippets = SnippetStore()
+    private lazy var sounds = DictationSounds()
+    private(set) var recordingHUD: RecordingHUDController?
     /// The Yapper key press that finished a locked dictation; its tap or hold is spent.
     private var pressEndedLockedDictation = false
     lazy var voiceInput = VoiceInputCoordinator(
@@ -93,6 +98,8 @@ final class AppState: ObservableObject {
             activeVoice = saved
         }
         history.prune(retentionHours: settings.historyRetentionHours)
+        dictations.prune(retention: settings.dictationRetention)
+        dictations.sweepOrphanAudio()
         startHistoryPruneTimer()
         wireReadingIndicator()
         wireHotkeys()
@@ -164,6 +171,14 @@ final class AppState: ObservableObject {
             guard self.settings.smartFormattingEnabled, !tidied.isEmpty else { return tidied }
             return await self.formatter.format(tidied, bundleID: bundleID, cleanup: cleanup)
         }
+        voiceInput.expandSnippets = { [weak self] text in self?.snippets.expand(text) ?? text }
+        recordingHUD = RecordingHUDController(state: self)
+        voiceInput.onLevel = { [weak self] in self?.recordingHUD?.level($0) }
+        voiceInput.playStartCue = { [weak self] in
+            guard let self, self.settings.dictationSounds else { return nil }
+            return self.sounds.playStart()
+        }
+        voiceInput.onTurnFinished = { [weak self] in self?.turnFinished($0) }
         editWatcher.onLearned = { [weak self] learned in
             guard let self else { return }
             self.vocabulary.applyLearned(learned)
@@ -249,6 +264,63 @@ final class AppState: ObservableObject {
         voiceInput.bootstrap()
     }
 
+    /// A voice turn ended: tell the HUD, play the done sound, and keep it in Dictations.
+    /// Everything here runs after the paste, so none of it adds to the lag.
+    private func turnFinished(_ report: TurnReport) {
+        recordingHUD?.finish(report.outcome)
+        if settings.dictationSounds {
+            switch report.outcome {
+            case .pasted, .copied: sounds.playDone()
+            case .empty, .failed: sounds.playFailed()
+            }
+        }
+        guard settings.dictationRetention != .never else { return }
+        let app = report.target.flatMap { NSRunningApplication(processIdentifier: $0.pid) }
+        let outcome: Dictation.Outcome
+        var error: String?
+        switch report.outcome {
+        case .pasted: outcome = .pasted
+        case .copied: outcome = .copied
+        case .empty: outcome = .empty
+        case .failed(let why): outcome = .failed; error = why
+        }
+        dictations.record(Dictation(at: report.startedAt,
+                                    appName: report.target?.appName ?? app?.localizedName,
+                                    bundleID: app?.bundleIdentifier,
+                                    heard: report.heard, text: report.text,
+                                    duration: Double(report.samples.count) / AudioCapture.targetSampleRate,
+                                    outcome: outcome, modelID: report.modelID, error: error),
+                          samples: settings.keepDictationAudio ? report.samples : nil)
+    }
+
+    /// Settings → Dictations → Paste. Settings steps aside first, so the words land in the app
+    /// you were in rather than in the Settings window.
+    func pasteDictation(_ text: String) {
+        NSApp.hide(nil)
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(300))
+            self?.voiceInput.paste(text, announce: "Pasted that dictation again")
+        }
+    }
+
+    /// Settings → Dictations → Transcribe again: runs the kept recording through the current
+    /// speech model and pipeline and updates the entry. No paste. Returns an error to show.
+    func retranscribe(_ entry: Dictation) async -> String? {
+        guard let samples = await dictations.loadAudio(for: entry), !samples.isEmpty else {
+            return "The recording isn't kept any more."
+        }
+        do {
+            let result = try await voiceInput.transcribe(samples: samples)
+            dictations.update(entry.id, heard: result.heard, text: result.text,
+                              outcome: result.text.isEmpty ? .empty
+                                  : entry.outcome == .pasted || entry.outcome == .copied ? entry.outcome : .retried,
+                              modelID: voiceInput.model.id)
+            return result.text.isEmpty ? "Still nothing to type in that one." : nil
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
     /// Yapper runs for weeks at a time, so the retention window has to be enforced continuously —
     /// not just at launch. Hourly with generous tolerance; pruning is cheap.
     private func startHistoryPruneTimer() {
@@ -256,6 +328,7 @@ final class AppState: ObservableObject {
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 self.history.prune(retentionHours: self.settings.historyRetentionHours)
+                self.dictations.prune(retention: self.settings.dictationRetention)
             }
         }
         t.tolerance = 300

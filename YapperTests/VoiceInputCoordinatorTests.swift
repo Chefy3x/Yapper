@@ -427,3 +427,123 @@ struct VoiceInputCoordinatorTests {
         #expect(rig.delivered.delivered == ["hello world", "hello world"])
     }
 }
+
+// MARK: - Turn reports, snippets, HUD feed, start cue
+
+extension VoiceInputCoordinatorTests {
+
+    @Test func aPastedTurnReportsWhatWasHeardAndTyped() async {
+        let rig = makeRig()
+        await settle()
+        var reports: [TurnReport] = []
+        rig.coordinator.onTurnFinished = { reports.append($0) }
+        rig.transcriber.result = "send it to my email"
+        rig.coordinator.expandSnippets = { SnippetExpander.expand($0, snippets: [Snippet(trigger: "my email", expansion: "sam@example.com")]).text }
+        rig.coordinator.beginPushToTalk()
+        await settle(0.4)
+        rig.coordinator.endPushToTalk()
+        await waitUntil(reports.count == 1)
+        #expect(rig.delivered.delivered == ["send it to sam@example.com"])
+        #expect(reports.first?.outcome == .pasted)
+        #expect(reports.first?.heard == "send it to my email")
+        #expect(reports.first?.text == "send it to sam@example.com")
+        #expect(reports.first?.samples.count == 16_000)
+        #expect(reports.first?.isRetry == false)
+    }
+
+    @Test func anEmptyTurnReportsEmptyAndPastesNothing() async {
+        let rig = makeRig()
+        await settle()
+        var reports: [TurnReport] = []
+        rig.coordinator.onTurnFinished = { reports.append($0) }
+        rig.transcriber.result = ""
+        rig.coordinator.beginPushToTalk()
+        await settle(0.4)
+        rig.coordinator.endPushToTalk()
+        await waitUntil(reports.count == 1)
+        #expect(reports.first?.outcome == .empty)
+        #expect(rig.delivered.delivered.isEmpty)
+    }
+
+    @Test func anAccidentalHoldReportsNothing() async {
+        let rig = makeRig(minUtterance: 0.35)
+        await settle()
+        var reports: [TurnReport] = []
+        rig.coordinator.onTurnFinished = { reports.append($0) }
+        rig.capture.samplesToReturn = [Float](repeating: 0.1, count: 1_000)
+        rig.coordinator.beginPushToTalk()
+        rig.coordinator.endPushToTalk()
+        await settle(0.3)
+        #expect(reports.isEmpty)
+        #expect(rig.coordinator.state == .idle)
+    }
+
+    @Test func levelsReachTheHUDOnlyWhileListening() async {
+        let rig = makeRig()
+        await settle()
+        var levels: [Float] = []
+        rig.coordinator.onLevel = { levels.append($0) }
+        rig.capture.onLevel?(0.2)              // idle: not forwarded
+        rig.coordinator.beginPushToTalk()
+        rig.capture.onLevel?(0.3)
+        rig.capture.onLevel?(0.4)
+        #expect(levels == [0.3, 0.4])
+        rig.coordinator.cancelPushToTalk()
+        rig.capture.onLevel?(0.5)
+        #expect(levels == [0.3, 0.4])
+    }
+
+    @Test func theStartCuePlaysOnAHoldButNotHandsFree() async {
+        let rig = makeRig(handsFree: true)
+        await settle()
+        var cues = 0
+        rig.coordinator.playStartCue = { cues += 1; return Date() }
+        rig.coordinator.armHandsFree()
+        #expect(rig.coordinator.state == .listening(.handsFree))
+        #expect(cues == 0)
+        rig.coordinator.beginPushToTalk()      // a hold takes over
+        #expect(rig.coordinator.state == .listening(.pushToTalk))
+        #expect(cues == 1)
+        rig.coordinator.cancelPushToTalk()
+    }
+
+    @Test func aPrimedHoldPlaysTheCueWhenTheHoldIsRecognised() async {
+        let rig = makeRig()
+        await settle()
+        var cues = 0
+        rig.coordinator.playStartCue = { cues += 1; return Date() }
+        rig.coordinator.keyPressed(playbackActive: false)
+        #expect(cues == 0)                     // could still be a tap: stay silent
+        rig.coordinator.beginPushToTalk()
+        #expect(cues == 1)
+        rig.coordinator.cancelPushToTalk()
+    }
+
+    @Test func aRetryReportsAsARetry() async {
+        let store = LastRecording(url: FileManager.default.temporaryDirectory
+            .appendingPathComponent("rec-\(UUID().uuidString).wav"))
+        defer { try? FileManager.default.removeItem(at: store.url) }
+        let rig = makeRig(lastRecording: store)
+        await settle()
+        var reports: [TurnReport] = []
+        rig.coordinator.onTurnFinished = { reports.append($0) }
+        rig.coordinator.beginPushToTalk()
+        await settle(0.4)
+        rig.coordinator.endPushToTalk()
+        await waitUntil(reports.count == 1 && rig.coordinator.state == .idle)
+        rig.coordinator.transcribeLastAgain()
+        await waitUntil(reports.count == 2)
+        #expect(reports.last?.isRetry == true)
+    }
+
+    @Test func transcribeForHistoryRunsThePipelineWithoutPasting() async throws {
+        let rig = makeRig()
+        await settle()
+        rig.vocabulary.addReplacement(heard: "yapper", typed: "Yapper")
+        rig.transcriber.result = "yapper is ready"
+        let result = try await rig.coordinator.transcribe(samples: [Float](repeating: 0.1, count: 16_000))
+        #expect(result.heard == "yapper is ready")
+        #expect(result.text == "Yapper is ready")
+        #expect(rig.delivered.delivered.isEmpty)
+    }
+}
