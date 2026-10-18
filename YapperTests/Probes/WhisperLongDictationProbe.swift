@@ -72,4 +72,28 @@ struct WhisperLongDictationProbe {
             }
         }
     }
+
+    /// YAPPER_LAST_RECORDING_PROBE=1: the kept last recording, raw vs conditioned, with the
+    /// level of every 100 ms at the end so a trimmed tail shows up.
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["YAPPER_LAST_RECORDING_PROBE"] != nil))
+    func lastRecording() async throws {
+        guard let samples = await LastRecording().load() else { Issue.record("no recording"); return }
+        let levels = TranscriptFilter.frameLevels(samples)
+        let gate = TranscriptFilter.speechGate(levels)
+        let sorted = levels.sorted()
+        print("PROBE \(Double(samples.count) / 16_000)s gate=\(gate) p5=\(sorted[sorted.count / 20]) p20=\(sorted[sorted.count / 5])")
+        let tail = levels.suffix(150)   // last 3 s
+        print("PROBE last 3s, 100 ms RMS: " + stride(from: 0, to: tail.count, by: 5).map { i in
+            String(format: "%.3f", tail.dropFirst(i).prefix(5).max() ?? 0) }.joined(separator: " "))
+        let conditioned = AudioConditioner.condition(samples)
+        print("PROBE conditioned: removed \(conditioned.removedSeconds)s gain \(conditioned.gain)")
+        let transcriber = WhisperTranscriber(model: .recommended) { _ in }
+        for (name, audio) in [("raw", samples), ("conditioned", conditioned.samples)] {
+            let segments = try await transcriber.rawSegments(samples: audio, prompt: nil)
+            print("PROBE \(name): " + TranscriptFilter.join(segments, audioHasSpeech: true, audioSeconds: Double(audio.count) / 16_000))
+            for seg in segments {
+                print(String(format: "PROBE   start=%.1f lp=%.2f ns=%.2f ", seg.start ?? -1, seg.avgLogprob, seg.noSpeechProb) + "\"\(seg.text.suffix(80))\"")
+            }
+        }
+    }
 }

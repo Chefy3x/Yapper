@@ -29,6 +29,8 @@ final class SettingsStore: ObservableObject {
         case pauseMediaWhileTalking
         case learnFromEdits
         case useScreenWords
+        case smartFormattingEnabled
+        case cleanUpSpeech
         case inputDeviceUID
         case yapperKey
     }
@@ -126,6 +128,15 @@ final class SettingsStore: ObservableObject {
     @Published var useScreenWords: Bool {
         didSet { defaults.set(useScreenWords, forKey: Key.useScreenWords.rawValue) }
     }
+    /// Run dictations with a list or a self-correction through the on-device formatting model.
+    @Published var smartFormattingEnabled: Bool {
+        didSet { defaults.set(smartFormattingEnabled, forKey: Key.smartFormattingEnabled.rawValue) }
+    }
+    /// Take out um/uh, stutters and repeated words (rules), and with smart formatting on, filler
+    /// and false starts too (the model).
+    @Published var cleanUpSpeech: Bool {
+        didSet { defaults.set(cleanUpSpeech, forKey: Key.cleanUpSpeech.rawValue) }
+    }
     /// The one modifier that drives Yapper (tap / hold / chords). See `YapperKey`.
     @Published var yapperKey: YapperKey {
         didSet { defaults.set(yapperKey.rawValue, forKey: Key.yapperKey.rawValue) }
@@ -188,6 +199,9 @@ final class SettingsStore: ObservableObject {
         self.pauseMediaWhileTalking = defaults.object(forKey: Key.pauseMediaWhileTalking.rawValue) as? Bool ?? true
         self.learnFromEdits = defaults.object(forKey: Key.learnFromEdits.rawValue) as? Bool ?? true
         self.useScreenWords = defaults.object(forKey: Key.useScreenWords.rawValue) as? Bool ?? true
+        // On by default: it only does anything once the model is downloaded.
+        self.smartFormattingEnabled = defaults.object(forKey: Key.smartFormattingEnabled.rawValue) as? Bool ?? true
+        self.cleanUpSpeech = defaults.object(forKey: Key.cleanUpSpeech.rawValue) as? Bool ?? true
         self.inputDeviceUID = defaults.string(forKey: Key.inputDeviceUID.rawValue)
         self.yapperKey = YapperKey(rawValue: defaults.string(forKey: Key.yapperKey.rawValue) ?? "") ?? .default
         let storedScale = defaults.object(forKey: Key.cassetteScale.rawValue) as? Double ?? 1.0

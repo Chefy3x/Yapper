@@ -51,6 +51,7 @@ final class AppState: ObservableObject {
     let vocabulary = VocabularyStore()
     let media = MediaController()
     let editWatcher = EditWatcher()
+    let formatter = SmartFormatter()
     lazy var voiceInput = VoiceInputCoordinator(
         settings: settings,
         vocabulary: vocabulary,
@@ -145,6 +146,16 @@ final class AppState: ObservableObject {
             let text = await ScreenVocabulary.visibleText()
             return ScreenVocabulary.candidates(in: text) { WordKnowledge.isDictionaryWord($0) }
         }
+        voiceInput.format = { [weak self] text in
+            guard let self else { return text }
+            let cleanup = self.settings.cleanUpSpeech
+            let tidied = cleanup ? Disfluency.clean(text) : text
+            let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+            // "First, … second, …" is laid out by rule: reliable where the model is a coin flip.
+            if let listed = SpokenLists.format(tidied, mode: FormatMode.forApp(bundleID: bundleID)) { return listed }
+            guard self.settings.smartFormattingEnabled, !tidied.isEmpty else { return tidied }
+            return await self.formatter.format(tidied, bundleID: bundleID, cleanup: cleanup)
+        }
         editWatcher.onLearned = { [weak self] learned in
             guard let self else { return }
             self.vocabulary.applyLearned(learned)
@@ -164,7 +175,13 @@ final class AppState: ObservableObject {
                     self.media.pauseIfPlaying()
                 }
                 // A new dictation ends the watch on the last one: learn from what's there now.
-                if state.isListening { self.editWatcher.finish() }
+                if state.isListening {
+                    self.editWatcher.finish()
+                    if self.settings.smartFormattingEnabled {
+                        self.formatter.warmUp(bundleID: NSWorkspace.shared.frontmostApplication?.bundleIdentifier,
+                                              cleanup: self.settings.cleanUpSpeech)
+                    }
+                }
                 self.reconsiderMediaResume(voiceState: state)
             }
             .store(in: &voiceInputCancellables)

@@ -37,6 +37,9 @@ final class VoiceInputCoordinator: ObservableObject {
     var onDelivered: ((String, DeliveryReceipt) -> Void)?
     /// Reads words off the focused window to bias this turn's decode. Nil leaves them out.
     var screenWords: (@MainActor () async -> [String])?
+    /// Lays out lists and applies self-corrections before the paste. Nil, or text returned
+    /// unchanged, delivers the transcript as heard.
+    var format: (@MainActor (String) async -> String)?
 
     typealias TranscriberFactory = @MainActor (WhisperModel, @escaping @Sendable (WhisperModelStatus) -> Void) -> Transcribing
 
@@ -513,8 +516,16 @@ final class VoiceInputCoordinator: ObservableObject {
                 return
             }
             let corrected = TranscriptCorrector.apply(heard, replacements: replacements)
-            let text = TranscriptCorrector.respell(corrected, candidates: screen + terms) {
+            let respelled = TranscriptCorrector.respell(corrected, candidates: screen + terms) {
                 WordKnowledge.isDictionaryWord($0)
+            }
+            // "at 401" → "at 4:01": Whisper writes spoken times as plain numbers.
+            let timed = SpokenTimes.normalize(respelled)
+            let text = await format?(timed) ?? timed
+            guard !Task.isCancelled else { return }
+            guard !text.isEmpty else {   // nothing but "um"
+                onEvent?("Didn't catch that" + againHint)
+                return
             }
             let receipt: DeliveryReceipt
             do {

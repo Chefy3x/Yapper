@@ -10,7 +10,7 @@ import Foundation
 enum AudioConditioner {
     /// Kept before the first and after the last voiced frame. Consonant onsets and trailing
     /// sounds sit under the voicing gate, so cutting at the gate itself clips words.
-    static let edgePad: Double = 0.3
+    static let edgePad: Double = 0.4
     /// A pause inside the speech longer than this is shortened…
     static let longPause: Double = 2.0
     /// …to this, split evenly either side of the cut.
@@ -43,10 +43,12 @@ enum AudioConditioner {
         let quiet = min(max(silence * 2, 0.004), gate * 0.5)
 
         let voiced = levels.indices.filter { levels[$0] > gate }
-        guard var firstVoiced = voiced.first, var lastVoiced = voiced.last else { return unchanged }
-        // A soft first or last word is still part of the speech it touches.
-        while firstVoiced > 0, levels[firstVoiced - 1] > quiet { firstVoiced -= 1 }
-        while lastVoiced < levels.count - 1, levels[lastVoiced + 1] > quiet { lastVoiced += 1 }
+        guard !voiced.isEmpty else { return unchanged }
+        // The edges are cut only where the recording is silent all the way out. Measured from
+        // the last frame above the silence line, not the last loud one: a soft "I don't know
+        // why" after a pause sits under the voicing gate, and cutting at the gate lost it.
+        guard let firstVoiced = levels.firstIndex(where: { $0 > quiet }),
+              let lastVoiced = levels.lastIndex(where: { $0 > quiet }) else { return unchanged }
 
         let frame = Int(sampleRate * TranscriptFilter.frameSeconds)
         let pad = Int((edgePad / TranscriptFilter.frameSeconds).rounded())

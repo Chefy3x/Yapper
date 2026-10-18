@@ -7,7 +7,8 @@ include:
 options:
   bundleIdPrefix: app.yapper
   deploymentTarget:
-    macOS: "13.0"
+    # 13.3: llama.cpp's framework (Voice In formatting) is built for it.
+    macOS: "13.3"
   createIntermediateGroups: true
   defaultConfig: Debug
 settings:
@@ -34,6 +35,10 @@ packages:
   WhisperKit:
     url: https://github.com/argmaxinc/WhisperKit
     exactVersion: "0.18.0"
+  # On-device formatting for Voice In (lists, "no wait, I mean" fixes). Local package wrapping
+  # llama.cpp's official xcframework; see Vendor/LlamaCpp/Package.swift.
+  LlamaCpp:
+    path: Vendor/LlamaCpp
 schemes:
   Yapper:
     build:
@@ -75,6 +80,7 @@ targets:
     dependencies:
       - package: Sparkle
       - package: WhisperKit
+      - package: LlamaCpp
       # Embedded, never linked: only the Perl helper process loads it.
       - target: MediaRemoteAdapter
         embed: true
@@ -139,6 +145,7 @@ targets:
       # App sources reference Sparkle (UpdaterService), so the test bundle links it too.
       - package: Sparkle
       - package: WhisperKit
+      - package: LlamaCpp
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.yapper.YapperTests

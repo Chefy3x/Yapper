@@ -20,9 +20,10 @@ struct AudioConditionerTests {
         let audio = noise(1) + tone(1, amplitude: 0.05) + noise(4) + tone(1, amplitude: 0.05) + noise(1)
         let out = AudioConditioner.condition(audio, sampleRate: rate)
         let seconds = Double(out.samples.count) / rate
-        // 0.3 pad + 1 speech + 1.0 kept pause + 1 speech + 0.3 pad
-        #expect(abs(seconds - 3.6) < 0.1)
-        #expect(abs(out.removedSeconds - 4.4) < 0.1)
+        // pad + 1 speech + 1.0 kept pause + 1 speech + pad
+        let expected = 3 + 2 * AudioConditioner.edgePad
+        #expect(abs(seconds - expected) < 0.1)
+        #expect(abs(out.removedSeconds - (8 - expected)) < 0.1)
     }
 
     @Test func liftsQuietSpeechWithoutClipping() {
@@ -37,6 +38,15 @@ struct AudioConditionerTests {
         let out = AudioConditioner.condition(audio, sampleRate: rate)
         #expect(out.gain == 1)
         #expect(out.samples.count == audio.count)
+    }
+
+    @Test func keepsASoftLastPhraseAfterAPause() {
+        // Loud speech, a short pause, then a soft trailing phrase under the voicing gate:
+        // the shape of a quiet mic and "…dot dot dot. I don't know why."
+        let audio = tone(2, amplitude: 0.03) + noise(0.4) + tone(1, amplitude: 0.011) + noise(0.6)
+        let out = AudioConditioner.condition(audio, sampleRate: rate)
+        let keptSeconds = Double(out.samples.count) / rate
+        #expect(keptSeconds >= 3.4 + AudioConditioner.edgePad - 0.05)
     }
 
     @Test func keepsShortPausesWhole() {

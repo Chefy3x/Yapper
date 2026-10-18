@@ -1351,6 +1351,7 @@ private struct VoiceInSection: View {
     @EnvironmentObject private var state: AppState
     @Environment(\.settingsSkin) private var skin
     @State private var inputDevices: [AudioInputDevice] = []
+    @ObservedObject private var formatter: SmartFormatter = AppState.shared.formatter
 
     var body: some View {
         Card {
@@ -1379,6 +1380,12 @@ private struct VoiceInSection: View {
                 handsFreeRow
                 RowDivider()
                 pauseMediaRow
+                RowDivider()
+                cleanUpRow
+                if formatter.status != .unsupported {
+                    RowDivider()
+                    formattingRow
+                }
                 if inputDevices.count > 1 {
                     RowDivider()
                     inputDeviceRow
@@ -1519,6 +1526,80 @@ private struct VoiceInSection: View {
                 .toggleStyle(.switch)
                 .tint(skin.liveTint)
                 .disabled(!settings.voiceInputEnabled)
+        }
+    }
+
+    private var cleanUpRow: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "eraser")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(skin.iconTint)
+                .frame(width: 22)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Clean up stumbles").font(skin.body(skin == .tape ? 12.5 : 13, .semibold))
+                Text("Takes out um and uh, stutters, and words said twice. With Smart formatting on, also filler like \"like\" and \"you know\", and sentences you started over.")
+                    .font(skin.body(11))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Toggle("", isOn: $settings.cleanUpSpeech)
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .tint(skin.liveTint)
+                .disabled(!settings.voiceInputEnabled)
+        }
+    }
+
+    private var formattingRow: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "list.number")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(skin.iconTint)
+                .frame(width: 22)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Smart formatting").font(skin.body(skin == .tape ? 12.5 : 13, .semibold))
+                Text(formattingDetail)
+                    .font(skin.body(11))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            switch formatter.status {
+            case .notDownloaded, .failed:
+                Button("Download \(FormatterModel.approxSize)") {
+                    formatter.download()
+                    settings.smartFormattingEnabled = true
+                }
+                .controlSize(.small)
+                .disabled(!settings.voiceInputEnabled)
+            case .downloading(let progress):
+                ProgressView(value: progress).frame(width: 90)
+            case .verifying:
+                ProgressView().controlSize(.small)
+            case .ready, .unsupported:
+                Toggle("", isOn: $settings.smartFormattingEnabled)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .tint(skin.liveTint)
+                    .disabled(!settings.voiceInputEnabled)
+            }
+        }
+        .contextMenu {
+            if formatter.status == .ready {
+                Button("Delete the formatting model (\(FormatterModel.approxSize))") {
+                    settings.smartFormattingEnabled = false
+                    Task { await formatter.deleteModel() }
+                }
+            }
+        }
+    }
+
+    private var formattingDetail: String {
+        let what = "Say \"first… second…\" and it types a list; say \"3, no wait, 4\" and it types 4. Runs \(FormatterModel.displayName) on this Mac, only when a dictation needs it. If the result changes your words, your words go out as spoken."
+        switch formatter.status {
+        case .failed(let why): return why
+        case .downloading(let p): return "Downloading \(FormatterModel.displayName)… \(Int(p * 100))%"
+        case .verifying: return "Checking the download…"
+        default: return what
         }
     }
 
