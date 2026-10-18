@@ -4,9 +4,10 @@ import Combine
 /// Runs one voice turn end to end: open the mic, decide when the turn is over, transcribe on
 /// this Mac, paste the words into whatever is focused. Two ways in:
 ///
-///   • **Push-to-talk** — hold the talk key (Right ⌥ by default). Starting a hold stops any playback (you're answering,
-///     so the reply stops reading), release transcribes. A hold under `minUtterance` is treated
-///     as accidental and dropped.
+///   • **Push-to-talk** — hold the talk key (Right ⌥ by default). The mic opens at key-down and
+///     the hold adopts that audio, so the first word isn't lost to the tap/hold decision.
+///     Starting a hold stops any playback (you're answering, so the reply stops reading), release
+///     transcribes after a short tail. A hold under `minUtterance` is treated as accidental.
 ///   • **Hands-free** — armed by AppState when a Conversation Mode reply finishes reading and
 ///     the queue is empty. The mic opens, `VoiceActivityDetector` finds the turn, and the same
 ///     transcribe-and-paste path runs. No speech within the arm window closes the mic silently.
@@ -45,6 +46,12 @@ final class VoiceInputCoordinator: ObservableObject {
     private let vadConfig: VoiceActivityDetector.Config
     /// Holds shorter than this are accidental (a slow ⌘-shortcut) — never transcribed.
     private let minUtterance: TimeInterval
+    /// Recording continues this long after the key comes up. People release as the last word
+    /// ends, and the engine's final partial buffer would otherwise be thrown away with it.
+    private let releaseTail: TimeInterval
+    /// A mic that delivers nothing but exact zeros this long after opening is broken, not quiet
+    /// (a room is never digitally silent). It gets one reopen before the user is told.
+    private let silentStartTimeout: TimeInterval
     /// TCC lookup, injectable so tests aren't hostage to the runner's microphone grant.
     private let permissionStatus: @MainActor () -> MicrophonePermission.Status
 
@@ -53,6 +60,15 @@ final class VoiceInputCoordinator: ObservableObject {
     private var listeningSince: Date?
     private var turnTask: Task<Void, Never>?
     private var watchdog: Task<Void, Never>?
+    /// The mic was opened at key-down, before anyone knows whether this press is a tap or a
+    /// hold. A hold adopts the audio; anything else throws it away unheard.
+    private var priming = false
+    private var primeWatchdog: Task<Void, Never>?
+    private var tailTask: Task<Void, Never>?
+    /// Silent-start watch for the capture that is currently open.
+    private var firstSilentLevelAt: Date?
+    private var heardSignal = false
+    private var reopenedForSilence = false
     private var cancellables: Set<AnyCancellable> = []
 
     init(settings: SettingsStore,
@@ -62,6 +78,8 @@ final class VoiceInputCoordinator: ObservableObject {
          makeTranscriber: @escaping TranscriberFactory,
          vadConfig: VoiceActivityDetector.Config = .init(),
          minUtterance: TimeInterval = 0.35,
+         releaseTail: TimeInterval = 0.2,
+         silentStartTimeout: TimeInterval = 0.5,
          permissionStatus: @escaping @MainActor () -> MicrophonePermission.Status = { MicrophonePermission.status() }) {
         self.settings = settings
         self.vocabulary = vocabulary
@@ -70,6 +88,8 @@ final class VoiceInputCoordinator: ObservableObject {
         self.makeTranscriber = makeTranscriber
         self.vadConfig = vadConfig
         self.minUtterance = minUtterance
+        self.releaseTail = releaseTail
+        self.silentStartTimeout = silentStartTimeout
         self.permissionStatus = permissionStatus
 
         capture.onLevel = { [weak self] level in self?.handleLevel(level) }
@@ -145,8 +165,56 @@ final class VoiceInputCoordinator: ObservableObject {
 
     // MARK: - Push-to-talk
 
+    /// The Yapper key went down. Whether this is a tap or a hold won't be known for 0.45 s, and
+    /// waiting that long to open the mic cuts off the first word of every dictation. So the mic
+    /// opens now, silently, and the press decides later. Skipped whenever opening it could be
+    /// heard or felt: something is playing (the mic would hear Yapper's own voice), the input
+    /// is a Bluetooth headset (it would drop into call quality), or Voice In isn't ready.
+    func keyPressed(playbackActive: Bool) {
+        guard settings.voiceInputEnabled, state == .idle, !priming, !playbackActive else { return }
+        refreshMicrophonePermission()
+        guard microphoneStatus == .granted, transcriber != nil, modelStatus.isReady else { return }
+        guard !capture.isDisruptive(deviceUID: settings.inputDeviceUID) else { return }
+        do {
+            try capture.start(deviceUID: settings.inputDeviceUID)
+        } catch {
+            return   // the hold path opens the mic itself, with its fallback and its error message
+        }
+        priming = true
+        listeningSince = Date()
+        resetSilentWatch()
+        primeWatchdog = Task { [weak self] in
+            // A press that never resolves (an event tap hiccup) must not leave the mic open.
+            try? await Task.sleep(for: .seconds(2))
+            guard let self, !Task.isCancelled, self.priming else { return }
+            self.keyAbandoned()
+        }
+    }
+
+    /// The press turned out to be a tap, a chord or a click. Throw the audio away unheard.
+    func keyAbandoned() {
+        guard priming else { return }
+        priming = false
+        primeWatchdog?.cancel()
+        primeWatchdog = nil
+        _ = capture.stop()
+        listeningSince = nil
+    }
+
     func beginPushToTalk() {
         guard settings.voiceInputEnabled else { return }
+        if priming {
+            // Adopt the audio recorded since key-down, so the turn starts when the key did.
+            priming = false
+            primeWatchdog?.cancel()
+            primeWatchdog = nil
+            onBargeIn?()
+            state = .listening(.pushToTalk)
+            onEvent?("Listening… release to type")
+            Log.voice.info("Listening (push-to-talk, mic open since key-down)")
+            armWatchdog(for: .pushToTalk)
+            return
+        }
         if case .listening(.handsFree) = state { stopCapture(discard: true) }   // hold overrides
         guard state == .idle else { return }
         guard preflight(interactive: true) else { return }
@@ -155,12 +223,22 @@ final class VoiceInputCoordinator: ObservableObject {
     }
 
     func endPushToTalk() {
-        guard case .listening(.pushToTalk) = state else { return }
-        finishTurn(transcribe: true)
+        guard case .listening(.pushToTalk) = state, tailTask == nil else { return }
+        guard releaseTail > 0 else { finishTurn(transcribe: true); return }
+        tailTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(self?.releaseTail ?? 0))
+            guard let self else { return }
+            self.tailTask = nil
+            guard !Task.isCancelled, case .listening(.pushToTalk) = self.state else { return }
+            self.finishTurn(transcribe: true)
+        }
     }
 
     func cancelPushToTalk() {
+        keyAbandoned()
         guard case .listening(.pushToTalk) = state else { return }
+        tailTask?.cancel()
+        tailTask = nil
         stopCapture(discard: true)
     }
 
@@ -169,7 +247,7 @@ final class VoiceInputCoordinator: ObservableObject {
     /// Open the mic and wait for the user to talk. Silent no-op when hands-free is off, Voice In
     /// is off, or the mic isn't ready — hands-free must never nag.
     func armHandsFree() {
-        guard settings.voiceInputEnabled, settings.handsFreeEnabled, state == .idle else { return }
+        guard settings.voiceInputEnabled, settings.handsFreeEnabled, state == .idle, !priming else { return }
         guard preflight(interactive: false) else { return }
         startListening(.handsFree)
     }
@@ -228,6 +306,7 @@ final class VoiceInputCoordinator: ObservableObject {
             }
         }
         listeningSince = Date()
+        resetSilentWatch()
         vad = mode == .handsFree ? VoiceActivityDetector(config: vadConfig) : nil
         state = .listening(mode)
         onEvent?(mode == .pushToTalk ? "Listening… release to type" : "Listening…")
@@ -236,6 +315,7 @@ final class VoiceInputCoordinator: ObservableObject {
     }
 
     private func handleLevel(_ level: Float) {
+        if priming || state.isListening { watchForSilentStart(level) }
         guard case .listening(.handsFree) = state, var detector = vad else { return }
         let event = detector.process(level: level)
         vad = detector
@@ -252,7 +332,65 @@ final class VoiceInputCoordinator: ObservableObject {
         }
     }
 
+    // MARK: - Silent mic
+
+    private func resetSilentWatch() {
+        firstSilentLevelAt = nil
+        heardSignal = false
+        reopenedForSilence = false
+    }
+
+    /// Some devices open "successfully" and then deliver only zeros — a Bluetooth headset still
+    /// switching profiles, an input another app grabbed. Everything said into that is lost, so
+    /// reopen once; if the second open is silent too, say so instead of transcribing nothing.
+    private func watchForSilentStart(_ level: Float) {
+        guard !heardSignal else { return }
+        if level > 1e-7 { heardSignal = true; return }
+        let now = Date()
+        guard let since = firstSilentLevelAt else { firstSilentLevelAt = now; return }
+        guard now.timeIntervalSince(since) >= silentStartTimeout else { return }
+        if reopenedForSilence {
+            heardSignal = true   // stop watching; one warning per turn is enough
+            Log.voice.notice("Mic still delivering silence after a reopen")
+            onEvent?("Your mic is sending silence. Check the input in Settings → Conversation")
+            return
+        }
+        reopenedForSilence = true
+        firstSilentLevelAt = nil
+        Log.voice.notice("Mic delivered only silence for \(Int(self.silentStartTimeout * 1000), privacy: .public)ms; reopening")
+        _ = capture.stop()
+        do {
+            try capture.start(deviceUID: settings.inputDeviceUID)
+        } catch {
+            if (try? capture.start(deviceUID: nil)) == nil {
+                Log.voice.error("Mic reopen failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+        if case .listening(.handsFree) = state { vad = VoiceActivityDetector(config: vadConfig) }
+    }
+
+    // MARK: - Re-paste
+
+    /// Yapper key + V: type the last transcript again. The way back when a paste missed, landed
+    /// in the wrong field, or got cleared.
+    func repasteLast() {
+        guard state == .idle, !priming else { return }
+        guard let text = vocabulary.lastTranscript?.delivered, !text.isEmpty else {
+            onEvent?("Nothing to paste yet")
+            return
+        }
+        Task { [weak self] in
+            do {
+                try await self?.delivery.deliver(text)
+                self?.onEvent?("Pasted your last transcript again")
+            } catch {
+                self?.onEvent?(error.localizedDescription)
+            }
+        }
+    }
+
     private func handleInterruption() {
+        if priming { keyAbandoned(); return }   // a hold now opens the new route fresh
         guard state.isListening else { return }
         finishTurn(transcribe: true)
     }
@@ -308,7 +446,14 @@ final class VoiceInputCoordinator: ObservableObject {
                     return
                 }
                 let text = TranscriptCorrector.apply(heard, replacements: replacements)
-                try await self?.delivery.deliver(text)
+                do {
+                    try await self?.delivery.deliver(text)
+                } catch PasteDelivery.DeliveryError.notPasted {
+                    // The words survived on the clipboard; say so instead of "failed".
+                    self?.vocabulary.record(original: heard, delivered: text)
+                    self?.onEvent?(PasteDelivery.DeliveryError.notPasted.errorDescription ?? "")
+                    return
+                }
                 self?.vocabulary.record(original: heard, delivered: text)
                 let words = text.split(whereSeparator: \.isWhitespace).count
                 self?.onEvent?("Typed \(words) word\(words == 1 ? "" : "s") — press Return to send")
@@ -321,6 +466,9 @@ final class VoiceInputCoordinator: ObservableObject {
     }
 
     private func cancelTurn() {
+        keyAbandoned()
+        tailTask?.cancel()
+        tailTask = nil
         if state.isListening { _ = stopCapture(discard: true) }
         turnTask?.cancel()
         turnTask = nil

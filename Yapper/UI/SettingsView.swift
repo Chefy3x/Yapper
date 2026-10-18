@@ -861,6 +861,13 @@ private struct HotkeysPanel: View {
                     subtitle: "Speak the currently selected text"
                 )
                 HotkeyRow(
+                    keys: [.named(settings.yapperKey.keycap), .letter("V")],
+                    title: "Paste last transcript",
+                    subtitle: settings.yapperKey == .rightCommand
+                        ? "Not available with Right ⌘: that chord is the system's own paste."
+                        : "Types what you last said again, when a paste missed or landed in the wrong place."
+                )
+                HotkeyRow(
                     keys: [.named(settings.yapperKey.keycap), .symbol("return")],
                     title: "Toggle Conversation Mode",
                     subtitle: "Auto-read new assistant messages"
@@ -1370,6 +1377,8 @@ private struct VoiceInSection: View {
                 modelRow
                 RowDivider()
                 handsFreeRow
+                RowDivider()
+                pauseMediaRow
                 if inputDevices.count > 1 {
                     RowDivider()
                     inputDeviceRow
@@ -1485,6 +1494,27 @@ private struct VoiceInSection: View {
             }
             Spacer()
             Toggle("", isOn: $settings.handsFreeEnabled)
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .tint(skin.liveTint)
+                .disabled(!settings.voiceInputEnabled)
+        }
+    }
+
+    private var pauseMediaRow: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "pause.circle")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(skin.iconTint)
+                .frame(width: 22)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Pause media while you or Yapper talk").font(skin.body(skin == .tape ? 12.5 : 13, .semibold))
+                Text("A video or song in another app pauses while you hold the talk key or Yapper reads, and plays again once you're both done. In Conversation Mode it waits for the reply too.")
+                    .font(skin.body(11))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Toggle("", isOn: $settings.pauseMediaWhileTalking)
                 .labelsHidden()
                 .toggleStyle(.switch)
                 .tint(skin.liveTint)

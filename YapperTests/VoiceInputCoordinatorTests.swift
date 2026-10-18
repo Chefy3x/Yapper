@@ -14,8 +14,11 @@ struct VoiceInputCoordinatorTests {
         private(set) var isRunning = false
         var samplesToReturn: [Float] = [Float](repeating: 0.1, count: 16_000)   // 1s
         private(set) var startCount = 0
+        private(set) var stopCount = 0
+        var disruptive = false
         func start(deviceUID: String?) throws { isRunning = true; startCount += 1 }
-        func stop() -> [Float] { isRunning = false; return samplesToReturn }
+        func stop() -> [Float] { isRunning = false; stopCount += 1; return samplesToReturn }
+        func isDisruptive(deviceUID: String?) -> Bool { disruptive }
     }
 
     final class FakeTranscriber: Transcribing, @unchecked Sendable {
@@ -45,7 +48,8 @@ struct VoiceInputCoordinatorTests {
         let vocabulary: VocabularyStore
     }
 
-    private func makeRig(handsFree: Bool = false, minUtterance: TimeInterval = 0.35) -> Rig {
+    private func makeRig(handsFree: Bool = false, minUtterance: TimeInterval = 0.35,
+                         releaseTail: TimeInterval = 0, silentStartTimeout: TimeInterval = 0.5) -> Rig {
         let settings = SettingsStore()
         settings.voiceInputEnabled = true
         settings.handsFreeEnabled = handsFree
@@ -63,7 +67,8 @@ struct VoiceInputCoordinatorTests {
         let coordinator = VoiceInputCoordinator(
             settings: settings, vocabulary: vocabulary, capture: capture, delivery: FakeDelivery(log: log),
             makeTranscriber: { _, onStatus in onStatus(.ready); return transcriber },
-            vadConfig: vad, minUtterance: minUtterance,
+            vadConfig: vad, minUtterance: minUtterance, releaseTail: releaseTail,
+            silentStartTimeout: silentStartTimeout,
             permissionStatus: { .granted })
         coordinator.downloadModel()   // installs the fake and flips status to .ready
         return Rig(coordinator: coordinator, capture: capture, transcriber: transcriber, delivered: log,
@@ -244,5 +249,117 @@ struct VoiceInputCoordinatorTests {
         #expect(rig.coordinator.state == .idle)
         #expect(!rig.capture.isRunning)
         #expect(rig.transcriber.calls == 0)
+    }
+    // MARK: Mic opens at key-down
+
+    @Test func holdAdoptsTheMicOpenedAtKeyDown() async {
+        let rig = makeRig()
+        await settle()
+        rig.coordinator.keyPressed(playbackActive: false)
+        #expect(rig.capture.isRunning)
+        #expect(rig.coordinator.state == .idle)   // nothing announced until it's a hold
+
+        await settle(0.45)
+        rig.coordinator.beginPushToTalk()
+        #expect(rig.coordinator.state == .listening(.pushToTalk))
+        #expect(rig.capture.startCount == 1)   // the same capture, not a second open
+        rig.coordinator.endPushToTalk()
+        await waitUntil(rig.delivered.delivered.count == 1)
+        #expect(rig.delivered.delivered == ["hello world"])
+    }
+
+    @Test func tapClosesTheEarlyMicUnheard() async {
+        let rig = makeRig()
+        await settle()
+        rig.coordinator.keyPressed(playbackActive: false)
+        rig.coordinator.keyAbandoned()
+        #expect(!rig.capture.isRunning)
+        await settle(0.1)
+        #expect(rig.transcriber.calls == 0)
+        #expect(rig.coordinator.state == .idle)
+    }
+
+    @Test func noEarlyMicWhilePlayingOrOnBluetooth() async {
+        let rig = makeRig()
+        await settle()
+        rig.coordinator.keyPressed(playbackActive: true)
+        #expect(rig.capture.startCount == 0)
+        rig.capture.disruptive = true
+        rig.coordinator.keyPressed(playbackActive: false)
+        #expect(rig.capture.startCount == 0)
+        // The hold still works the old way.
+        rig.coordinator.beginPushToTalk()
+        #expect(rig.capture.startCount == 1)
+        #expect(rig.coordinator.state == .listening(.pushToTalk))
+    }
+
+    @Test func earlyMicClosesItselfIfThePressNeverResolves() async {
+        let rig = makeRig()
+        await settle()
+        rig.coordinator.keyPressed(playbackActive: false)
+        await waitUntil(!rig.capture.isRunning, timeout: 3)
+        #expect(!rig.capture.isRunning)
+    }
+
+    @Test func releaseKeepsRecordingForTheTail() async {
+        let rig = makeRig(releaseTail: 0.2)
+        await settle()
+        rig.coordinator.beginPushToTalk()
+        await settle(0.4)
+        rig.coordinator.endPushToTalk()
+        await settle(0.05)
+        #expect(rig.capture.isRunning)   // still catching the last syllable
+        await waitUntil(rig.delivered.delivered.count == 1)
+        #expect(rig.delivered.delivered == ["hello world"])
+    }
+    // MARK: Silent mic
+
+    @Test func silentMicIsReopenedOnceThenReported() async {
+        let rig = makeRig(silentStartTimeout: 0.05)
+        await settle()
+        var events: [String] = []
+        rig.coordinator.onEvent = { events.append($0) }
+        rig.coordinator.beginPushToTalk()
+        #expect(rig.capture.startCount == 1)
+
+        rig.capture.onLevel?(0)
+        await settle(0.07)
+        rig.capture.onLevel?(0)
+        #expect(rig.capture.startCount == 2)   // reopened
+        #expect(rig.coordinator.state == .listening(.pushToTalk))
+
+        rig.capture.onLevel?(0)
+        await settle(0.07)
+        rig.capture.onLevel?(0)
+        #expect(rig.capture.startCount == 2)   // only one reopen
+        #expect(events.contains { $0.contains("sending silence") })
+    }
+
+    @Test func realRoomNoiseIsNotSilence() async {
+        let rig = makeRig(silentStartTimeout: 0.05)
+        await settle()
+        rig.coordinator.beginPushToTalk()
+        rig.capture.onLevel?(0.0004)
+        await settle(0.07)
+        rig.capture.onLevel?(0)
+        await settle(0.07)
+        rig.capture.onLevel?(0)
+        #expect(rig.capture.startCount == 1)
+    }
+
+    // MARK: Re-paste
+
+    @Test func repasteTypesTheLastTranscriptAgain() async {
+        let rig = makeRig()
+        await settle()
+        rig.coordinator.beginPushToTalk()
+        await settle(0.4)
+        rig.coordinator.endPushToTalk()
+        await waitUntil(rig.delivered.delivered.count == 1)
+        await waitUntil(rig.coordinator.state == .idle)
+
+        rig.coordinator.repasteLast()
+        await waitUntil(rig.delivered.delivered.count == 2)
+        #expect(rig.delivered.delivered == ["hello world", "hello world"])
     }
 }

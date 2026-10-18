@@ -171,15 +171,19 @@ actor WhisperTranscriber: Transcribing {
         guard let pipe else { throw TranscriberError.notLoaded }
         let started = Date()
         let segments = try await Self.decode(pipe, samples: samples, prompt: prompt)
-        let text = TranscriptFilter.join(segments)
+        let hasSpeech = TranscriptFilter.hasSpeech(samples)
         let audioSeconds = Double(samples.count) / AudioCapture.targetSampleRate
-        Log.voice.info("Transcribed \(String(format: "%.1f", audioSeconds), privacy: .public)s of audio in \(String(format: "%.2f", Date().timeIntervalSince(started)), privacy: .public)s → \(text.count, privacy: .public) chars")
+        let text = TranscriptFilter.join(segments, audioHasSpeech: hasSpeech, audioSeconds: audioSeconds)
+        // .notice so the timing persists in the unified log: lag is measured, not guessed.
+        Log.voice.notice("Transcribed \(String(format: "%.1f", audioSeconds), privacy: .public)s of audio in \(String(format: "%.2f", Date().timeIntervalSince(started)), privacy: .public)s → \(text.count, privacy: .public) chars, \(segments.count, privacy: .public) segments, speech=\(hasSpeech, privacy: .public)")
         return text
     }
 
     /// Runs the CoreML decode and flattens the result to Sendable segments before anything
     /// crosses back into the actor.
     private nonisolated static func decode(_ box: PipeBox, samples: [Float], prompt: String?) async throws -> [TranscriptSegment] {
+        // Timestamps stay on: they're what lets TranscriptFilter drop segments Whisper invents
+        // past the end of the recording (it decodes a padded 30 s window).
         var options = DecodingOptions()
         // Vocabulary bias: Whisper treats prompt tokens as the preceding transcript, so names
         // and jargon listed there decode with their spelling instead of a phonetic guess.
@@ -191,7 +195,8 @@ actor WhisperTranscriber: Transcribing {
         return results.flatMap { result in
             result.segments.map {
                 TranscriptSegment(text: $0.text, avgLogprob: $0.avgLogprob,
-                                  noSpeechProb: $0.noSpeechProb, compressionRatio: $0.compressionRatio)
+                                  noSpeechProb: $0.noSpeechProb, compressionRatio: $0.compressionRatio,
+                                  start: $0.start)
             }
         }
     }

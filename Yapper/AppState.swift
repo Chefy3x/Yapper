@@ -49,6 +49,7 @@ final class AppState: ObservableObject {
     lazy var tts = TTSCoordinator(keychain: keychain, settings: settings)
     lazy var conversationWatcher = ConversationWatcher(settings: settings)
     let vocabulary = VocabularyStore()
+    let media = MediaController()
     lazy var voiceInput = VoiceInputCoordinator(
         settings: settings,
         vocabulary: vocabulary,
@@ -99,6 +100,29 @@ final class AppState: ObservableObject {
         wireVoiceInput()
     }
 
+    // MARK: - Media pause
+
+    private var mediaGate = MediaResumeGate()
+    private var mediaResumeTask: Task<Void, Never>?
+
+    /// Re-decide when paused media comes back. Publishers fire before their property updates,
+    /// so the caller passes the value that just changed.
+    private func reconsiderMediaResume(voiceState: VoiceInputCoordinator.State? = nil,
+                                       yapperReading: Bool? = nil, queued: Int? = nil) {
+        mediaResumeTask?.cancel()
+        mediaResumeTask = nil
+        guard media.isHoldingPause else { return }
+        let voiceBusy = (voiceState ?? voiceInput.state) != .idle
+        let speaking = (yapperReading ?? (tts.active != nil)) || (queued ?? tts.queueCount) > 0
+        guard let at = mediaGate.resumeTime(voiceBusy: voiceBusy, yapperSpeaking: speaking, now: Date()) else { return }
+        mediaResumeTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(max(0, at.timeIntervalSinceNow)))
+            guard let self, !Task.isCancelled else { return }
+            self.mediaGate.awaitingReplyUntil = nil
+            self.media.resumeIfPaused()
+        }
+    }
+
     // MARK: - Voice In
 
     private func wireVoiceInput() {
@@ -107,10 +131,42 @@ final class AppState: ObservableObject {
             self.tts.stop()   // you're answering — the reply stops reading, queue included
         }
         voiceInput.onEvent = { [weak self] in self?.lastEvent = $0 }
-        voiceInput.onDelivered = { text in
+        voiceInput.onDelivered = { [weak self] text in
             Log.voice.info("Delivered \(text.count, privacy: .public) chars to the focused app")
+            guard let self, self.conversationModeEnabled else { return }
+            self.mediaGate.awaitingReplyUntil = Date().addingTimeInterval(MediaResumeGate.replyWait)
         }
         voiceInput.$state.sink { [weak self] in self?.voiceInputState = $0 }.store(in: &voiceInputCancellables)
+
+        // Other apps' media pauses while the user talks or Yapper reads, and comes back once
+        // both are done (MediaResumeGate decides when).
+        media.start()
+        voiceInput.$state
+            .removeDuplicates()
+            .sink { [weak self] state in
+                guard let self else { return }
+                if state == .listening(.pushToTalk), self.settings.pauseMediaWhileTalking {
+                    self.media.pauseIfPlaying()
+                }
+                self.reconsiderMediaResume(voiceState: state)
+            }
+            .store(in: &voiceInputCancellables)
+        tts.$active
+            .map { $0 != nil }
+            .removeDuplicates()
+            .sink { [weak self] reading in
+                guard let self else { return }
+                if reading {
+                    self.mediaGate.awaitingReplyUntil = nil   // the reply arrived
+                    if self.settings.pauseMediaWhileTalking { self.media.pauseIfPlaying() }
+                }
+                self.reconsiderMediaResume(yapperReading: reading)
+            }
+            .store(in: &voiceInputCancellables)
+        tts.$queueCount
+            .removeDuplicates()
+            .sink { [weak self] in self?.reconsiderMediaResume(queued: $0) }
+            .store(in: &voiceInputCancellables)
         voiceInput.$modelStatus.sink { [weak self] in self?.whisperModelStatus = $0 }.store(in: &voiceInputCancellables)
         voiceInput.$microphoneStatus
             .map { $0 == .granted }
@@ -426,6 +482,16 @@ final class AppState: ObservableObject {
             self.pendingResumeTask = nil
             Log.hotkey.info("Yapper key hold -> Voice In")
             self.voiceInput.beginPushToTalk()
+        }
+        hotkeys.onKeyDown = { [weak self] in
+            guard let self else { return }
+            // Other media playing counts too: the early mic would transcribe the video.
+            self.voiceInput.keyPressed(playbackActive: self.tts.isPlaying || self.media.isOtherMediaPlaying)
+        }
+        hotkeys.onKeyAbandoned = { [weak self] in self?.voiceInput.keyAbandoned() }
+        hotkeys.onRepasteLast = { [weak self] in
+            Log.hotkey.info("Yapper key+V -> Re-paste last transcript")
+            self?.voiceInput.repasteLast()
         }
         hotkeys.onPushToTalkEnded = { [weak self] in self?.voiceInput.endPushToTalk() }
         hotkeys.onPushToTalkCancelled = { [weak self] in self?.voiceInput.cancelPushToTalk() }

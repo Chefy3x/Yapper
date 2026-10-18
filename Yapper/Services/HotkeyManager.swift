@@ -9,7 +9,8 @@ import CoreGraphics
 ///   4. Key + S                                             -> readSelection
 ///   5. Key + →                                             -> skipNext (only while playing/queued)
 ///   6. Key + D                                             -> AX tree dump (debug)
-/// Chords 3, 4 and 6 are swallowed so the focused app never sees them. Chord 5 is swallowed only
+///   7. Key + V                                             -> paste the last transcript again
+/// Chords 3, 4, 6 and 7 are swallowed (7 not when the key is Right ⌘, where it's plain paste) so the focused app never sees them. Chord 5 is swallowed only
 /// when a skip means something; otherwise it passes through, because ⌥→ is word-jump in every
 /// text field and stealing it would be a daily paper cut. Anything else pressed while the key
 /// is held passes through unmodified, so it still works as a normal modifier.
@@ -22,6 +23,7 @@ final class HotkeyManager {
     private enum KeyCode {
         static let s: Int64 = 1
         static let d: Int64 = 2
+        static let v: Int64 = 9
         static let returnKey: Int64 = 36
         static let keypadEnter: Int64 = 76
         static let rightArrow: Int64 = 124
@@ -33,17 +35,25 @@ final class HotkeyManager {
     var onPushToTalkBegan: (() -> Void)?
     var onPushToTalkEnded: (() -> Void)?
     var onPushToTalkCancelled: (() -> Void)?
+    /// The key went down — before anyone knows whether it's a tap or a hold. Voice In uses it to
+    /// open the mic early. Every press that never becomes a hold ends in `onKeyAbandoned`.
+    var onKeyDown: (() -> Void)?
+    var onKeyAbandoned: (() -> Void)?
     var onReadSelection: (() -> Void)?
     var onToggleConversationMode: (() -> Void)?
     var onDumpAXTree: (() -> Void)?
     var onSkipNext: (() -> Void)?
+    var onRepasteLast: (() -> Void)?
     /// Answers "would a skip do anything right now?" — playing or queued. Decides whether
     /// Key + → is Yapper's or the app's.
     var skipIsMeaningful: () -> Bool = { false }
 
     /// Which modifier is the Yapper key. Set from Settings by AppState; takes effect immediately.
     var key: YapperKey = .default {
-        didSet { gesture = ModifierGesture(); holdTimer?.cancel(); holdTimer = nil }
+        didSet {
+            if gesture.isDown { notifyAbandoned() }
+            gesture = ModifierGesture(); holdTimer?.cancel(); holdTimer = nil
+        }
     }
 
     private var eventTap: CFMachPort?
@@ -117,11 +127,14 @@ final class HotkeyManager {
             if keyCode == key.keyCode {
                 if key.isDown(flags) {
                     dispatch(gesture.handle(.commandDown))
+                    DispatchQueue.main.async { [weak self] in self?.onKeyDown?() }
                     scheduleHoldTimer()
                 } else {
                     holdTimer?.cancel()
                     holdTimer = nil
-                    dispatch(gesture.handle(.commandUp))
+                    let action = gesture.handle(.commandUp)
+                    if action != .holdEnded { notifyAbandoned() }
+                    dispatch(action)
                 }
             }
             return Unmanaged.passUnretained(event)
@@ -130,6 +143,7 @@ final class HotkeyManager {
             // A click while the key is held (⌥-click, ⌥-drag, …) is aimed at the focused app —
             // releasing right after must NOT count as a tap, and an open mic closes without
             // transcribing.
+            if gesture.isDown { notifyAbandoned() }
             dispatch(gesture.handle(.mouseDown))
             return Unmanaged.passUnretained(event)
 
@@ -139,7 +153,8 @@ final class HotkeyManager {
                 return Unmanaged.passUnretained(event)
             }
             // Any keyDown while the key is held cancels the pending "tap" interpretation
-            // (and an in-progress hold-to-talk).
+            // (and an in-progress hold-to-talk). It's a chord or ⌥-typing, never dictation.
+            notifyAbandoned()
             dispatch(gesture.handle(.otherKeyDown))
 
             // Key + Enter -> Conversation Mode toggle (swallowed)
@@ -155,6 +170,12 @@ final class HotkeyManager {
             // Key + D -> AX tree dump (debug, swallowed)
             if keyCode == KeyCode.d {
                 DispatchQueue.main.async { [weak self] in self?.onDumpAXTree?() }
+                return nil
+            }
+            // Key + V -> paste the last transcript again (swallowed). With Right ⌘ as the Yapper
+            // key that chord is the system's own paste, so it stays the app's.
+            if keyCode == KeyCode.v, key != .rightCommand {
+                DispatchQueue.main.async { [weak self] in self?.onRepasteLast?() }
                 return nil
             }
             // Key + → -> Skip to next queued response — but only when there is something to
@@ -180,6 +201,12 @@ final class HotkeyManager {
         }
         holdTimer = work
         DispatchQueue.main.asyncAfter(deadline: .now() + ModifierGesture.holdThreshold, execute: work)
+    }
+
+    /// Queued on main like `dispatch`, so it lands in event order relative to the gesture's
+    /// own actions. Idempotent on the receiving side.
+    private func notifyAbandoned() {
+        DispatchQueue.main.async { [weak self] in self?.onKeyAbandoned?() }
     }
 
     /// The tap callback runs on the main run loop but not inside a main-actor context; hop the

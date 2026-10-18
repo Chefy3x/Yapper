@@ -51,6 +51,9 @@ targets:
     platform: macOS
     sources:
       - path: Yapper
+      # Loaded by /usr/bin/perl to reach MediaRemote (pause other media while the user talks).
+      - path: Vendor/MediaRemoteAdapter/bin/mediaremote-adapter.pl
+        buildPhase: resources
     resources:
       - path: Yapper/Resources
         optional: true
@@ -72,6 +75,10 @@ targets:
     dependencies:
       - package: Sparkle
       - package: WhisperKit
+      # Embedded, never linked: only the Perl helper process loads it.
+      - target: MediaRemoteAdapter
+        embed: true
+        link: false
     entitlements:
       path: Yapper/Yapper.entitlements
       properties:
@@ -88,6 +95,32 @@ targets:
         SWIFT_EMIT_LOC_STRINGS: YES
         COMBINE_HIDPI_IMAGES: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+  # Vendored BSD-3 mediaremote-adapter (see Vendor/MediaRemoteAdapter/VENDORED.md). Since macOS
+  # 15.4 only Apple-signed processes may use MediaRemote; /usr/bin/perl is one, and it loads this
+  # framework to read Now Playing and send pause/play. Symbols must stay visible for the script.
+  MediaRemoteAdapter:
+    type: framework
+    platform: macOS
+    sources:
+      - path: Vendor/MediaRemoteAdapter/src
+        excludes:
+          - "test/*.m"
+      - path: Vendor/MediaRemoteAdapter/include
+        headerVisibility: public
+    settings:
+      base:
+        PRODUCT_NAME: MediaRemoteAdapter
+        PRODUCT_BUNDLE_IDENTIFIER: app.yapper.MediaRemoteAdapter
+        GENERATE_INFOPLIST_FILE: YES
+        CLANG_ENABLE_OBJC_ARC: YES
+        GCC_SYMBOLS_PRIVATE_EXTERN: NO
+        OTHER_CFLAGS: ["-fvisibility=default"]
+        HEADER_SEARCH_PATHS: ["$(SRCROOT)/Vendor/MediaRemoteAdapter/src", "$(SRCROOT)/Vendor/MediaRemoteAdapter/include"]
+        OTHER_LDFLAGS: ["-framework", "Foundation", "-framework", "AppKit", "-framework", "UniformTypeIdentifiers"]
+        DEFINES_MODULE: NO
+        SKIP_INSTALL: YES
+        GCC_TREAT_WARNINGS_AS_ERRORS: NO
+        CLANG_WARN_DOCUMENTATION_COMMENTS: NO
   # Standalone logic tests: compiles the app sources (minus @main) into the test bundle instead
   # of test-hosting Yapper.app — so running tests never launches the app, installs its event tap,
   # or triggers permission prompts.

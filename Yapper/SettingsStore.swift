@@ -26,6 +26,7 @@ final class SettingsStore: ObservableObject {
         case voiceInputEnabled
         case whisperModelID
         case handsFreeEnabled
+        case pauseMediaWhileTalking
         case inputDeviceUID
         case yapperKey
     }
@@ -110,6 +111,11 @@ final class SettingsStore: ObservableObject {
     @Published var handsFreeEnabled: Bool {
         didSet { defaults.set(handsFreeEnabled, forKey: Key.handsFreeEnabled.rawValue) }
     }
+    /// Pause other apps' media (a YouTube tab, Spotify) while the user talks or Yapper reads, and
+    /// play it again afterwards if Yapper was the one that paused it.
+    @Published var pauseMediaWhileTalking: Bool {
+        didSet { defaults.set(pauseMediaWhileTalking, forKey: Key.pauseMediaWhileTalking.rawValue) }
+    }
     /// The one modifier that drives Yapper (tap / hold / chords). See `YapperKey`.
     @Published var yapperKey: YapperKey {
         didSet { defaults.set(yapperKey.rawValue, forKey: Key.yapperKey.rawValue) }
@@ -169,6 +175,7 @@ final class SettingsStore: ObservableObject {
         self.voiceInputEnabled = defaults.object(forKey: Key.voiceInputEnabled.rawValue) as? Bool ?? true
         self.whisperModelID = defaults.string(forKey: Key.whisperModelID.rawValue) ?? WhisperModel.recommended.id
         self.handsFreeEnabled = defaults.bool(forKey: Key.handsFreeEnabled.rawValue)
+        self.pauseMediaWhileTalking = defaults.object(forKey: Key.pauseMediaWhileTalking.rawValue) as? Bool ?? true
         self.inputDeviceUID = defaults.string(forKey: Key.inputDeviceUID.rawValue)
         self.yapperKey = YapperKey(rawValue: defaults.string(forKey: Key.yapperKey.rawValue) ?? "") ?? .default
         let storedScale = defaults.object(forKey: Key.cassetteScale.rawValue) as? Double ?? 1.0
