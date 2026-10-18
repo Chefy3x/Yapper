@@ -26,10 +26,11 @@ struct VoiceInputCoordinatorTests {
         var result = "hello world"
         private(set) var calls = 0
         private(set) var lastPrompt: String?
+        private(set) var lastSampleCount = 0
         init(modelID: String) { self.modelID = modelID }
         func prepare() async throws {}
         func transcribe(samples: [Float], prompt: String?) async throws -> String {
-            calls += 1; lastPrompt = prompt; return result
+            calls += 1; lastPrompt = prompt; lastSampleCount = samples.count; return result
         }
     }
 
@@ -49,7 +50,8 @@ struct VoiceInputCoordinatorTests {
     }
 
     private func makeRig(handsFree: Bool = false, minUtterance: TimeInterval = 0.35,
-                         releaseTail: TimeInterval = 0, silentStartTimeout: TimeInterval = 0.5) -> Rig {
+                         releaseTail: TimeInterval = 0, silentStartTimeout: TimeInterval = 0.5,
+                         lastRecording: LastRecording? = nil) -> Rig {
         let settings = SettingsStore()
         settings.voiceInputEnabled = true
         settings.handsFreeEnabled = handsFree
@@ -69,10 +71,44 @@ struct VoiceInputCoordinatorTests {
             makeTranscriber: { _, onStatus in onStatus(.ready); return transcriber },
             vadConfig: vad, minUtterance: minUtterance, releaseTail: releaseTail,
             silentStartTimeout: silentStartTimeout,
-            permissionStatus: { .granted })
+            permissionStatus: { .granted }, lastRecording: lastRecording)
         coordinator.downloadModel()   // installs the fake and flips status to .ready
         return Rig(coordinator: coordinator, capture: capture, transcriber: transcriber, delivered: log,
                    settings: settings, vocabulary: vocabulary)
+    }
+
+    @Test func aFailedTranscriptCanBeRunAgainFromTheKeptRecording() async {
+        let store = LastRecording(url: FileManager.default.temporaryDirectory
+            .appendingPathComponent("rec-\(UUID().uuidString).wav"))
+        defer { try? FileManager.default.removeItem(at: store.url) }
+        let rig = makeRig(lastRecording: store)
+        await settle()
+        var events: [String] = []
+        rig.coordinator.onEvent = { events.append($0) }
+        rig.capture.samplesToReturn = (0..<24_000).map { Float(sin(Double($0) / 9)) * 0.2 }   // 1.5 s
+        rig.transcriber.result = ""
+        rig.coordinator.beginPushToTalk()
+        await settle(0.4)
+        rig.coordinator.endPushToTalk()
+        await waitUntil(rig.coordinator.state == .idle && rig.transcriber.calls == 1)
+        #expect(events.last?.hasPrefix("Didn't catch that") == true)
+        #expect(rig.coordinator.hasLastRecording)
+
+        rig.transcriber.result = "second try"
+        rig.coordinator.transcribeLastAgain()
+        await waitUntil(rig.delivered.delivered.count == 1)
+        #expect(rig.delivered.delivered == ["second try"])
+        #expect(rig.transcriber.lastSampleCount == 24_000)
+    }
+
+    @Test func transcribeAgainWithNothingKeptSaysSo() async {
+        let rig = makeRig()
+        await settle()
+        var events: [String] = []
+        rig.coordinator.onEvent = { events.append($0) }
+        rig.coordinator.transcribeLastAgain()
+        #expect(rig.transcriber.calls == 0)
+        #expect(events.last == "No recording to transcribe yet")
     }
 
     private func settle(_ seconds: TimeInterval = 0.3) async {
@@ -185,6 +221,8 @@ struct VoiceInputCoordinatorTests {
         await settle(0.4)
         rig.coordinator.endPushToTalk()
         await waitUntil(rig.delivered.delivered.count == 1)
+        // The transcript is recorded after the paste returns, one hop later.
+        await waitUntil(rig.vocabulary.lastTranscript != nil)
         #expect(rig.delivered.delivered == ["open Yapper now"])
         #expect(rig.transcriber.lastPrompt == "Yapper.")
         #expect(rig.vocabulary.lastTranscript?.original == "open yap her now")

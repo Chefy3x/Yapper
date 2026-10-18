@@ -188,6 +188,56 @@ enum TranscriptCorrector {
         return out
     }
 
+    /// Fixes the spelling of words Whisper got nearly right, using the user's terms and the
+    /// words on screen. Deliberately narrow, because it runs without asking:
+    ///   • two words that together spell a candidate become it ("whisper kit" → "WhisperKit");
+    ///   • a word that matches a candidate except for case takes the candidate's case, unless
+    ///     the word is an ordinary one ("apple" stays a fruit even with "Apple" on screen);
+    ///   • a word the dictionary doesn't know, close in spelling to exactly one candidate,
+    ///     becomes it ("Vercell" → "Vercel"). Ordinary words are never respelled.
+    static func respell(_ text: String, candidates: [String], isDictionaryWord: (String) -> Bool) -> String {
+        let single = candidates.filter { !$0.contains(" ") && $0.count >= 3 }
+        guard !single.isEmpty else { return text }
+        var byLower: [String: String] = [:]
+        for c in single where byLower[c.lowercased()] == nil { byLower[c.lowercased()] = c }
+
+        var tokens = text.split(separator: " ", omittingEmptySubsequences: false).map(String.init)
+        func parts(_ token: String) -> (lead: String, core: String, trail: String) {
+            let scalars = Array(token)
+            var start = 0, end = scalars.count
+            while start < end, !(scalars[start].isLetter || scalars[start].isNumber) { start += 1 }
+            while end > start, !(scalars[end - 1].isLetter || scalars[end - 1].isNumber) { end -= 1 }
+            return (String(scalars[..<start]), String(scalars[start..<end]), String(scalars[end...]))
+        }
+
+        // Joined pairs first, so "whisper kit" isn't respelled one half at a time.
+        var i = 0
+        while i + 1 < tokens.count {
+            let a = parts(tokens[i]), b = parts(tokens[i + 1])
+            if a.trail.isEmpty, b.lead.isEmpty, !a.core.isEmpty, !b.core.isEmpty,
+               let match = byLower[(a.core + b.core).lowercased()] {
+                tokens[i] = a.lead + match + b.trail
+                tokens.remove(at: i + 1)
+            }
+            i += 1
+        }
+
+        for (index, token) in tokens.enumerated() {
+            let p = parts(token)
+            guard p.core.count >= 3 else { continue }
+            let lower = p.core.lowercased()
+            if let match = byLower[lower] {
+                if match != p.core, !isDictionaryWord(lower) { tokens[index] = p.lead + match + p.trail }
+                continue
+            }
+            guard p.core.count >= 4, !isDictionaryWord(p.core), !isDictionaryWord(lower) else { continue }
+            let close = single.filter { EditLearner.similar(lower, $0.lowercased()) }
+            let distinct = Set(close.map { $0.lowercased() })
+            if distinct.count == 1, let match = close.first { tokens[index] = p.lead + match + p.trail }
+        }
+        return tokens.joined(separator: " ")
+    }
+
     /// Whisper's prompt is "text that came before": a comma-separated list of the user's
     /// terms reads as prior context and nudges spelling toward them. Capped well under the
     /// decoder's ~220-token prompt budget; newest terms win when the list is long.

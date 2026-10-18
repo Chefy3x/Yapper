@@ -56,6 +56,8 @@ final class VoiceInputCoordinator: ObservableObject {
     private let silentStartTimeout: TimeInterval
     /// TCC lookup, injectable so tests aren't hostage to the runner's microphone grant.
     private let permissionStatus: @MainActor () -> MicrophonePermission.Status
+    /// Where the latest recording is kept for Transcribe Again. Nil keeps nothing (tests).
+    private let lastRecording: LastRecording?
 
     private var transcriber: Transcribing?
     private var vad: VoiceActivityDetector?
@@ -84,7 +86,8 @@ final class VoiceInputCoordinator: ObservableObject {
          minUtterance: TimeInterval = 0.35,
          releaseTail: TimeInterval = 0.2,
          silentStartTimeout: TimeInterval = 0.5,
-         permissionStatus: @escaping @MainActor () -> MicrophonePermission.Status = { MicrophonePermission.status() }) {
+         permissionStatus: @escaping @MainActor () -> MicrophonePermission.Status = { MicrophonePermission.status() },
+         lastRecording: LastRecording? = nil) {
         self.settings = settings
         self.vocabulary = vocabulary
         self.capture = capture
@@ -95,6 +98,7 @@ final class VoiceInputCoordinator: ObservableObject {
         self.releaseTail = releaseTail
         self.silentStartTimeout = silentStartTimeout
         self.permissionStatus = permissionStatus
+        self.lastRecording = lastRecording
 
         capture.onLevel = { [weak self] level in self?.handleLevel(level) }
         capture.onInterrupted = { [weak self] in self?.handleInterruption() }
@@ -450,43 +454,84 @@ final class VoiceInputCoordinator: ObservableObject {
         guard let transcriber else { state = .idle; return }
         state = .transcribing
         onEvent?("Transcribing…")
-        let terms = vocabulary.terms
-        let replacements = vocabulary.replacements
+        let screenTask = screenWordsTask
+        screenWordsTask = nil
+        let store = lastRecording
+        turnTask = Task { [weak self] in
+            // Kept alongside the decode, so one that fails or crashes can be run again.
+            let saving = Task { await store?.save(samples) }
+            await self?.transcribeAndDeliver(samples, using: transcriber, screenTask: screenTask)
+            await saving.value
+            self?.state = .idle
+        }
+    }
+
+    var hasLastRecording: Bool { lastRecording?.exists ?? false }
+
+    /// Menu → Transcribe Last Recording Again: the same decode, correction and paste, run on
+    /// the kept recording. The screen words are read now, from wherever the paste will land.
+    func transcribeLastAgain() {
+        guard state == .idle, !priming else { return }
+        guard let store = lastRecording, store.exists else {
+            onEvent?("No recording to transcribe yet")
+            return
+        }
+        guard let transcriber, modelStatus.isReady else {
+            onEvent?("Speech model isn't ready yet")
+            return
+        }
+        state = .transcribing
+        onEvent?("Transcribing your last recording again…")
+        readScreen()
         let screenTask = screenWordsTask
         screenWordsTask = nil
         turnTask = Task { [weak self] in
-            defer { self?.state = .idle }
-            do {
-                // Bounded by the walk's own time budget, and long finished on all but the
-                // shortest holds.
-                let screen = await screenTask?.value ?? []
-                let prompt = TranscriptCorrector.prompt(terms: terms, screenWords: screen)
-                if !screen.isEmpty { Log.voice.info("Prompt has \(screen.count, privacy: .public) words from the screen") }
-                let heard = try await transcriber.transcribe(samples: samples, prompt: prompt)
-                guard !Task.isCancelled else { return }
-                guard !heard.isEmpty else {
-                    self?.onEvent?("Didn't catch that")
-                    return
-                }
-                let text = TranscriptCorrector.apply(heard, replacements: replacements)
-                let receipt: DeliveryReceipt
-                do {
-                    guard let self else { return }
-                    receipt = try await self.delivery.deliver(text)
-                } catch PasteDelivery.DeliveryError.notPasted {
-                    // The words survived on the clipboard; say so instead of "failed".
-                    self?.vocabulary.record(original: heard, delivered: text)
-                    self?.onEvent?(PasteDelivery.DeliveryError.notPasted.errorDescription ?? "")
-                    return
-                }
-                self?.vocabulary.record(original: heard, delivered: text)
-                let words = text.split(whereSeparator: \.isWhitespace).count
-                self?.onEvent?("Typed \(words) word\(words == 1 ? "" : "s") — press Return to send")
-                self?.onDelivered?(text, receipt)
-            } catch {
-                Log.voice.error("Voice turn failed: \(error.localizedDescription, privacy: .public)")
-                self?.onEvent?("Voice in failed: \(error.localizedDescription)")
+            if let samples = await store.load(), !samples.isEmpty {
+                await self?.transcribeAndDeliver(samples, using: transcriber, screenTask: screenTask)
+            } else {
+                self?.onEvent?("Couldn't open the last recording")
             }
+            self?.state = .idle
+        }
+    }
+
+    private func transcribeAndDeliver(_ samples: [Float], using transcriber: Transcribing,
+                                      screenTask: Task<[String], Never>?) async {
+        let terms = vocabulary.terms
+        let replacements = vocabulary.replacements
+        let againHint = lastRecording == nil ? "" : ". Menu → Transcribe Last Recording Again to retry"
+        do {
+            // Bounded by the walk's own time budget, and long finished on all but the
+            // shortest holds.
+            let screen = await screenTask?.value ?? []
+            let prompt = TranscriptCorrector.prompt(terms: terms, screenWords: screen)
+            if !screen.isEmpty { Log.voice.info("\(screen.count, privacy: .public) words from the screen for respelling") }
+            let heard = try await transcriber.transcribe(samples: samples, prompt: prompt)
+            guard !Task.isCancelled else { return }
+            guard !heard.isEmpty else {
+                onEvent?("Didn't catch that" + againHint)
+                return
+            }
+            let corrected = TranscriptCorrector.apply(heard, replacements: replacements)
+            let text = TranscriptCorrector.respell(corrected, candidates: screen + terms) {
+                WordKnowledge.isDictionaryWord($0)
+            }
+            let receipt: DeliveryReceipt
+            do {
+                receipt = try await delivery.deliver(text)
+            } catch PasteDelivery.DeliveryError.notPasted {
+                // The words survived on the clipboard; say so instead of "failed".
+                vocabulary.record(original: heard, delivered: text)
+                onEvent?(PasteDelivery.DeliveryError.notPasted.errorDescription ?? "")
+                return
+            }
+            vocabulary.record(original: heard, delivered: text)
+            let words = text.split(whereSeparator: \.isWhitespace).count
+            onEvent?("Typed \(words) word\(words == 1 ? "" : "s") — press Return to send")
+            onDelivered?(text, receipt)
+        } catch {
+            Log.voice.error("Voice turn failed: \(error.localizedDescription, privacy: .public)")
+            onEvent?("Voice in failed: \(error.localizedDescription)" + againHint)
         }
     }
 

@@ -182,15 +182,29 @@ actor WhisperTranscriber: Transcribing {
         return text
     }
 
+    /// Off until a WhisperKit release decodes prompted audio correctly; re-run the probe to check.
+    nonisolated static let promptsWork = false
+
+    /// Raw segments for one decode, unfiltered and unconditioned. For diagnosing a transcript
+    /// that came back empty; the app itself always goes through `transcribe`.
+    func rawSegments(samples: [Float], prompt: String?) async throws -> [TranscriptSegment] {
+        try await prepare()
+        guard let pipe else { throw TranscriberError.notLoaded }
+        return try await Self.decode(pipe, samples: samples, prompt: prompt)
+    }
+
     /// Runs the CoreML decode and flattens the result to Sendable segments before anything
     /// crosses back into the actor.
     private nonisolated static func decode(_ box: PipeBox, samples: [Float], prompt: String?) async throws -> [TranscriptSegment] {
         // Timestamps stay on: they're what lets TranscriptFilter drop segments Whisper invents
         // past the end of the recording (it decodes a padded 30 s window).
         var options = DecodingOptions()
-        // Vocabulary bias: Whisper treats prompt tokens as the preceding transcript, so names
-        // and jargon listed there decode with their spelling instead of a phonetic guess.
-        if let prompt, !prompt.isEmpty, let tokenizer = box.kit.tokenizer {
+        // Whisper's prompt (text "said before" this audio) is meant to bias spelling toward the
+        // user's vocabulary. With WhisperKit 0.18 and Large v3 Turbo, any prompt, even one word,
+        // makes the decoder end at once and return nothing (see WhisperLongDictationProbe). So
+        // the prompt is only sent when `promptsWork` says so, and vocabulary is applied after
+        // decoding instead (`TranscriptCorrector.respell`).
+        if Self.promptsWork, let prompt, !prompt.isEmpty, let tokenizer = box.kit.tokenizer {
             let tokens = tokenizer.encode(text: " " + prompt)
             if !tokens.isEmpty { options.promptTokens = tokens }
         }

@@ -164,6 +164,37 @@ struct ScreenVocabularyTests {
     }
 }
 
+// MARK: - Respelling from vocabulary
+
+struct RespellTests {
+    private static let dictionary: Set<String> = ["deploy", "to", "today", "the", "with", "cloud", "apple",
+                                                  "ask", "about", "it", "whisper", "kit", "use", "and"]
+    private func respell(_ text: String, _ candidates: [String]) -> String {
+        TranscriptCorrector.respell(text, candidates: candidates) { Self.dictionary.contains($0.lowercased()) }
+    }
+
+    @Test func fixesANearMissThatIsNotAWord() {
+        #expect(respell("deploy to Vercell today.", ["Vercel"]) == "deploy to Vercel today.")
+    }
+
+    @Test func joinsTwoWordsThatSpellACandidate() {
+        #expect(respell("use whisper kit, and", ["WhisperKit"]) == "use WhisperKit, and")
+    }
+
+    @Test func takesTheCandidatesCase() {
+        #expect(respell("ask yapper about it", ["Yapper"]) == "ask Yapper about it")
+    }
+
+    @Test func neverRespellsOrdinaryWords() {
+        #expect(respell("ask cloud about it", ["Claude"]) == "ask cloud about it")
+        #expect(respell("the apple", ["Apple"]) == "the apple")
+    }
+
+    @Test func leavesAmbiguousMatchesAlone() {
+        #expect(respell("ping Jonn today", ["Jon", "John"]) == "ping Jonn today")
+    }
+}
+
 // MARK: - Wispr Flow import
 
 struct WisprFlowImportTests {

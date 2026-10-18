@@ -56,7 +56,8 @@ final class AppState: ObservableObject {
         vocabulary: vocabulary,
         capture: AudioCapture(),
         delivery: PasteDelivery(),
-        makeTranscriber: { model, onStatus in WhisperTranscriber(model: model, onStatus: onStatus) }
+        makeTranscriber: { model, onStatus in WhisperTranscriber(model: model, onStatus: onStatus) },
+        lastRecording: LastRecording()
     )
 
     private var conversationModeCancellable: AnyCancellable?

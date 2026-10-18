@@ -81,6 +81,25 @@ struct MenuBarContent: View {
 
             Divider()
 
+            if state.voiceInput.hasLastRecording {
+                Button {
+                    // Close the menu and hand focus back first: the paste goes to whatever is
+                    // focused, and that should be the app you were in, not this menu.
+                    NSApp.keyWindow?.close()
+                    NSApp.deactivate()
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(300))
+                        state.voiceInput.transcribeLastAgain()
+                    }
+                } label: {
+                    Label("Transcribe Last Recording Again", systemImage: "arrow.clockwise")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 12)
+                .disabled(state.voiceInputState != .idle)
+            }
+
             // SettingsView sees the flag and jumps to its History tab.
             SettingsButton(prepare: { state.pendingHistoryOpen = true }) {
                 Label("History", systemImage: "clock.arrow.circlepath")
