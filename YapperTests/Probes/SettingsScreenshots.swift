@@ -2,14 +2,14 @@ import Testing
 import AppKit
 import SwiftUI
 
-/// Opt-in: renders the Voice in pages of Settings to PNGs for review, in both skins, with
+/// Opt-in: renders every Settings page to PNGs for review, with
 /// invented sample data in temp stores (never the user's own dictionary or dictations).
 /// Set YAPPER_SETTINGS_SHOTS=<output folder> (TEST_RUNNER_YAPPER_SETTINGS_SHOTS through xcodebuild).
 @MainActor
 struct SettingsScreenshots {
     nonisolated static let outDir = ProcessInfo.processInfo.environment["YAPPER_SETTINGS_SHOTS"]
 
-    @Test(.enabled(if: outDir != nil)) func renderVoiceInPages() async throws {
+    @Test(.enabled(if: outDir != nil)) func renderSettingsPages() async throws {
         let out = URL(fileURLWithPath: Self.outDir!, isDirectory: true)
         try FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
         let stores = Self.sampleStores()
@@ -21,17 +21,15 @@ struct SettingsScreenshots {
         state.whisperModelStatus = .ready
         state.hasMicrophonePermission = true
 
-        let pages: [(YSection, CGFloat)] = [(.voiceIn, 1240), (.dictations, 1180), (.dictionary, 1240),
-                                            (.snippets, 900), (.models, 1120)]
-        for (theme, name) in [(MiniPlayerTheme.cassette, "tape"), (.minimal, "standard")] {
-            settings.miniPlayerTheme = theme
-            for (section, height) in pages {
-                let image = try await render(SettingsView(stores: stores, initial: section)
-                    .environmentObject(state)
-                    .environmentObject(settings),
-                    size: NSSize(width: 980, height: height), dark: theme == .cassette)
-                try image.write(to: out.appendingPathComponent("\(name)-\(section.rawValue).png"))
-            }
+        let heights: [YSection: CGFloat] = [.general: 760, .hotkeys: 900, .voiceIn: 1260, .dictations: 1180,
+                                            .dictionary: 1240, .snippets: 900, .models: 1120, .voices: 900,
+                                            .providers: 1100, .conversation: 1180, .history: 900, .about: 700]
+        for section in YSection.allCases {
+            let image = try await render(SettingsView(stores: stores, initial: section)
+                .environmentObject(state)
+                .environmentObject(settings),
+                size: NSSize(width: 1000, height: heights[section] ?? 900), dark: false)
+            try image.write(to: out.appendingPathComponent("\(section.rawValue).png"))
         }
         // The pill on its own, larger, in each state.
         let pills = HStack(spacing: 28) {
@@ -42,8 +40,8 @@ struct SettingsScreenshots {
             RecordingPill(phase: .done(.empty), levels: Self.levels)
         }
         .padding(40)
-        .background(Color(white: 0.55))
-        let pillImage = try await render(pills, size: NSSize(width: 820, height: 120), dark: true)
+        .background(Brand.canvas)
+        let pillImage = try await render(pills, size: NSSize(width: 820, height: 120), dark: false)
         try pillImage.write(to: out.appendingPathComponent("hud-pills.png"))
     }
 

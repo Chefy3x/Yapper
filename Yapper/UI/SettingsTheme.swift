@@ -3,26 +3,111 @@ import AppKit
 
 // MARK: - Brand (standard skin)
 
-/// Accent + layout constants for the standard Settings appearance.
-/// (Moved out of SettingsView so both skins live in one file.)
+/// The Settings look, taken from the website (site/index.html :root): a warm paper ground,
+/// white cards, ink type, New York for headlines, and lime as the one bright accent.
 enum Brand {
-    static let blue = Color(red: 105/255, green: 144/255, blue: 191/255)
-    static let blueDeep = Color(red: 72/255, green: 105/255, blue: 148/255)
-    static let blueSoft = Color(red: 105/255, green: 144/255, blue: 191/255).opacity(0.12)
+    static let canvas    = Color(hex: 0xF7F6F2)   // window ground
+    static let rail      = Color(hex: 0xF1EFE9)   // sidebar, a step darker than the ground
+    static let surface   = Color.white            // cards
+    static let sunken    = Color(hex: 0xF4F3EE)   // wells inside a card: search, chips, icon tiles
+    static let ink       = Color(hex: 0x141412)
+    static let muted     = Color(hex: 0x77746B)
+    static let faint     = Color(hex: 0xA6A299)
+    static let line      = Color(hex: 0x141412).opacity(0.08)
+    static let lineStrong = Color(hex: 0x141412).opacity(0.14)
 
-    static let railWidth: CGFloat = 220
-    static let contentMaxWidth: CGFloat = 620
+    static let lime      = Color(hex: 0xBAD951)   // primary buttons, the logo tile
+    static let limeHover = Color(hex: 0xB0D13F)
+    static let limeSoft  = Color(hex: 0xEBF3C6)   // selected rows, chips
+    static let limeDeep  = Color(hex: 0x6F8D14)   // accent text and icons on white
+    static let red       = Color(hex: 0xC74537)   // REC and destructive only
+    static let led       = Color(hex: 0x3E9E5B)   // "all good"
+    static let lcd       = Color(hex: 0x1B1A17)   // the dark counter chip behind eyebrow numbers
+
+    static let railWidth: CGFloat = 228
+    static let contentMaxWidth: CGFloat = 660
     static let sectionSpacing: CGFloat = 44
+    static let cardRadius: CGFloat = 14
+
+    /// Headlines: New York, the serif that ships with macOS, standing in for the site's Instrument Serif.
+    static func display(_ size: CGFloat) -> Font { .system(size: size, weight: .regular, design: .serif) }
+    /// Small uppercase labels, like the site's tape-counter eyebrows.
+    static func label(_ size: CGFloat = 10.5) -> Font { .system(size: size, weight: .semibold, design: .monospaced) }
 
     /// Stable, deterministic accent colors for voice avatars (standard skin).
     static let avatarPalette: [Color] = [
-        Color(red: 105/255, green: 144/255, blue: 191/255), // blue
-        Color(red: 167/255, green: 116/255, blue: 202/255), // violet
-        Color(red: 226/255, green: 132/255, blue: 116/255), // coral
-        Color(red: 105/255, green: 178/255, blue: 152/255), // sage
-        Color(red: 226/255, green: 174/255, blue: 92/255),  // amber
-        Color(red: 113/255, green: 165/255, blue: 211/255), // sky
+        Color(hex: 0xBAD951), Color(hex: 0xE9C46A), Color(hex: 0xF0A58F),
+        Color(hex: 0x9CC5E8), Color(hex: 0xC7B3E6), Color(hex: 0xA9D8C1),
     ]
+}
+
+extension Color {
+    init(hex: UInt32) {
+        self.init(red: Double((hex >> 16) & 0xFF) / 255, green: Double((hex >> 8) & 0xFF) / 255,
+                  blue: Double(hex & 0xFF) / 255)
+    }
+}
+
+extension View {
+    /// The small rounded tile an icon sits on at the start of a row.
+    func iconTile(_ fill: Color, size: CGFloat = 32) -> some View {
+        frame(width: size, height: size)
+            .background(RoundedRectangle(cornerRadius: size * 0.28, style: .continuous).fill(fill))
+    }
+}
+
+/// Everyday buttons on the light Settings: a white capsule with a hairline, ink type.
+/// Set once on the window, so every Button that doesn't pick a style gets it.
+struct SoftButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 12, weight: .medium))
+            .foregroundStyle(configuration.role == .destructive ? Brand.red : Brand.ink)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 5)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(configuration.isPressed ? Brand.sunken : Brand.surface)
+                    .shadow(color: Brand.ink.opacity(0.06), radius: 0.5, y: 0.5)
+            )
+            .overlay(Capsule(style: .continuous).strokeBorder(Brand.lineStrong, lineWidth: 1))
+            .opacity(isEnabled ? 1 : 0.45)
+            .contentShape(Capsule())
+    }
+}
+
+/// The light Settings switch: ink when on, a sunken track when off. Drawn rather than native
+/// so it reads the same whether or not the window is key.
+struct InkSwitchStyle: ToggleStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 8) {
+            configuration.label
+            Capsule(style: .continuous)
+                .fill(configuration.isOn ? Brand.ink : Brand.ink.opacity(0.13))
+                .frame(width: 34, height: 20)
+                .overlay(alignment: configuration.isOn ? .trailing : .leading) {
+                    Circle()
+                        .fill(.white)
+                        .shadow(color: .black.opacity(0.18), radius: 1, y: 0.5)
+                        .padding(2)
+                }
+                .animation(.spring(response: 0.25, dampingFraction: 0.8), value: configuration.isOn)
+                .opacity(isEnabled ? 1 : 0.4)
+                .onTapGesture { if isEnabled { configuration.isOn.toggle() } }
+                .accessibilityElement()
+                .accessibilityAddTraits(.isButton)
+                .accessibilityValue(configuration.isOn ? "On" : "Off")
+                .accessibilityAction { if isEnabled { configuration.isOn.toggle() } }
+        }
+    }
+}
+
+extension ToggleStyle where Self == InkSwitchStyle {
+    static var ink: InkSwitchStyle { InkSwitchStyle() }
 }
 
 // MARK: - Tape (cassette skin)
@@ -92,25 +177,25 @@ enum Tape {
 enum SettingsSkin {
     case standard, tape
 
-    var accent: Color      { self == .tape ? Tape.yellow : Brand.blue }
-    var accentDeep: Color  { self == .tape ? Tape.yellowLo : Brand.blueDeep }
-    var accentSoft: Color  { self == .tape ? Tape.yellow.opacity(0.13) : Brand.blueSoft }
+    var accent: Color      { self == .tape ? Tape.yellow : Brand.limeDeep }
+    var accentDeep: Color  { self == .tape ? Tape.yellowLo : Brand.limeDeep }
+    var accentSoft: Color  { self == .tape ? Tape.yellow.opacity(0.13) : Brand.limeSoft }
+    /// Switches, sliders and progress: ink on the light skin, so lime stays rare.
+    var controlTint: Color { self == .tape ? Tape.recRed : Brand.ink }
     /// Conversation Mode controls — the REC latch is red in tape mode.
-    var liveTint: Color    { self == .tape ? Tape.recRed : Brand.blue }
-    var destructive: Color { self == .tape ? Tape.recRed : .red }
-    var okTint: Color      { self == .tape ? Tape.acid : .green }
+    var liveTint: Color    { self == .tape ? Tape.recRed : Brand.ink }
+    var destructive: Color { self == .tape ? Tape.recRed : Brand.red }
+    var okTint: Color      { self == .tape ? Tape.acid : Brand.led }
 
-    /// Decorative section-icon glyphs and their chip — neutral in tape so yellow
-    /// stays an accent, not a surface. Standard keeps its blue chips unchanged.
-    var iconTint: Color      { self == .tape ? Tape.cream.opacity(0.82) : Brand.blue }
-    var iconChipBG: Color    { self == .tape ? Color.white.opacity(0.05) : Brand.blueSoft }
-    /// Selection highlight fill — a faint neutral wash in tape; the accent lives
-    /// in the border, so yellow signals a selection without flooding the row.
-    var selectionFill: Color { self == .tape ? Color.white.opacity(0.05) : Brand.blueSoft }
+    /// Decorative section-icon glyphs and their tile — neutral, so the accent stays an accent.
+    var iconTint: Color      { self == .tape ? Tape.cream.opacity(0.82) : Brand.ink.opacity(0.72) }
+    var iconChipBG: Color    { self == .tape ? Color.white.opacity(0.05) : Brand.sunken }
+    /// Selection highlight fill — the accent lives in the border, so a selection reads without flooding the row.
+    var selectionFill: Color { self == .tape ? Color.white.opacity(0.05) : Brand.limeSoft.opacity(0.55) }
 
     /// Display voice for panel titles and big numbers.
     func display(_ size: CGFloat, standardWeight: Font.Weight = .bold) -> Font {
-        self == .tape ? Tape.shout(size) : .system(size: size, weight: standardWeight)
+        self == .tape ? Tape.shout(size) : Brand.display(size)
     }
     /// Body/label voice.
     func body(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {

@@ -146,8 +146,8 @@ final class RecordingHUDController {
 
 // MARK: - View
 
-/// The pill itself, in the tape-label palette: neutral charcoal, cream marks, the REC red dot
-/// as the only colour while the mic is open.
+/// The pill itself: an ink capsule that reads on any wallpaper, white marks, the REC red dot
+/// while the mic is open and a lime tick when the words land.
 struct RecordingHUDView: View {
     @ObservedObject var model: RecordingHUDModel
 
@@ -176,14 +176,11 @@ struct RecordingPill: View {
 
     var body: some View {
         HStack(spacing: 9) { content }
-            .padding(.horizontal, 13)
+            .padding(.horizontal, 12)
             .frame(height: 32)
-            .background(
-                Capsule(style: .continuous)
-                    .fill(LinearGradient(colors: [Tape.panelHi, Tape.void], startPoint: .top, endPoint: .bottom))
-            )
-            .overlay(Capsule(style: .continuous).strokeBorder(Tape.line, lineWidth: 1))
-            .shadow(color: .black.opacity(0.45), radius: 8, y: 4)
+            .background(Capsule(style: .continuous).fill(Brand.ink.opacity(0.94)))
+            .overlay(Capsule(style: .continuous).strokeBorder(.white.opacity(0.12), lineWidth: 1))
+            .shadow(color: .black.opacity(0.28), radius: 10, y: 4)
             .environment(\.colorScheme, .dark)
     }
 
@@ -198,11 +195,11 @@ struct RecordingPill: View {
             if locked {
                 Image(systemName: "lock.fill")
                     .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(Tape.cream.opacity(0.85))
+                    .foregroundStyle(.white.opacity(0.85))
             } else if handsFree {
                 Image(systemName: "ear")
                     .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(Tape.dust)
+                    .foregroundStyle(.white.opacity(0.6))
             }
         case .transcribing:
             TranscribingSweep()
@@ -216,7 +213,7 @@ private struct RecDot: View {
     @State private var dim = false
     var body: some View {
         Circle()
-            .fill(Tape.recRedHot)
+            .fill(Brand.red)
             .frame(width: 7, height: 7)
             .opacity(dim ? 0.45 : 1)
             .onAppear {
@@ -232,7 +229,7 @@ private struct LevelBars: View {
         HStack(alignment: .center, spacing: 2.5) {
             ForEach(Array(levels.enumerated()), id: \.offset) { i, level in
                 Capsule()
-                    .fill(Tape.cream.opacity(0.35 + 0.55 * Double(i) / Double(max(1, levels.count - 1))))
+                    .fill(.white.opacity(0.4 + 0.6 * Double(i) / Double(max(1, levels.count - 1))))
                     .frame(width: 2.5, height: 3 + level * 15)
             }
         }
@@ -250,7 +247,7 @@ private struct TranscribingSweep: View {
                 ForEach(0..<5, id: \.self) { i in
                     let phase = sin((t * 2 * .pi * 1.1) - Double(i) * 0.75)
                     Circle()
-                        .fill(Tape.cream.opacity(0.35 + 0.55 * max(0, phase)))
+                        .fill(.white.opacity(0.35 + 0.6 * max(0, phase)))
                         .frame(width: 4.5, height: 4.5)
                         .offset(y: -2.5 * max(0, phase))
                 }
@@ -263,14 +260,22 @@ private struct TranscribingSweep: View {
 private struct DoneMark: View {
     let outcome: TurnReport.Outcome
     var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: symbol)
-                .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(tint)
+        HStack(spacing: 7) {
+            if outcome == .pasted {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 9.5, weight: .heavy))
+                    .foregroundStyle(Brand.ink)
+                    .frame(width: 18, height: 18)
+                    .background(Circle().fill(Brand.lime))
+            } else {
+                Image(systemName: symbol)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(tint)
+            }
             if let label {
                 Text(label)
-                    .font(Tape.mono(10.5, .semibold))
-                    .foregroundStyle(Tape.cream.opacity(0.9))
+                    .font(.system(size: 11.5, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.92))
                     .lineLimit(1)
             }
         }
@@ -285,8 +290,8 @@ private struct DoneMark: View {
         }
     }
     private var tint: Color {
-        if case .failed = outcome { return Tape.recRedHot }
-        return Tape.cream
+        if case .failed = outcome { return Brand.red }
+        return .white
     }
     private var label: String? {
         switch outcome {

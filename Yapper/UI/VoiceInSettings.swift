@@ -3,7 +3,7 @@ import AppKit
 import AVFoundation
 
 // Settings → Voice in: Setup, Dictations, Dictionary, Snippets, Models. Modelled on Wispr Flow's
-// hub, dressed in Yapper's tape-label system (SettingsTheme.swift). Shared building blocks
+// hub, in Yapper's light Settings look (Brand in SettingsTheme.swift). Shared building blocks
 // (Card, RowLabel, RowDivider, PrimaryButton) live in SettingsView.swift.
 
 /// The stores these pages edit. Settings passes the app's own; the screenshot probe passes
@@ -22,49 +22,34 @@ struct VoiceInStores {
 
 // MARK: - Small parts
 
-/// A label stuck on a row: IN USE, LEARNED, WISPR, COPIED.
+/// A label stuck on a row: In use, Learned, Wispr, Copied.
 struct TagChip: View {
     enum Tone { case plain, accent, warning }
     let text: String
     var tone: Tone = .plain
-    @Environment(\.settingsSkin) private var skin
 
     var body: some View {
-        Text(skin == .tape ? text.uppercased() : text)
-            .font(skin == .tape ? Tape.mono(8.5, .bold) : .system(size: 10, weight: .semibold))
-            .tracking(skin == .tape ? 1.0 : 0.1)
+        Text(text)
+            .font(.system(size: 10.5, weight: .semibold))
             .foregroundStyle(foreground)
-            .padding(.horizontal, 6)
+            .padding(.horizontal, 7)
             .padding(.vertical, 2.5)
-            .background(RoundedRectangle(cornerRadius: skin == .tape ? 2 : 5, style: .continuous).fill(background))
-            .overlay(RoundedRectangle(cornerRadius: skin == .tape ? 2 : 5, style: .continuous)
-                .strokeBorder(border, lineWidth: skin == .tape ? 1 : 0))
+            .background(Capsule(style: .continuous).fill(background))
             .fixedSize()
     }
 
     private var foreground: Color {
-        switch (tone, skin) {
-        case (.accent, .tape): Tape.yellow
-        case (.accent, .standard): Brand.blue
-        case (.warning, .tape): Tape.recRedHot
-        case (.warning, .standard): .orange
-        case (.plain, .tape): Tape.dust
-        case (.plain, .standard): .secondary
+        switch tone {
+        case .accent: Brand.limeDeep
+        case .warning: Brand.red
+        case .plain: Brand.muted
         }
     }
     private var background: Color {
-        switch (tone, skin) {
-        case (_, .tape): .clear
-        case (.accent, .standard): Brand.blueSoft
-        case (.warning, .standard): Color.orange.opacity(0.12)
-        case (.plain, .standard): Color.primary.opacity(0.06)
-        }
-    }
-    private var border: Color {
         switch tone {
-        case .accent: Tape.yellow.opacity(0.45)
-        case .warning: Tape.recRed.opacity(0.7)
-        case .plain: Tape.line
+        case .accent: Brand.limeSoft
+        case .warning: Brand.red.opacity(0.1)
+        case .plain: Brand.sunken
         }
     }
 }
@@ -77,15 +62,14 @@ struct RowIconButton: View {
     var role: ButtonRole?
     let action: () -> Void
     @State private var hovering = false
-    @Environment(\.settingsSkin) private var skin
 
     var body: some View {
         Button(role: role, action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 10.5, weight: .semibold))
-                .foregroundStyle(active ? AnyShapeStyle(skin.accent) : AnyShapeStyle(.secondary))
+                .foregroundStyle(active ? Brand.limeDeep : (hovering ? Brand.ink : Brand.muted))
                 .frame(width: 26, height: 26)
-                .background(Circle().fill(Color.primary.opacity(hovering ? 0.12 : 0.06)))
+                .background(Circle().fill(hovering ? Brand.ink.opacity(0.08) : Brand.sunken))
         }
         .buttonStyle(.plain)
         .help(help)
@@ -106,8 +90,7 @@ struct CardHeader: View {
             Image(systemName: icon)
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(skin.iconTint)
-                .frame(width: 36, height: 36)
-                .background(Circle().fill(skin.iconChipBG))
+                .iconTile(skin.iconChipBG, size: 34)
             RowLabel(title, subtitle: subtitle)
             Spacer(minLength: 8)
             if let trailing { trailing }
@@ -119,61 +102,55 @@ struct CardHeader: View {
 struct SearchField: View {
     let prompt: String
     @Binding var text: String
-    @Environment(\.settingsSkin) private var skin
 
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.tertiary)
+                .font(.system(size: 11.5, weight: .semibold))
+                .foregroundStyle(Brand.faint)
             TextField(prompt, text: $text)
                 .textFieldStyle(.plain)
-                .font(skin.body(12.5))
+                .font(.system(size: 13))
             if !text.isEmpty {
                 Button { text = "" } label: {
-                    Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary)
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(Brand.faint)
                 }
                 .buttonStyle(.plain)
             }
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(RoundedRectangle(cornerRadius: skin == .tape ? 3 : 9, style: .continuous)
-            .fill(skin == .tape ? Color.white.opacity(0.04) : Color.primary.opacity(0.04)))
-        .overlay(RoundedRectangle(cornerRadius: skin == .tape ? 3 : 9, style: .continuous)
-            .strokeBorder(skin == .tape ? Tape.line : Color.primary.opacity(0.08), lineWidth: 1))
+        .padding(.vertical, 9)
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Brand.surface))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Brand.lineStrong, lineWidth: 1))
     }
 }
 
-/// Dotted-outline panel for "nothing here yet".
+/// Dashed-outline panel for "nothing here yet".
 struct EmptyStateCard: View {
     let icon: String
     let title: String
     let detail: String
-    @Environment(\.settingsSkin) private var skin
 
     var body: some View {
         VStack(spacing: 10) {
             Image(systemName: icon)
-                .font(.system(size: 24))
-                .foregroundStyle(.tertiary)
-            Text(skin == .tape ? title.uppercased() : title)
-                .font(skin == .tape ? Tape.mono(11.5, .bold) : .system(size: 13, weight: .semibold))
-                .tracking(skin == .tape ? 1 : 0)
-                .foregroundStyle(.secondary)
+                .font(.system(size: 18, weight: .medium))
+                .foregroundStyle(Brand.muted)
+                .iconTile(Brand.sunken, size: 40)
+            Text(title)
+                .font(Brand.display(20))
+                .foregroundStyle(Brand.ink)
             Text(detail)
-                .font(skin.body(11))
-                .foregroundStyle(.tertiary)
+                .font(.system(size: 12))
+                .foregroundStyle(Brand.muted)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 360)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 34)
-        .background(RoundedRectangle(cornerRadius: skin == .tape ? 4 : 14, style: .continuous)
-            .fill(Color.primary.opacity(0.025)))
-        .overlay(RoundedRectangle(cornerRadius: skin == .tape ? 4 : 14, style: .continuous)
-            .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: skin == .tape ? [3, 4] : []))
-            .foregroundStyle(skin == .tape ? Tape.line : Color.primary.opacity(0.07)))
+        .background(RoundedRectangle(cornerRadius: Brand.cardRadius, style: .continuous).fill(Brand.surface.opacity(0.6)))
+        .overlay(RoundedRectangle(cornerRadius: Brand.cardRadius, style: .continuous)
+            .strokeBorder(Brand.lineStrong, style: StrokeStyle(lineWidth: 1, dash: [4, 4])))
     }
 }
 
@@ -211,8 +188,7 @@ private struct PillPreviewCard: View {
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .background(RoundedRectangle(cornerRadius: skin == .tape ? 3 : 10, style: .continuous)
-                    .fill(skin == .tape ? Color.black.opacity(0.25) : Color.primary.opacity(0.035)))
+                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Brand.sunken))
             }
         }
     }
@@ -220,10 +196,10 @@ private struct PillPreviewCard: View {
     private func stage(_ label: String, _ phase: RecordingHUDModel.Phase) -> some View {
         VStack(spacing: 10) {
             RecordingPill(phase: phase, levels: Self.sampleLevels)
-            Text(skin == .tape ? label.uppercased() : label)
+            Text(label)
                 .font(skin.body(9.5, .semibold))
-                .tracking(skin == .tape ? 1.2 : 0.2)
-                .foregroundStyle(.tertiary)
+                .tracking(0.2)
+                .foregroundStyle(Brand.faint)
         }
     }
 }
@@ -311,24 +287,24 @@ struct ModelsPanel: View {
         return HStack(alignment: .top, spacing: 12) {
             Image(systemName: active ? "checkmark.circle.fill" : downloaded ? "circle" : "arrow.down.circle")
                 .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(active ? AnyShapeStyle(skin.accent) : AnyShapeStyle(.tertiary))
+                .foregroundStyle(active ? AnyShapeStyle(skin.accent) : AnyShapeStyle(Brand.faint))
                 .frame(width: 22)
                 .padding(.top, 1)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
-                    Text(model.displayName).font(skin.body(skin == .tape ? 12.5 : 13, .semibold))
+                    Text(model.displayName).font(skin.body(13, .semibold))
                     if active { TagChip(text: "In use", tone: .accent) }
                     if model.id == WhisperModel.recommended.id, !active { TagChip(text: "Recommended") }
                 }
                 Text(model.blurb)
                     .font(skin.body(11))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Brand.muted)
                     .fixedSize(horizontal: false, vertical: true)
                 Text(meta(model, downloaded: downloaded))
                     .font(skin.body(10.5, .medium))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(Brand.faint)
                 if active, case .downloading(let p) = state.whisperModelStatus {
-                    ProgressView(value: p).tint(skin.accent).padding(.top, 2)
+                    ProgressView(value: p).tint(skin.controlTint).padding(.top, 2)
                 }
             }
             Spacer(minLength: 10)
@@ -350,18 +326,18 @@ struct ModelsPanel: View {
         if active {
             switch state.whisperModelStatus {
             case .downloading(let p):
-                Text("\(Int(p * 100))%").font(skin.body(11, .semibold)).monospacedDigit().foregroundStyle(.secondary)
+                Text("\(Int(p * 100))%").font(skin.body(11, .semibold)).monospacedDigit().foregroundStyle(Brand.muted)
             case .loading:
-                HStack(spacing: 6) { ProgressView().controlSize(.small); Text("Loading").font(skin.body(11)).foregroundStyle(.secondary) }
+                HStack(spacing: 6) { ProgressView().controlSize(.small); Text("Loading").font(skin.body(11)).foregroundStyle(Brand.muted) }
             case .notDownloaded:
                 Button("Download") { state.voiceInput.downloadModel() }.controlSize(.small)
             case .failed:
                 Button("Retry") { state.voiceInput.downloadModel() }.controlSize(.small)
             case .ready:
-                Text(skin == .tape ? "READY" : "Ready").font(skin.body(10.5, .semibold)).tracking(skin == .tape ? 1 : 0)
+                Text("Ready").font(skin.body(10.5, .semibold)).tracking(0)
                     .foregroundStyle(skin.okTint)
             case .downloaded:
-                Text("Loads when Voice in is on").font(skin.body(10.5)).foregroundStyle(.tertiary)
+                Text("Loads when Voice in is on").font(skin.body(10.5)).foregroundStyle(Brand.faint)
             }
         } else if downloaded {
             HStack(spacing: 6) {
@@ -388,25 +364,25 @@ struct ModelsPanel: View {
             Image(systemName: formatter.status == .ready ? "checkmark.circle.fill" : "arrow.down.circle")
                 .font(.system(size: 15, weight: .medium))
                 .foregroundStyle(formatter.status == .ready && settings.smartFormattingEnabled
-                                 ? AnyShapeStyle(skin.accent) : AnyShapeStyle(.tertiary))
+                                 ? AnyShapeStyle(skin.accent) : AnyShapeStyle(Brand.faint))
                 .frame(width: 22)
                 .padding(.top, 1)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
-                    Text(FormatterModel.displayName).font(skin.body(skin == .tape ? 12.5 : 13, .semibold))
+                    Text(FormatterModel.displayName).font(skin.body(13, .semibold))
                     if formatter.status == .ready, settings.smartFormattingEnabled { TagChip(text: "In use", tone: .accent) }
                 }
                 Text("Qwen's small open model (Apache-2.0), 4-bit, through llama.cpp on the GPU. Loads as you start talking and unloads after five idle minutes.")
                     .font(skin.body(11))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Brand.muted)
                     .fixedSize(horizontal: false, vertical: true)
                 Text(formatter.status == .ready && formatterBytes > 0
                      ? "llama.cpp · Metal · \(byteString(formatterBytes)) on disk"
                      : "llama.cpp · Metal · \(FormatterModel.approxSize) download")
                     .font(skin.body(10.5, .medium))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(Brand.faint)
                 if case .downloading(let p) = formatter.status {
-                    ProgressView(value: p).tint(skin.accent).padding(.top, 2)
+                    ProgressView(value: p).tint(skin.controlTint).padding(.top, 2)
                 }
                 if case .failed(let why) = formatter.status {
                     Text(why).font(skin.body(10.5)).foregroundStyle(skin.destructive)
@@ -421,7 +397,7 @@ struct ModelsPanel: View {
     private var formatterAction: some View {
         switch formatter.status {
         case .unsupported:
-            Text("Needs Apple Silicon").font(skin.body(10.5)).foregroundStyle(.tertiary)
+            Text("Needs Apple Silicon").font(skin.body(10.5)).foregroundStyle(Brand.faint)
         case .notDownloaded, .failed:
             Button("Download") {
                 formatter.download()
@@ -429,16 +405,16 @@ struct ModelsPanel: View {
             }
             .controlSize(.small)
         case .downloading(let p):
-            Text("\(Int(p * 100))%").font(skin.body(11, .semibold)).monospacedDigit().foregroundStyle(.secondary)
+            Text("\(Int(p * 100))%").font(skin.body(11, .semibold)).monospacedDigit().foregroundStyle(Brand.muted)
         case .verifying:
-            HStack(spacing: 6) { ProgressView().controlSize(.small); Text("Checking").font(skin.body(11)).foregroundStyle(.secondary) }
+            HStack(spacing: 6) { ProgressView().controlSize(.small); Text("Checking").font(skin.body(11)).foregroundStyle(Brand.muted) }
         case .ready:
             HStack(spacing: 8) {
                 Toggle("", isOn: $settings.smartFormattingEnabled)
                     .labelsHidden()
-                    .toggleStyle(.switch)
+                    .toggleStyle(.ink)
                     .controlSize(.small)
-                    .tint(skin.liveTint)
+                    .tint(skin.controlTint)
                 RowIconButton(symbol: "trash", help: "Delete \(FormatterModel.displayName)", role: .destructive) { deletingFormatter = true }
             }
         }
@@ -449,11 +425,11 @@ struct ModelsPanel: View {
         return HStack(spacing: 10) {
             Image(systemName: "internaldrive")
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(Brand.faint)
             Text(total > 0 ? "\(byteString(total)) of models on this Mac, in Application Support › Yapper."
                            : "Models are kept in Application Support › Yapper.")
                 .font(skin.body(11))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Brand.muted)
             Spacer()
             Button("Show in Finder") {
                 NSWorkspace.shared.activateFileViewerSelecting([DictationHistoryStore.defaultDirectory()])
@@ -556,8 +532,8 @@ struct DictationsPanel: View {
                     Spacer()
                     Toggle("", isOn: $settings.keepDictationAudio)
                         .labelsHidden()
-                        .toggleStyle(.switch)
-                        .tint(skin.liveTint)
+                        .toggleStyle(.ink)
+                        .tint(skin.controlTint)
                         .disabled(settings.dictationRetention == .never)
                 }
                 if !store.entries.isEmpty {
@@ -580,13 +556,13 @@ struct DictationsPanel: View {
     private func stat(_ value: String, _ label: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(value)
-                .font(skin == .tape ? Tape.shout(30) : .system(size: 26, weight: .bold, design: .rounded))
+                .font(Brand.display(34))
                 .monospacedDigit()
-                .foregroundStyle(skin == .tape ? AnyShapeStyle(Tape.cream) : AnyShapeStyle(.primary))
-            Text(skin == .tape ? label.uppercased() : label)
+                .foregroundStyle(AnyShapeStyle(Brand.ink))
+            Text(label)
                 .font(skin.body(10, .semibold))
-                .tracking(skin == .tape ? 1.2 : 0.2)
-                .foregroundStyle(.secondary)
+                .tracking(0.2)
+                .foregroundStyle(Brand.muted)
         }
     }
 
@@ -611,14 +587,14 @@ struct DictationsPanel: View {
             if all.isEmpty {
                 Text("Nothing matches “\(query)”.")
                     .font(skin.body(12))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(Brand.faint)
                     .padding(.vertical, 20)
             }
             ForEach(days, id: \.key) { day, entries in
                 Text(dayLabel(day))
                     .font(skin.body(10, .bold))
                     .tracking(1.6)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Brand.muted)
                     .padding(.top, day == days.first?.key ? 0 : 14)
                     .padding(.bottom, 4)
                 ForEach(entries) { entry in
@@ -693,19 +669,19 @@ private struct DictationRow: View {
                 Text(entry.at.formatted(date: .omitted, time: .shortened))
                     .font(skin.body(11, .medium))
                     .monospacedDigit()
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(Brand.faint)
                     .frame(width: 58, alignment: .leading)
                     .padding(.top, 1)
                 VStack(alignment: .leading, spacing: 4) {
                     if entry.text.isEmpty {
                         Text(entry.outcome == .failed ? "Couldn't transcribe this one" : "Nothing to type: silence, or just “um”")
-                            .font(skin.body(skin == .tape ? 12.5 : 13))
+                            .font(skin.body(13))
                             .italic()
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(Brand.faint)
                     } else {
                         Text(entry.text)
-                            .font(skin.body(skin == .tape ? 12.5 : 13))
-                            .foregroundStyle(.primary)
+                            .font(skin.body(13))
+                            .foregroundStyle(Brand.ink)
                             .lineLimit(expanded ? nil : 2)
                             .textSelection(.enabled)
                     }
@@ -719,10 +695,11 @@ private struct DictationRow: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .background(RoundedRectangle(cornerRadius: skin == .tape ? 3 : 12, style: .continuous)
-            .fill(hovering || expanded ? Color.primary.opacity(0.05) : Color.primary.opacity(skin == .tape ? 0.025 : 0.035)))
-        .overlay(RoundedRectangle(cornerRadius: skin == .tape ? 3 : 12, style: .continuous)
-            .strokeBorder(expanded && skin == .tape ? Tape.line : Color.primary.opacity(0.05), lineWidth: 1))
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .fill(Brand.surface)
+            .shadow(color: Brand.ink.opacity(hovering || expanded ? 0.07 : 0.03), radius: hovering || expanded ? 5 : 1, y: 1))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .strokeBorder(expanded ? Brand.lineStrong : Brand.line, lineWidth: 1))
         .contentShape(Rectangle())
         .onTapGesture(perform: onToggle)
         .onHover { hovering = $0 }
@@ -732,16 +709,16 @@ private struct DictationRow: View {
     private var meta: some View {
         HStack(spacing: 6) {
             if let app = entry.appName {
-                Text(app).font(skin.body(10.5, .medium)).foregroundStyle(.secondary)
+                Text(app).font(skin.body(10.5, .medium)).foregroundStyle(Brand.muted)
                 dot
             }
-            Text(duration).font(skin.body(10.5)).foregroundStyle(.tertiary)
+            Text(duration).font(skin.body(10.5)).foregroundStyle(Brand.faint)
             if entry.wordCount > 0 {
                 dot
-                Text("\(entry.wordCount) word\(entry.wordCount == 1 ? "" : "s")").font(skin.body(10.5)).foregroundStyle(.tertiary)
+                Text("\(entry.wordCount) word\(entry.wordCount == 1 ? "" : "s")").font(skin.body(10.5)).foregroundStyle(Brand.faint)
             }
             switch entry.outcome {
-            case .copied: TagChip(text: "Clipboard", tone: .warning)
+            case .copied: TagChip(text: "On clipboard")
             case .empty: TagChip(text: "Empty")
             case .failed: TagChip(text: "Failed", tone: .warning)
             case .retried: TagChip(text: "Transcribed again")
@@ -753,7 +730,7 @@ private struct DictationRow: View {
         }
     }
 
-    private var dot: some View { Text("·").font(skin.body(10.5)).foregroundStyle(.tertiary) }
+    private var dot: some View { Text("·").font(skin.body(10.5)).foregroundStyle(Brand.faint) }
 
     private var duration: String {
         let s = Int(entry.duration.rounded())
@@ -782,9 +759,9 @@ private struct DictationRow: View {
             } label: {
                 Image(systemName: "ellipsis")
                     .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Brand.muted)
                     .frame(width: 26, height: 26)
-                    .background(Circle().fill(Color.primary.opacity(0.06)))
+                    .background(Circle().fill(Brand.ink.opacity(0.06)))
             }
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
@@ -806,16 +783,16 @@ private struct DictationRow: View {
             Text(title.uppercased())
                 .font(skin.body(9, .bold))
                 .tracking(1.4)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(Brand.faint)
             Text(text)
                 .font(.system(size: 11.5, design: .monospaced))
-                .foregroundStyle(dim ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
+                .foregroundStyle(dim ? AnyShapeStyle(Brand.muted) : AnyShapeStyle(Brand.ink))
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(RoundedRectangle(cornerRadius: skin == .tape ? 2 : 8, style: .continuous).fill(Color.primary.opacity(0.04)))
+        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Brand.ink.opacity(0.04)))
     }
 }
 
@@ -875,7 +852,7 @@ struct DictionaryPanel: View {
                 VStack(alignment: .leading, spacing: 0) {
                     CardHeader(icon: "character.book.closed.fill", title: "Your words",
                                subtitle: "Names and jargon Yapper should expect, and fixes for what the speech model still gets wrong.",
-                               trailing: AnyView(Text(countLine).font(skin.body(10.5, .medium)).foregroundStyle(.tertiary)))
+                               trailing: AnyView(Text(countLine).font(skin.body(10.5, .medium)).foregroundStyle(Brand.faint)))
                         .padding(.bottom, 4)
                     RowDivider()
                     addBar
@@ -921,7 +898,7 @@ struct DictionaryPanel: View {
             if addingCorrection {
                 HStack(spacing: 8) {
                     TextField("When it hears…", text: $newHeard).textFieldStyle(.roundedBorder)
-                    Image(systemName: "arrow.right").font(.system(size: 10, weight: .bold)).foregroundStyle(.tertiary)
+                    Image(systemName: "arrow.right").font(.system(size: 10, weight: .bold)).foregroundStyle(Brand.faint)
                     TextField("…type this", text: $newTyped).textFieldStyle(.roundedBorder).onSubmit(addCorrection)
                     Button("Add", action: addCorrection)
                         .controlSize(.small)
@@ -947,23 +924,23 @@ struct DictionaryPanel: View {
 
     private var filterBar: some View {
         HStack(spacing: 10) {
-            HStack(spacing: 4) {
+            HStack(spacing: 2) {
                 ForEach(Filter.allCases) { f in
                     Button { filter = f } label: {
-                        Text(skin == .tape ? f.rawValue.uppercased() : f.rawValue)
-                            .font(skin == .tape ? Tape.mono(9.5, filter == f ? .bold : .semibold) : .system(size: 11, weight: filter == f ? .semibold : .medium))
-                            .tracking(skin == .tape ? 0.8 : 0)
-                            .foregroundStyle(filter == f ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
-                            .padding(.horizontal, 9)
+                        Text(f.rawValue)
+                            .font(.system(size: 11.5, weight: filter == f ? .semibold : .medium))
+                            .foregroundStyle(filter == f ? Brand.ink : Brand.muted)
+                            .padding(.horizontal, 10)
                             .padding(.vertical, 5)
-                            .background(RoundedRectangle(cornerRadius: skin == .tape ? 2 : 7, style: .continuous)
-                                .fill(filter == f ? skin.selectionFill : .clear))
-                            .overlay(RoundedRectangle(cornerRadius: skin == .tape ? 2 : 7, style: .continuous)
-                                .strokeBorder(filter == f && skin == .tape ? Tape.yellow.opacity(0.4) : .clear, lineWidth: 1))
+                            .background(Capsule(style: .continuous)
+                                .fill(filter == f ? Brand.surface : .clear)
+                                .shadow(color: Brand.ink.opacity(filter == f ? 0.1 : 0), radius: 1.5, y: 1))
                     }
                     .buttonStyle(.plain)
                 }
             }
+            .padding(3)
+            .background(Capsule(style: .continuous).fill(Brand.sunken))
             Spacer()
             SearchField(prompt: "Search", text: $query).frame(width: 170)
         }
@@ -992,13 +969,13 @@ struct DictionaryPanel: View {
                  ? "Nothing yet. Add a word above, or let Yapper learn from your edits."
                  : "Nothing matches.")
                 .font(skin.body(11.5))
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(Brand.faint)
                 .padding(.vertical, 12)
         } else {
             LazyVStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                     if index > 0 {
-                        Rectangle().fill(Color.primary.opacity(0.05)).frame(height: 1)
+                        Rectangle().fill(Brand.line).frame(height: 1)
                     }
                     DictionaryRow(content: { rowContent(item) }, origin: item.origin) { remove(item) }
                 }
@@ -1013,8 +990,8 @@ struct DictionaryPanel: View {
             Text(t).font(skin.body(12.5, .semibold))
         case .rule(let r):
             HStack(spacing: 8) {
-                Text(r.heard).font(skin.body(12.5)).foregroundStyle(.secondary).strikethrough(color: .secondary.opacity(0.5))
-                Image(systemName: "arrow.right").font(.system(size: 9, weight: .bold)).foregroundStyle(.tertiary)
+                Text(r.heard).font(skin.body(12.5)).foregroundStyle(Brand.muted).strikethrough(color: .secondary.opacity(0.5))
+                Image(systemName: "arrow.right").font(.system(size: 9, weight: .bold)).foregroundStyle(Brand.faint)
                 Text(r.typed).font(skin.body(12.5, .semibold))
             }
         }
@@ -1041,12 +1018,12 @@ struct DictionaryPanel: View {
             Button("Undo") { vocab.undoLearned() }.controlSize(.small)
             Button { vocab.dismissLearned() } label: { Image(systemName: "xmark").font(.system(size: 9, weight: .bold)) }
                 .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Brand.muted)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .background(RoundedRectangle(cornerRadius: skin == .tape ? 3 : 12, style: .continuous).fill(skin.accentSoft))
-        .overlay(RoundedRectangle(cornerRadius: skin == .tape ? 3 : 12, style: .continuous)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(skin.accentSoft))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
             .strokeBorder(skin.accent.opacity(0.35), lineWidth: 1))
     }
 
@@ -1059,14 +1036,14 @@ struct DictionaryPanel: View {
                 .foregroundStyle(skin.iconTint)
                 .frame(width: 22)
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(skin.body(skin == .tape ? 12.5 : 13, .semibold))
-                Text(detail).font(skin.body(11)).foregroundStyle(.secondary)
+                Text(title).font(skin.body(13, .semibold))
+                Text(detail).font(skin.body(11)).foregroundStyle(Brand.muted)
             }
             Spacer()
             Toggle("", isOn: isOn)
                 .labelsHidden()
-                .toggleStyle(.switch)
-                .tint(skin.liveTint)
+                .toggleStyle(.ink)
+                .tint(skin.controlTint)
         }
     }
 
@@ -1077,10 +1054,10 @@ struct DictionaryPanel: View {
                 .foregroundStyle(skin.iconTint)
                 .frame(width: 22)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Import from Wispr Flow").font(skin.body(skin == .tape ? 12.5 : 13, .semibold))
+                Text("Import from Wispr Flow").font(skin.body(13, .semibold))
                 Text(importNote ?? "Brings in the words and corrections Wispr Flow has learned, marked as imported.")
                     .font(skin.body(11))
-                    .foregroundStyle(importNote == nil ? .secondary : skin.liveTint)
+                    .foregroundStyle(importNote == nil ? Brand.muted : Brand.limeDeep)
             }
             Spacer()
             Button("Import", action: importWispr).controlSize(.small)
@@ -1117,14 +1094,14 @@ struct DictionaryPanel: View {
                     .frame(minHeight: 54, maxHeight: 110)
                     .scrollContentBackground(.hidden)
                     .padding(6)
-                    .background(RoundedRectangle(cornerRadius: skin == .tape ? 2 : 6).fill(Color.primary.opacity(0.05)))
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Brand.ink.opacity(0.05)))
                     .onAppear { correction = last.delivered }
                     .onChange(of: last.delivered) { correction = $0 }
                 HStack {
-                    Text(last.at, style: .relative).font(skin.body(11)).foregroundStyle(.tertiary)
-                    + Text(" ago").font(skin.body(11)).foregroundStyle(.tertiary)
+                    Text(last.at, style: .relative).font(skin.body(11)).foregroundStyle(Brand.faint)
+                    + Text(" ago").font(skin.body(11)).foregroundStyle(Brand.faint)
                     Spacer()
-                    if let learnedNote { Text(learnedNote).font(skin.body(11)).foregroundStyle(skin.liveTint) }
+                    if let learnedNote { Text(learnedNote).font(skin.body(11)).foregroundStyle(Brand.limeDeep) }
                     Button("Save correction") {
                         let learned = vocab.learn(corrected: correction)
                         learnedNote = learned.isEmpty ? "No word changes to learn"
@@ -1134,7 +1111,7 @@ struct DictionaryPanel: View {
                     .disabled(correction.trimmingCharacters(in: .whitespacesAndNewlines) == last.delivered)
                 }
             } else {
-                Text("Nothing dictated yet.").font(skin.body(11)).foregroundStyle(.tertiary)
+                Text("Nothing dictated yet.").font(skin.body(11)).foregroundStyle(Brand.faint)
             }
         }
     }
@@ -1154,7 +1131,7 @@ private struct DictionaryRow<Content: View>: View {
             case .learned:
                 HStack(spacing: 3) {
                     Image(systemName: "sparkle").font(.system(size: 8, weight: .bold))
-                        .foregroundStyle(skin == .tape ? Tape.dust : skin.accent)
+                        .foregroundStyle(skin.accent)
                     TagChip(text: "Learned")
                 }
             case .imported: TagChip(text: "Wispr")
@@ -1207,10 +1184,10 @@ struct SnippetsPanel: View {
                                detail: "Good ones are things you type often and hate typing: “my calendar link”, “my address”, “standup template”, “sign off”.")
             } else {
                 HStack {
-                    Text(skin == .tape ? "\(store.snippets.count) SNIPPETS" : "\(store.snippets.count) snippet\(store.snippets.count == 1 ? "" : "s")")
+                    Text("\(store.snippets.count) snippet\(store.snippets.count == 1 ? "" : "s")")
                         .font(skin.body(10, .bold))
                         .tracking(1.6)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Brand.muted)
                     Spacer()
                     if store.snippets.count > 6 { SearchField(prompt: "Search", text: $query).frame(width: 180) }
                 }
@@ -1245,7 +1222,7 @@ struct SnippetsPanel: View {
             .frame(width: 190)
             Image(systemName: "arrow.right")
                 .font(.system(size: 10, weight: .bold))
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(Brand.faint)
                 .padding(.top, 27)
             VStack(alignment: .leading, spacing: 6) {
                 fieldLabel("Type")
@@ -1254,8 +1231,8 @@ struct SnippetsPanel: View {
                     .scrollContentBackground(.hidden)
                     .frame(height: 62)
                     .padding(5)
-                    .background(RoundedRectangle(cornerRadius: skin == .tape ? 2 : 6).fill(Color.primary.opacity(0.05)))
-                    .overlay(RoundedRectangle(cornerRadius: skin == .tape ? 2 : 6).strokeBorder(Color.primary.opacity(0.1), lineWidth: 1))
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Brand.ink.opacity(0.05)))
+                    .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Brand.ink.opacity(0.1), lineWidth: 1))
             }
         }
     }
@@ -1264,7 +1241,7 @@ struct SnippetsPanel: View {
         Text(text.uppercased())
             .font(skin.body(9, .bold))
             .tracking(1.4)
-            .foregroundStyle(.tertiary)
+            .foregroundStyle(Brand.faint)
     }
 
     private func add() {
@@ -1303,9 +1280,9 @@ struct SnippetsPanel: View {
             }
         }
         .padding(14)
-        .background(RoundedRectangle(cornerRadius: skin == .tape ? 3 : 12, style: .continuous).fill(Color.primary.opacity(0.05)))
-        .overlay(RoundedRectangle(cornerRadius: skin == .tape ? 3 : 12, style: .continuous)
-            .strokeBorder(skin == .tape ? Tape.yellow.opacity(0.35) : Brand.blue.opacity(0.3), lineWidth: 1))
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Brand.ink.opacity(0.05)))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .strokeBorder(Brand.limeDeep.opacity(0.35), lineWidth: 1))
     }
 }
 
@@ -1324,17 +1301,17 @@ private struct SnippetRow: View {
                 if snippet.uses > 0 {
                     Text("used \(snippet.uses)×")
                         .font(skin.body(10))
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(Brand.faint)
                 }
             }
             .frame(width: 190, alignment: .leading)
             Image(systemName: "arrow.right")
                 .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(Brand.faint)
                 .padding(.top, 4)
             Text(snippet.expansion)
                 .font(.system(size: 11.5, design: .monospaced))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Brand.muted)
                 .lineLimit(3)
                 .frame(maxWidth: .infinity, alignment: .leading)
             HStack(spacing: 5) {
@@ -1345,10 +1322,11 @@ private struct SnippetRow: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 11)
-        .background(RoundedRectangle(cornerRadius: skin == .tape ? 3 : 12, style: .continuous)
-            .fill(Color.primary.opacity(hovering ? 0.05 : (skin == .tape ? 0.025 : 0.035))))
-        .overlay(RoundedRectangle(cornerRadius: skin == .tape ? 3 : 12, style: .continuous)
-            .strokeBorder(Color.primary.opacity(0.05), lineWidth: 1))
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .fill(Brand.surface)
+            .shadow(color: Brand.ink.opacity(hovering ? 0.07 : 0.03), radius: hovering ? 5 : 1, y: 1))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .strokeBorder(Brand.line, lineWidth: 1))
         .contentShape(Rectangle())
         .onTapGesture(count: 2, perform: onEdit)
         .onHover { hovering = $0 }
