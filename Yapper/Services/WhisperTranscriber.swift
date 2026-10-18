@@ -82,6 +82,34 @@ struct WhisperModel: Identifiable, Hashable, Sendable {
     }
 }
 
+// MARK: - Files on disk (Settings → Models)
+
+extension WhisperModel {
+    /// The folder this model's files live in.
+    var storageFolder: URL {
+        engine == .parakeet ? ParakeetTranscriber.cacheFolder : folder
+    }
+
+    /// Bytes the model takes on disk. Walks the folder, so call it off the main thread.
+    nonisolated static func bytesOnDisk(at folder: URL) -> Int64 {
+        guard let walker = FileManager.default.enumerator(at: folder, includingPropertiesForKeys: [.totalFileAllocatedSizeKey, .isRegularFileKey]) else { return 0 }
+        var total: Int64 = 0
+        for case let url as URL in walker {
+            let values = try? url.resourceValues(forKeys: [.totalFileAllocatedSizeKey, .isRegularFileKey])
+            if values?.isRegularFile == true { total += Int64(values?.totalFileAllocatedSize ?? 0) }
+        }
+        return total
+    }
+
+    /// Removes the downloaded files. The model in use is never deleted from under the
+    /// transcriber; Settings only offers this for the others.
+    func deleteFiles() throws {
+        let url = storageFolder
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        try FileManager.default.removeItem(at: url)
+    }
+}
+
 /// Where a model is on its way from "never downloaded" to "loaded on the Neural Engine".
 enum WhisperModelStatus: Equatable, Sendable {
     case notDownloaded

@@ -128,6 +128,12 @@ struct DictationHistoryTests {
         #expect(store.search("  ").count == 2)
     }
 
+    @Test func cleanedMeansTheWordsChangedNotJustPunctuation() {
+        #expect(!dictation("Hello there.", heard: "hello there").wasCleaned)
+        #expect(dictation("Hello there.", heard: "um hello there").wasCleaned)
+        #expect(!dictation("", heard: "", outcome: .empty).wasCleaned)
+    }
+
     @Test func totalWordsCountsOnlyWhatWasTyped() {
         let store = DictationHistoryStore(directory: makeDir())
         store.record(dictation("one two three"))

@@ -165,6 +165,16 @@ struct RecordingHUDView: View {
     }
 
     private var pill: some View {
+        RecordingPill(phase: model.phase, levels: model.levels)
+    }
+}
+
+/// The pill's face for one phase. Shared by the HUD and the preview in Settings → Voice in.
+struct RecordingPill: View {
+    let phase: RecordingHUDModel.Phase
+    let levels: [CGFloat]
+
+    var body: some View {
         HStack(spacing: 9) { content }
             .padding(.horizontal, 13)
             .frame(height: 32)
@@ -179,12 +189,12 @@ struct RecordingHUDView: View {
 
     @ViewBuilder
     private var content: some View {
-        switch model.phase {
+        switch phase {
         case .hidden:
             EmptyView()
         case .listening(let locked, let handsFree):
             RecDot()
-            LevelBars(levels: model.levels)
+            LevelBars(levels: levels)
             if locked {
                 Image(systemName: "lock.fill")
                     .font(.system(size: 10, weight: .bold))

@@ -5,25 +5,45 @@ import AppKit
 
 // MARK: - Section model
 
-private enum YSection: String, CaseIterable, Identifiable {
-    case general, voices, hotkeys, providers, conversation, history, about
+enum YSection: String, CaseIterable, Identifiable {
+    case general, hotkeys
+    case voiceIn, dictations, dictionary, snippets, models
+    case voices, providers, conversation, history
+    case about
     var id: String { rawValue }
     var title: String {
         switch self {
         case .general:      "General"
-        case .voices:       "Voices"
         case .hotkeys:      "Hotkeys"
+        case .voiceIn:      "Setup"
+        case .dictations:   "Dictations"
+        case .dictionary:   "Dictionary"
+        case .snippets:     "Snippets"
+        case .models:       "Models"
+        case .voices:       "Voices"
         case .providers:    "Providers"
         case .conversation: "Conversation"
         case .history:      "History"
         case .about:        "About"
         }
     }
+    /// The handwritten eyebrow over the page title, where the sidebar name alone would be vague.
+    var eyebrow: String {
+        switch self {
+        case .voiceIn: "voice in"
+        default:       title.lowercased()
+        }
+    }
     var subtitle: String {
         switch self {
         case .general:      "Launch behavior and mini player"
-        case .voices:       "Pick your voice or add a custom one"
         case .hotkeys:      "The Yapper key contract"
+        case .voiceIn:      "Hold the Yapper key and talk"
+        case .dictations:   "Everything you've said, kept on this Mac"
+        case .dictionary:   "Words Yapper spells your way"
+        case .snippets:     "Say a phrase, type a block of text"
+        case .models:       "Speech and formatting, on this Mac"
+        case .voices:       "Pick your voice or add a custom one"
         case .providers:    "ElevenLabs and fallbacks"
         case .conversation: "How Conversation Mode behaves"
         case .history:      "Retention and clearing"
@@ -33,13 +53,38 @@ private enum YSection: String, CaseIterable, Identifiable {
     var symbol: String {
         switch self {
         case .general:      "circle.grid.2x2"
-        case .voices:       "waveform.circle"
         case .hotkeys:      "command"
+        case .voiceIn:      "mic"
+        case .dictations:   "text.bubble"
+        case .dictionary:   "character.book.closed"
+        case .snippets:     "text.badge.plus"
+        case .models:       "cpu"
+        case .voices:       "waveform.circle"
         case .providers:    "key"
         case .conversation: "bubble.left.and.bubble.right"
         case .history:      "clock.arrow.circlepath"
         case .about:        "sparkles"
         }
+    }
+
+    /// Sidebar groups, in order. A nil heading is drawn without one.
+    static let groups: [(heading: String?, sections: [YSection])] = [
+        (nil, [.general, .hotkeys]),
+        ("Voice in", [.voiceIn, .dictations, .dictionary, .snippets, .models]),
+        ("Read aloud", [.voices, .providers, .conversation, .history]),
+        (nil, [.about]),
+    ]
+}
+
+/// Lets a page send the window to another one ("Manage models…").
+private struct SettingsNavigateKey: EnvironmentKey {
+    static let defaultValue: @Sendable @MainActor (YSection) -> Void = { _ in }
+}
+
+extension EnvironmentValues {
+    var settingsNavigate: @Sendable @MainActor (YSection) -> Void {
+        get { self[SettingsNavigateKey.self] }
+        set { self[SettingsNavigateKey.self] = newValue }
     }
 }
 
@@ -48,7 +93,13 @@ private enum YSection: String, CaseIterable, Identifiable {
 struct SettingsView: View {
     @EnvironmentObject private var state: AppState
     @EnvironmentObject private var settings: SettingsStore
-    @State private var selected: YSection = .general
+    @State private var selected: YSection
+    private let stores: VoiceInStores
+
+    init(stores: VoiceInStores? = nil, initial: YSection = .general) {
+        self.stores = stores ?? .live
+        _selected = State(initialValue: initial)
+    }
 
     /// The window wears the tape-label identity whenever the Cassette shell is on.
     private var skin: SettingsSkin {
@@ -85,6 +136,7 @@ struct SettingsView: View {
         .frame(minWidth: 760, minHeight: 580)
         .background(WindowChrome(skin: skin))
         .environment(\.settingsSkin, skin)
+        .environment(\.settingsNavigate, { selected = $0 })
         .tint(skin.accent)
         .preferredColorScheme(skin == .tape ? .dark : nil)
         .onAppear {
@@ -99,8 +151,13 @@ struct SettingsView: View {
     private var content: some View {
         switch selected {
         case .general:      GeneralPanel()
-        case .voices:       VoicesPanel()
         case .hotkeys:      HotkeysPanel()
+        case .voiceIn:      VoiceInPanel()
+        case .dictations:   DictationsPanel(store: stores.dictations)
+        case .dictionary:   DictionaryPanel(vocab: stores.vocabulary)
+        case .snippets:     SnippetsPanel(store: stores.snippets)
+        case .models:       ModelsPanel()
+        case .voices:       VoicesPanel()
         case .providers:    ProvidersPanel()
         case .conversation: ConversationPanel()
         case .history:      HistoryPanel()
@@ -215,16 +272,29 @@ private struct SidebarRail: View {
             }
             .padding(.horizontal, 20)
             .padding(.top, 34)   // clears the traffic lights now that the title bar is hidden
-            .padding(.bottom, 28)
+            .padding(.bottom, 18)
 
-            // Section nav
+            // Section nav, in groups
             VStack(alignment: .leading, spacing: 2) {
-                ForEach(YSection.allCases) { section in
-                    SidebarItem(
-                        section: section,
-                        isSelected: selected == section,
-                        action: { selected = section }
-                    )
+                ForEach(Array(YSection.groups.enumerated()), id: \.offset) { index, group in
+                    if let heading = group.heading {
+                        Text(heading.uppercased())
+                            .font(skin.body(9.5, .bold))
+                            .tracking(1.6)
+                            .foregroundStyle(.tertiary)
+                            .padding(.horizontal, 12)
+                            .padding(.top, 14)
+                            .padding(.bottom, 4)
+                    } else if index > 0 {
+                        Spacer().frame(height: 12)
+                    }
+                    ForEach(group.sections) { section in
+                        SidebarItem(
+                            section: section,
+                            isSelected: selected == section,
+                            action: { selected = section }
+                        )
+                    }
                 }
             }
             .padding(.horizontal, 10)
@@ -281,7 +351,7 @@ private struct SidebarItem: View {
                 }
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.vertical, 6.5)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: skin == .tape ? 3 : 8, style: .continuous)
@@ -310,7 +380,7 @@ private struct SectionHeader: View {
         VStack(alignment: .leading, spacing: 6) {
             if skin == .tape {
                 // Handwritten eyebrow, like the label annotations.
-                Text(section.title.lowercased())
+                Text(section.eyebrow)
                     .font(Tape.marker(15))
                     .foregroundStyle(Tape.yellow)
                     .rotationEffect(.degrees(-1), anchor: .bottomLeading)
@@ -319,7 +389,7 @@ private struct SectionHeader: View {
                     .foregroundStyle(Tape.cream)
                     .shadow(color: .black.opacity(0.55), radius: 0, y: 2)
             } else {
-                Text(section.title.uppercased())
+                Text(section.eyebrow.uppercased())
                     .font(.system(size: 10, weight: .semibold))
                     .tracking(2.5)
                     .foregroundStyle(Brand.blue)
@@ -333,7 +403,7 @@ private struct SectionHeader: View {
 
 // MARK: - Shared building blocks
 
-private struct Card<Content: View>: View {
+struct Card<Content: View>: View {
     @Environment(\.settingsSkin) private var skin
     @ViewBuilder var content: () -> Content
     var body: some View {
@@ -354,7 +424,7 @@ private struct Card<Content: View>: View {
     }
 }
 
-private struct RowLabel: View {
+struct RowLabel: View {
     let title: String
     let subtitle: String?
     @Environment(\.settingsSkin) private var skin
@@ -375,7 +445,7 @@ private struct RowLabel: View {
     }
 }
 
-private struct RowDivider: View {
+struct RowDivider: View {
     @Environment(\.settingsSkin) private var skin
     var body: some View {
         Group {
@@ -391,7 +461,7 @@ private struct RowDivider: View {
     }
 }
 
-private struct SectionLabel: View {
+struct SectionLabel: View {
     let text: String
     @Environment(\.settingsSkin) private var skin
     var body: some View {
@@ -1240,9 +1310,6 @@ private struct ConversationPanel: View {
                 }
             }
 
-            VoiceInSection()
-            VocabularySection()
-
             // Explainer card — in tape skin this is the pane's one paper moment.
             VStack(alignment: .leading, spacing: 10) {
                 if skin == .tape {
@@ -1346,12 +1413,13 @@ private struct WatchedAppRow: View {
 // MARK: - Voice In
 
 /// Local speech-to-text controls: master switch, mic permission, speech model, hands-free.
-private struct VoiceInSection: View {
+struct VoiceInSection: View {
     @EnvironmentObject private var settings: SettingsStore
     @EnvironmentObject private var state: AppState
     @Environment(\.settingsSkin) private var skin
     @State private var inputDevices: [AudioInputDevice] = []
     @ObservedObject private var formatter: SmartFormatter = AppState.shared.formatter
+    @Environment(\.settingsNavigate) private var navigate
 
     var body: some View {
         Card {
@@ -1363,7 +1431,7 @@ private struct VoiceInSection: View {
                         .frame(width: 36, height: 36)
                         .background(Circle().fill(skin.liveTint.opacity(0.13)))
                     RowLabel("Voice in",
-                             subtitle: "Hold \\(settings.yapperKey.keycap) to talk. Transcribed on this Mac, typed into the focused app.")
+                             subtitle: "Hold \(settings.yapperKey.keycap) to talk. Transcribed on this Mac, typed into the focused app.")
                     Spacer()
                     Toggle("", isOn: $settings.voiceInputEnabled)
                         .labelsHidden()
@@ -1380,6 +1448,14 @@ private struct VoiceInSection: View {
                 handsFreeRow
                 RowDivider()
                 pauseMediaRow
+                RowDivider()
+                toggleRow(icon: "capsule", title: "Recording pill",
+                          detail: "A small pill at the bottom of the screen shows your mic level while you talk, then a tick when the words land.",
+                          isOn: $settings.dictationHUD)
+                RowDivider()
+                toggleRow(icon: "speaker.wave.2", title: "Sounds",
+                          detail: "A soft chime when the mic opens for a hold and when the words land. Yapper takes the chime back out of the recording.",
+                          isOn: $settings.dictationSounds)
                 RowDivider()
                 cleanUpRow
                 if formatter.status != .unsupported {
@@ -1434,21 +1510,15 @@ private struct VoiceInSection: View {
                     .foregroundStyle(skin.iconTint)
                     .frame(width: 22)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Speech model").font(skin.body(skin == .tape ? 12.5 : 13, .semibold))
+                    Text("Speech model: \(WhisperModel.named(settings.whisperModelID).displayName)")
+                        .font(skin.body(skin == .tape ? 12.5 : 13, .semibold))
                     Text(modelStatusLine)
                         .font(skin.body(11))
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Picker("", selection: $settings.whisperModelID) {
-                    ForEach(WhisperModel.catalog) { model in
-                        Text("\(model.displayName) · \(model.approxSize)").tag(model.id)
-                    }
-                }
-                .labelsHidden()
-                .frame(maxWidth: 230)
-                .disabled(state.whisperModelStatus.isBusy)
-                modelAction
+                Button("Models…") { navigate(.models) }
+                    .controlSize(.small)
             }
             if case .downloading(let progress) = state.whisperModelStatus {
                 ProgressView(value: progress)
@@ -1458,32 +1528,33 @@ private struct VoiceInSection: View {
         }
     }
 
-    @ViewBuilder
-    private var modelAction: some View {
-        switch state.whisperModelStatus {
-        case .notDownloaded:
-            Button("Download") { state.voiceInput.downloadModel() }
-                .controlSize(.small)
-                .disabled(!settings.voiceInputEnabled)
-        case .failed:
-            Button("Retry") { state.voiceInput.downloadModel() }
-                .controlSize(.small)
-        case .downloading, .loading:
-            ProgressView().controlSize(.small)
-        case .ready, .downloaded:
-            EmptyView()
-        }
-    }
-
     private var modelStatusLine: String {
-        let model = WhisperModel.named(settings.whisperModelID)
         switch state.whisperModelStatus {
-        case .notDownloaded: return "\(model.blurb) Not downloaded yet."
+        case .notDownloaded: return "Not downloaded yet. Pick one in Models."
         case .downloaded: return "On disk. Loads when Voice in is switched on."
         case .downloading(let p): return "Downloading… \(Int(p * 100))%"
         case .loading: return "Loading onto the Neural Engine…"
-        case .ready: return "Ready. \(model.blurb)"
+        case .ready: return "Ready."
         case .failed(let message): return "Failed: \(message)"
+        }
+    }
+
+    private func toggleRow(icon: String, title: String, detail: String, isOn: Binding<Bool>) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(skin.iconTint)
+                .frame(width: 22)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(skin.body(skin == .tape ? 12.5 : 13, .semibold))
+                Text(detail).font(skin.body(11)).foregroundStyle(.secondary)
+            }
+            Spacer()
+            Toggle("", isOn: isOn)
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .tint(skin.liveTint)
+                .disabled(!settings.voiceInputEnabled)
         }
     }
 
@@ -1625,260 +1696,6 @@ private struct VoiceInSection: View {
             .labelsHidden()
             .frame(maxWidth: 230)
         }
-    }
-}
-
-// MARK: - Vocabulary
-
-/// Terms Yapper spells your way, rules that fix what the model still mishears, and the fix-last-transcript
-/// loop that learns both from one edit.
-private struct VocabularySection: View {
-    @EnvironmentObject private var state: AppState
-    @EnvironmentObject private var settings: SettingsStore
-    @ObservedObject private var vocab: VocabularyStore
-    @Environment(\.settingsSkin) private var skin
-    @State private var newTerm = ""
-    @State private var newHeard = ""
-    @State private var newTyped = ""
-    @State private var correction = ""
-    @State private var learnedNote: String?
-    @State private var importNote: String?
-
-    init() {
-        _vocab = ObservedObject(wrappedValue: AppState.shared.vocabulary)
-    }
-
-    var body: some View {
-        Card {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(alignment: .center, spacing: 16) {
-                    Image(systemName: "character.book.closed.fill")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(skin.iconTint)
-                        .frame(width: 36, height: 36)
-                        .background(Circle().fill(skin.iconChipBG))
-                    RowLabel("Vocabulary",
-                             subtitle: "Names and jargon to spell your way, and fixes for what the speech model still gets wrong. Stays on this Mac.")
-                    Spacer()
-                }
-                .padding(.bottom, 8)
-
-                RowDivider()
-                toggleRow(icon: "pencil.and.outline", title: "Learn from your edits",
-                          detail: "After Yapper types, it watches that field for a minute. A name or term you fix by hand becomes a word Yapper spells your way next time.",
-                          isOn: $settings.learnFromEdits)
-                RowDivider()
-                toggleRow(icon: "text.viewfinder", title: "Use words on screen",
-                          detail: "While you talk, names and jargon in the window you're dictating into fix the spelling of near misses, so they come out the way the screen spells them. Read on this Mac, never kept.",
-                          isOn: $settings.useScreenWords)
-                if WisprFlowImport.isAvailable {
-                    RowDivider()
-                    wisprImportRow
-                }
-                RowDivider()
-                termsBlock
-                RowDivider()
-                replacementsBlock
-                RowDivider()
-                lastTranscriptBlock
-            }
-        }
-    }
-
-    // MARK: Terms
-
-    private var termsBlock: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            sectionTitle("Expected words", hint: "Close misspellings of these are fixed after every turn.")
-            HStack(spacing: 8) {
-                TextField("Add a name, product, or term", text: $newTerm)
-                    .textFieldStyle(.roundedBorder)
-                    .onSubmit(addTerm)
-                Button("Add", action: addTerm).controlSize(.small).disabled(newTerm.trimmingCharacters(in: .whitespaces).isEmpty)
-            }
-            if !vocab.terms.isEmpty {
-                FlowChips(items: vocab.terms) { vocab.removeTerm($0) }
-            }
-        }
-        .padding(.vertical, 6)
-    }
-
-    private func addTerm() {
-        vocab.addTerm(newTerm)
-        newTerm = ""
-    }
-
-    // MARK: Replacements
-
-    private var replacementsBlock: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            sectionTitle("Corrections", hint: "When the speech model hears the left, Yapper types the right.")
-            HStack(spacing: 8) {
-                TextField("Heard", text: $newHeard).textFieldStyle(.roundedBorder)
-                Image(systemName: "arrow.right").foregroundStyle(.tertiary)
-                TextField("Type instead", text: $newTyped).textFieldStyle(.roundedBorder).onSubmit(addReplacement)
-                Button("Add", action: addReplacement).controlSize(.small)
-                    .disabled(newHeard.trimmingCharacters(in: .whitespaces).isEmpty || newTyped.trimmingCharacters(in: .whitespaces).isEmpty)
-            }
-            ForEach(vocab.replacements) { rule in
-                HStack(spacing: 8) {
-                    Text(rule.heard).font(skin.body(12)).foregroundStyle(.secondary)
-                    Image(systemName: "arrow.right").font(.system(size: 9)).foregroundStyle(.tertiary)
-                    Text(rule.typed).font(skin.body(12, .semibold))
-                    Spacer()
-                    Button { vocab.removeReplacement(rule.id) } label: {
-                        Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary)
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.vertical, 2)
-            }
-        }
-        .padding(.vertical, 6)
-    }
-
-    private func addReplacement() {
-        vocab.addReplacement(heard: newHeard, typed: newTyped)
-        newHeard = ""; newTyped = ""
-    }
-
-    // MARK: Last transcript
-
-    private var lastTranscriptBlock: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            sectionTitle("Last transcript", hint: "Edit what Yapper typed into what you meant, then save — every changed word becomes a correction.")
-            if let last = vocab.lastTranscript {
-                TextEditor(text: $correction)
-                    .font(skin.body(12))
-                    .frame(minHeight: 54, maxHeight: 110)
-                    .scrollContentBackground(.hidden)
-                    .padding(6)
-                    .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.05)))
-                    .onAppear { correction = last.delivered }
-                    .onChange(of: last.delivered) { correction = $0 }
-                HStack {
-                    HStack(spacing: 3) {
-                        Text(last.at, style: .relative)
-                        Text("ago")
-                    }
-                    .font(skin.body(11))
-                    .foregroundStyle(.tertiary)
-                    Spacer()
-                    if let learnedNote {
-                        Text(learnedNote).font(skin.body(11)).foregroundStyle(skin.liveTint)
-                    }
-                    Button("Save correction") {
-                        let learned = vocab.learn(corrected: correction)
-                        learnedNote = learned.isEmpty ? "No word changes to learn"
-                            : "Learned \(learned.count) fix\(learned.count == 1 ? "" : "es")"
-                    }
-                    .controlSize(.small)
-                    .disabled(correction.trimmingCharacters(in: .whitespacesAndNewlines) == last.delivered)
-                }
-            } else {
-                Text("Nothing transcribed yet.").font(skin.body(11)).foregroundStyle(.tertiary)
-            }
-        }
-        .padding(.vertical, 6)
-    }
-
-    private func toggleRow(icon: String, title: String, detail: String, isOn: Binding<Bool>) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(skin.iconTint)
-                .frame(width: 22)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(skin.body(skin == .tape ? 12.5 : 13, .semibold))
-                Text(detail).font(skin.body(11)).foregroundStyle(.secondary)
-            }
-            Spacer()
-            Toggle("", isOn: isOn)
-                .labelsHidden()
-                .toggleStyle(.switch)
-                .tint(skin.liveTint)
-                .disabled(!settings.voiceInputEnabled)
-        }
-        .padding(.vertical, 6)
-    }
-
-    private var wisprImportRow: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "square.and.arrow.down")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(skin.iconTint)
-                .frame(width: 22)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Import from Wispr Flow").font(skin.body(skin == .tape ? 12.5 : 13, .semibold))
-                Text(importNote ?? "Bring in the words and corrections Wispr Flow has learned. Snippets stay behind.")
-                    .font(skin.body(11))
-                    .foregroundStyle(importNote == nil ? .secondary : skin.liveTint)
-            }
-            Spacer()
-            Button("Import", action: importWispr).controlSize(.small)
-        }
-        .padding(.vertical, 6)
-    }
-
-    private func importWispr() {
-        do {
-            let entries = try WisprFlowImport.readEntries()
-            let plan = WisprFlowImport.plan(entries) { WordKnowledge.isDictionaryWord($0) }
-            let added = vocab.merge(terms: plan.terms, rules: plan.rules)
-            if added.terms == 0, added.rules == 0 {
-                importNote = "Nothing new: Yapper already has every word Wispr Flow knows."
-            } else {
-                var parts = ["\(added.terms) word\(added.terms == 1 ? "" : "s")"]
-                if added.rules > 0 { parts.append("\(added.rules) correction\(added.rules == 1 ? "" : "s")") }
-                importNote = "Imported " + parts.joined(separator: " and ") + "."
-            }
-            Log.voice.info("Wispr Flow import: \(added.terms, privacy: .public) terms, \(added.rules, privacy: .public) rules, \(plan.skippedSnippets, privacy: .public) snippets skipped")
-        } catch {
-            importNote = error.localizedDescription
-        }
-    }
-
-    private func sectionTitle(_ title: String, hint: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title).font(skin.body(skin == .tape ? 12.5 : 13, .semibold))
-            Text(hint).font(skin.body(11)).foregroundStyle(.secondary)
-        }
-    }
-}
-
-/// Wrapping row of removable chips.
-private struct FlowChips: View {
-    let items: [String]
-    let onRemove: (String) -> Void
-    @Environment(\.settingsSkin) private var skin
-
-    var body: some View {
-        // Simple wrap: chunk by an estimated width. Good enough for a few dozen terms.
-        let rows = chunk(items, perRow: 4)
-        VStack(alignment: .leading, spacing: 6) {
-            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
-                HStack(spacing: 6) {
-                    ForEach(row, id: \.self) { term in
-                        HStack(spacing: 4) {
-                            Text(term).font(skin.body(11.5)).lineLimit(1)
-                            Button { onRemove(term) } label: {
-                                Image(systemName: "xmark").font(.system(size: 8, weight: .bold))
-                            }
-                            .buttonStyle(.plain)
-                            .foregroundStyle(.secondary)
-                        }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Capsule().fill(skin.iconChipBG))
-                    }
-                    Spacer(minLength: 0)
-                }
-            }
-        }
-    }
-
-    private func chunk(_ items: [String], perRow: Int) -> [[String]] {
-        stride(from: 0, to: items.count, by: perRow).map { Array(items[$0..<min($0 + perRow, items.count)]) }
     }
 }
 
@@ -2330,7 +2147,7 @@ private struct KeepCoMark: View {
 
 // MARK: - Buttons
 
-private struct PrimaryButton: View {
+struct PrimaryButton: View {
     let title: String
     let systemImage: String?
     let action: () -> Void

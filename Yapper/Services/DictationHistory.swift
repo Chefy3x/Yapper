@@ -28,9 +28,13 @@ struct Dictation: Identifiable, Codable, Equatable, Sendable {
     var error: String?
 
     var wordCount: Int { text.split(whereSeparator: \.isWhitespace).count }
-    /// Whether cleanup, corrections or formatting changed anything worth showing side by side.
+    /// Whether cleanup, corrections, formatting or a snippet changed the words themselves.
+    /// Case and punctuation alone don't count; the speech model's own punctuation varies.
     var wasCleaned: Bool {
-        !heard.isEmpty && heard.trimmingCharacters(in: .whitespacesAndNewlines) != text.trimmingCharacters(in: .whitespacesAndNewlines)
+        func words(_ s: String) -> [String] {
+            s.lowercased().split(whereSeparator: { !($0.isLetter || $0.isNumber) }).map(String.init)
+        }
+        return !heard.isEmpty && words(heard) != words(text)
     }
 }
 
