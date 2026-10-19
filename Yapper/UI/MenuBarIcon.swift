@@ -6,10 +6,14 @@ struct MenuBarIcon: View {
     var body: some View {
         switch state.voiceInputState {
         case .listening:
-            // The mic is open — say so where the eye already goes.
-            Image(systemName: "mic.fill")
+            // macOS already puts its own orange mic indicator in the menu bar whenever the
+            // mic is open; a second mic here just reads as a duplicate. Keep the brand mark.
+            Image("MenuBarMark")
+                .renderingMode(.template)
         case .transcribing:
-            Image(systemName: "waveform.and.mic")
+            // No mic glyph either: the system indicator lingers a few seconds after the mic
+            // closes, so a mic here would still double up.
+            Image(systemName: "ellipsis")
         case .idle:
             // Reading is a state worth reporting, so the waveform keeps that slot; the brand
             // mark only takes over when there is nothing happening to describe.

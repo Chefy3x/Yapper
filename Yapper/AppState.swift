@@ -189,6 +189,10 @@ final class AppState: ObservableObject {
             guard let self, self.settings.dictationSounds else { return nil }
             return self.sounds.playStart()
         }
+        voiceInput.stopStartCue = { [weak self] in
+            guard let self, self.settings.dictationSounds else { return }
+            self.sounds.stopStart()
+        }
         voiceInput.onTurnFinished = { [weak self] in self?.turnFinished($0) }
         voiceInput.onPasteLanded = { [weak self] in self?.pasteLanded() }
         editWatcher.onLearned = { [weak self] learned in

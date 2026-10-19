@@ -80,9 +80,12 @@ final class VoiceInputCoordinator: ObservableObject {
     /// The focused app took a transcript: the moment the words appear, a few hundred
     /// milliseconds before the turn reports (the clipboard is still being put back).
     var onPasteLanded: (() -> Void)?
-    /// Plays the start sound as a hold begins, returning when it started (nil: nothing played).
-    /// The mic is already open by then, so the sound is notched back out of the recording.
+    /// Plays the start sound as a hold begins (or at key-down, when the mic opens early),
+    /// returning when it started (nil: nothing played). The mic is already open by then, so the
+    /// sound is notched back out of the recording.
     var playStartCue: (@MainActor () -> Date?)?
+    /// Cuts the start sound short: the key-down press it announced turned out to be a tap.
+    var stopStartCue: (@MainActor () -> Void)?
 
     typealias TranscriberFactory = @MainActor (WhisperModel, @escaping @Sendable (WhisperModelStatus) -> Void) -> Transcribing
 
@@ -111,8 +114,9 @@ final class VoiceInputCoordinator: ObservableObject {
     private var turnTask: Task<Void, Never>?
     private var watchdog: Task<Void, Never>?
     /// The mic was opened at key-down, before anyone knows whether this press is a tap or a
-    /// hold. A hold adopts the audio; anything else throws it away unheard.
-    private var priming = false
+    /// hold. A hold adopts the audio; anything else throws it away unheard. Published so the
+    /// HUD can show the moment the key goes down instead of 0.45 s later.
+    @Published private(set) var priming = false
     private var primeWatchdog: Task<Void, Never>?
     private var tailTask: Task<Void, Never>?
     /// Samples to drop from the front of this turn (see `keyPressed(playbackActive:trimLead:)`).
@@ -254,6 +258,8 @@ final class VoiceInputCoordinator: ObservableObject {
         leadTrim = Int(trimLead * AudioCapture.targetSampleRate)
         listeningSince = Date()
         captureOpenedAt = listeningSince
+        // Say so now, like a key that only ever dictates would; a tap takes it back.
+        cueAt = playStartCue?()
         resetSilentWatch()
         primeWatchdog = Task { [weak self] in
             // A press that never resolves (an event tap hiccup) must not leave the mic open.
@@ -271,19 +277,21 @@ final class VoiceInputCoordinator: ObservableObject {
         primeWatchdog = nil
         _ = capture.stop()
         listeningSince = nil
+        if cueAt != nil { stopStartCue?() }
+        cueAt = nil
     }
 
     func beginPushToTalk() {
         guard settings.voiceInputEnabled else { return }
         if priming {
             // Adopt the audio recorded since key-down, so the turn starts when the key did.
-            priming = false
             primeWatchdog?.cancel()
             primeWatchdog = nil
             onBargeIn?()
             turnStartedAt = listeningSince ?? Date()
             state = .listening(.pushToTalk)
-            cueAt = playStartCue?()
+            priming = false   // after the state, so the HUD never sees idle-and-not-priming between
+            if cueAt == nil { cueAt = playStartCue?() }   // played at key-down already
             readScreen()
             onEvent?("Listening… release to type")
             Log.voice.info("Listening (push-to-talk, mic open since key-down)")
@@ -415,7 +423,7 @@ final class VoiceInputCoordinator: ObservableObject {
 
     private func handleLevel(_ level: Float) {
         if priming || state.isListening { watchForSilentStart(level) }
-        if state.isListening { onLevel?(level) }
+        if priming || state.isListening { onLevel?(level) }
         guard case .listening(.handsFree) = state, var detector = vad else { return }
         let event = detector.process(level: level)
         vad = detector

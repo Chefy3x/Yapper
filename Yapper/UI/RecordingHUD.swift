@@ -77,8 +77,8 @@ final class RecordingHUDController {
         self.state = state
         let voice = state.voiceInput
         voice.$state.removeDuplicates()
-            .combineLatest(voice.$isLocked.removeDuplicates())
-            .sink { [weak self] s, locked in self?.update(state: s, locked: locked) }
+            .combineLatest(voice.$isLocked.removeDuplicates(), voice.$priming.removeDuplicates())
+            .sink { [weak self] s, locked, priming in self?.update(state: s, locked: locked, priming: priming) }
             .store(in: &cancellables)
     }
 
@@ -92,8 +92,14 @@ final class RecordingHUDController {
     /// The turn reported how it ended. The pill doesn't spell it out; it just closes.
     func finish(_ outcome: TurnReport.Outcome) { presenter.close() }
 
-    private func update(state: VoiceInputCoordinator.State, locked: Bool) {
+    private func update(state: VoiceInputCoordinator.State, locked: Bool, priming: Bool) {
         guard enabled else { presenter.close(); return }
+        // The mic opened at key-down: the pill opens now, as if this were already a hold. A tap
+        // ends the priming with the state still idle, and the pill closes again below.
+        if priming, state == .idle {
+            presenter.listen(locked: false, handsFree: false)
+            return
+        }
         switch state {
         case .listening(let mode): presenter.listen(locked: locked, handsFree: mode == .handsFree)
         case .transcribing: presenter.work()

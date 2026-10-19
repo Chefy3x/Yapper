@@ -262,6 +262,8 @@ struct Biquad {
 @MainActor
 final class DictationSounds {
     private var players: [DictationSound: AVAudioPlayer] = [:]
+    /// Bumped by every start and stop of the start sound, so a late fade-out can't cut a new one.
+    private var startGeneration = 0
 
     init() {
         Task { [weak self] in
@@ -280,8 +282,25 @@ final class DictationSounds {
     /// sounds are still being rendered in the first moment after launch).
     func playStart() -> Date? {
         guard let start = players[.start] else { return nil }
+        startGeneration += 1
+        start.volume = 1
         start.currentTime = 0
         return start.play() ? Date() : nil
+    }
+
+    /// Fades the start sound out over a few milliseconds (a hard stop clicks).
+    func stopStart() {
+        guard let start = players[.start], start.isPlaying else { return }
+        startGeneration += 1
+        let generation = startGeneration
+        start.setVolume(0, fadeDuration: 0.04)
+        Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(60))
+            // A press that came in meanwhile has restarted it; leave that one alone.
+            guard let self, self.startGeneration == generation else { return }
+            start.stop()
+            start.volume = 1
+        }
     }
 
     func playDone() { play(.done) }
