@@ -492,8 +492,9 @@ final class VoiceInputCoordinator: ObservableObject {
     /// in the wrong field, or got cleared.
     /// What to say when a dictation's paste went nowhere: how to paste it again.
     private var notPastedHint: String {
-        let shortcut = settings.customShortcuts[.repasteLast]?.parts.joined()
-            ?? (settings.yapperKey == .rightCommand ? nil : "\(settings.yapperKey.keycap) + V")
+        let shortcut = settings.yapperKey == .rightCommand
+            ? settings.customShortcuts[.repasteLast]?.first?.parts.joined()
+            : "\(settings.yapperKey.keycap) + V"
         guard let shortcut else { return "Nothing took the paste. Paste it again from Settings → Dictations" }
         return "Nothing took the paste. Click where it goes and press \(shortcut)"
     }

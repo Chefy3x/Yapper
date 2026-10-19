@@ -26,34 +26,43 @@ struct KeyShortcutTests {
     @Test func plainOrShiftOnlyKeysAreRefused() {
         let plain = KeyShortcut(keyCode: 15, modifiers: 0, keyLabel: "R")
         let shifted = KeyShortcut(keyCode: 15, modifiers: KeyShortcut.shift, keyLabel: "R")
-        #expect(plain.problem(binding: .readSelection, among: [:], yapperKey: .rightOption) != nil)
-        #expect(shifted.problem(binding: .readSelection, among: [:], yapperKey: .rightOption) != nil)
+        #expect(plain.problem(adding: .readSelection, among: [:], yapperKey: .rightOption) != nil)
+        #expect(shifted.problem(adding: .readSelection, among: [:], yapperKey: .rightOption) != nil)
     }
 
     @Test func aBareFunctionKeyIsFine() {
         let f5 = KeyShortcut(keyCode: 96, modifiers: 0, keyLabel: "F5")
-        #expect(f5.problem(binding: .readSelection, among: [:], yapperKey: .rightOption) == nil)
+        #expect(f5.problem(adding: .readSelection, among: [:], yapperKey: .rightOption) == nil)
     }
 
-    @Test func refusesAShortcutAnotherActionHas() {
-        let taken: [HotkeyAction: KeyShortcut] = [.skipNext: ctrlShiftR]
-        #expect(ctrlShiftR.problem(binding: .readSelection, among: taken, yapperKey: .rightOption) == "Already used by Skip ahead.")
-        // Re-recording the same shortcut on its own action is fine.
-        #expect(ctrlShiftR.problem(binding: .skipNext, among: taken, yapperKey: .rightOption) == nil)
+    @Test func refusesAShortcutAlreadyInUse() {
+        let taken: [HotkeyAction: [KeyShortcut]] = [.skipNext: [ctrlShiftR]]
+        #expect(ctrlShiftR.problem(adding: .readSelection, among: taken, yapperKey: .rightOption) == "Already used by Skip ahead.")
+        #expect(ctrlShiftR.problem(adding: .skipNext, among: taken, yapperKey: .rightOption) == "Skip ahead already has that one.")
     }
 
-    @Test func refusesALiveYapperKeyChord() {
+    @Test func anActionCanHaveSeveral() {
+        let f5 = KeyShortcut(keyCode: 96, modifiers: 0, keyLabel: "F5")
+        let shortcuts: [HotkeyAction: [KeyShortcut]] = [.repasteLast: [ctrlShiftR]]
+        #expect(f5.problem(adding: .repasteLast, among: shortcuts, yapperKey: .rightOption) == nil)
+        let both: [HotkeyAction: [KeyShortcut]] = [.repasteLast: [ctrlShiftR, f5]]
+        #expect(KeyShortcut.action(for: 96, flags: [], in: both) == .repasteLast)
+        #expect(KeyShortcut.action(for: 15, flags: CGEventFlags(rawValue: KeyShortcut.control | KeyShortcut.shift), in: both) == .repasteLast)
+        #expect(KeyShortcut.action(for: 15, flags: [], in: both) == nil)
+    }
+
+    @Test func refusesAYapperKeyChord() {
         let optS = KeyShortcut(keyCode: KeyShortcut.Code.s, modifiers: KeyShortcut.option, keyLabel: "S")
-        #expect(optS.problem(binding: .repasteLast, among: [:], yapperKey: .rightOption) != nil)
-        // Once Read selection has its own shortcut, ⌥S is free.
-        #expect(optS.problem(binding: .repasteLast, among: [.readSelection: ctrlShiftR], yapperKey: .rightOption) == nil)
-        // A different Yapper key means ⌥S never was a chord.
-        #expect(optS.problem(binding: .repasteLast, among: [:], yapperKey: .rightControl) == nil)
+        // Chords stay live alongside shortcuts, so ⌥S is never free with Right ⌥…
+        #expect(optS.problem(adding: .repasteLast, among: [:], yapperKey: .rightOption) != nil)
+        #expect(optS.problem(adding: .readSelection, among: [:], yapperKey: .rightOption) != nil)
+        // …but with another Yapper key it never was a chord.
+        #expect(optS.problem(adding: .repasteLast, among: [:], yapperKey: .rightControl) == nil)
     }
 
     @Test func refusesTheMicLockChord() {
         let optSpace = KeyShortcut(keyCode: KeyShortcut.Code.space, modifiers: KeyShortcut.option, keyLabel: "Space")
-        #expect(optSpace.problem(binding: .readSelection, among: [:], yapperKey: .rightOption) != nil)
+        #expect(optSpace.problem(adding: .readSelection, among: [:], yapperKey: .rightOption) != nil)
     }
 
     @Test func partsFollowMenuOrder() {

@@ -1,15 +1,17 @@
 import CoreGraphics
 import Foundation
 
-/// The Yapper-key chords that a recorded shortcut can take over. Tap and hold stay on the
-/// Yapper key itself, and so does Space-to-lock: those are gestures, not shortcuts.
+/// What a recorded shortcut can trigger. Each keeps its Yapper-key gesture or chord; shortcuts
+/// are extra ways in. Talk (hold) and Space-to-lock stay on the Yapper key alone: they need a
+/// key that is held, not pressed.
 enum HotkeyAction: String, CaseIterable, Codable, Identifiable, Sendable {
-    case readSelection, repasteLast, toggleConversation, skipNext, dumpAXTree
+    case readLatest, readSelection, repasteLast, toggleConversation, skipNext, dumpAXTree
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
+        case .readLatest:         "Read latest"
         case .readSelection:      "Read selection"
         case .repasteLast:        "Paste last transcript"
         case .toggleConversation: "Toggle Conversation Mode"
@@ -18,9 +20,10 @@ enum HotkeyAction: String, CaseIterable, Codable, Identifiable, Sendable {
         }
     }
 
-    /// The keys that make this action's default chord with the Yapper key.
+    /// The keys that make this action's chord with the Yapper key. Read latest is a tap: none.
     var chordKeyCodes: Set<Int64> {
         switch self {
+        case .readLatest:         []
         case .readSelection:      [KeyShortcut.Code.s]
         case .repasteLast:        [KeyShortcut.Code.v]
         case .toggleConversation: [KeyShortcut.Code.returnKey, KeyShortcut.Code.keypadEnter]
@@ -30,8 +33,8 @@ enum HotkeyAction: String, CaseIterable, Codable, Identifiable, Sendable {
     }
 }
 
-/// A full shortcut (a key plus ⌃ ⌥ ⇧ ⌘) recorded in Settings → Hotkeys. Giving an action one
-/// frees that action's Yapper-key chord back to the app.
+/// A full shortcut (a key plus ⌃ ⌥ ⇧ ⌘) recorded in Settings → Hotkeys. An action can have
+/// any number, on top of its Yapper-key chord.
 struct KeyShortcut: Codable, Hashable, Sendable {
     /// Carbon virtual key code.
     var keyCode: Int64
@@ -103,25 +106,29 @@ struct KeyShortcut: Codable, Hashable, Sendable {
         106: "F16", 64: "F17", 79: "F18", 80: "F19", 90: "F20",
     ]
 
-    /// Why `self` can't be bound to `action`, or nil when it can. Clashes are checked against
-    /// the other actions' shortcuts and against the Yapper-key chords still in use.
-    func problem(binding action: HotkeyAction,
-                 among shortcuts: [HotkeyAction: KeyShortcut],
+    /// Why `self` can't be added to `action`, or nil when it can. Clashes are checked against
+    /// every recorded shortcut and against the Yapper-key chords, which are always live.
+    func problem(adding action: HotkeyAction,
+                 among shortcuts: [HotkeyAction: [KeyShortcut]],
                  yapperKey: YapperKey) -> String? {
         guard isUsable else { return "Add ⌃, ⌥ or ⌘ so it doesn't swallow normal typing." }
-        if let other = shortcuts.first(where: { $0.key != action && $0.value == self })?.key {
-            return "Already used by \(other.title)."
+        if let owner = shortcuts.first(where: { $0.value.contains(self) })?.key {
+            return owner == action ? "\(action.title) already has that one." : "Already used by \(owner.title)."
         }
-        // The Yapper key's modifier alone + a chord key would collide with a live chord.
+        // The Yapper key's modifier alone + a chord key is a chord already.
         // fn has no CGEventFlags twin here, so it can't collide.
         guard let chordFlag = yapperKey.chordFlag, modifiers == chordFlag else { return nil }
         if keyCode == Code.space { return "That's \(yapperKey.keycap) + Space, which locks the mic." }
-        for other in HotkeyAction.allCases where other != action && shortcuts[other] == nil {
-            if other.chordKeyCodes.contains(keyCode) {
-                return "That's the \(yapperKey.keycap) chord for \(other.title)."
-            }
+        if let owner = HotkeyAction.allCases.first(where: { $0.chordKeyCodes.contains(keyCode) }) {
+            return "That's already the \(yapperKey.keycap) chord for \(owner.title)."
         }
         return nil
+    }
+
+    /// The action a key press triggers, if it matches any recorded shortcut.
+    static func action(for keyCode: Int64, flags: CGEventFlags,
+                       in shortcuts: [HotkeyAction: [KeyShortcut]]) -> HotkeyAction? {
+        shortcuts.first { $0.value.contains { $0.matches(keyCode: keyCode, flags: flags) } }?.key
     }
 }
 

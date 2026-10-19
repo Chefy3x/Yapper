@@ -152,9 +152,9 @@ final class SettingsStore: ObservableObject {
     @Published var yapperKey: YapperKey {
         didSet { defaults.set(yapperKey.rawValue, forKey: Key.yapperKey.rawValue) }
     }
-    /// Shortcuts recorded in Settings → Hotkeys. An action listed here no longer answers to its
-    /// Yapper-key chord. Stored by action raw value so an unknown action is just dropped.
-    @Published var customShortcuts: [HotkeyAction: KeyShortcut] {
+    /// Shortcuts recorded in Settings → Hotkeys, any number per action, on top of the Yapper-key
+    /// chords. Stored by action raw value so an unknown action is just dropped.
+    @Published var customShortcuts: [HotkeyAction: [KeyShortcut]] {
         didSet {
             let byName = Dictionary(uniqueKeysWithValues: customShortcuts.map { ($0.key.rawValue, $0.value) })
             if let data = try? JSONEncoder().encode(byName) {
@@ -253,7 +253,9 @@ final class SettingsStore: ObservableObject {
         self.inputDeviceUID = defaults.string(forKey: Key.inputDeviceUID.rawValue)
         self.yapperKey = YapperKey(rawValue: defaults.string(forKey: Key.yapperKey.rawValue) ?? "") ?? .default
         if let data = defaults.data(forKey: Key.customShortcuts.rawValue),
-           let byName = try? JSONDecoder().decode([String: KeyShortcut].self, from: data) {
+           let byName = (try? JSONDecoder().decode([String: [KeyShortcut]].self, from: data))
+               // One shortcut per action, as the first version stored it.
+               ?? (try? JSONDecoder().decode([String: KeyShortcut].self, from: data))?.mapValues({ [$0] }) {
             self.customShortcuts = Dictionary(uniqueKeysWithValues: byName.compactMap { name, shortcut in
                 HotkeyAction(rawValue: name).map { ($0, shortcut) }
             })

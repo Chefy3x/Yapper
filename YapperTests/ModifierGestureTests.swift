@@ -75,4 +75,20 @@ struct ModifierGestureTests {
         #expect(g.handle(.commandUp, at: at(0)) == .none)
         #expect(g.handle(.holdTimerFired, at: at(0)) == .none)
     }
+
+    @Test func returnDuringHoldEndsItEarly() {
+        var g = ModifierGesture()
+        _ = g.handle(.commandDown, at: at(0))
+        _ = g.handle(.holdTimerFired, at: at(ModifierGesture.holdThreshold))
+        #expect(g.handle(.finishKeyDown, at: at(3)) == .holdEnded)
+        #expect(!g.holding)
+        #expect(g.handle(.commandUp, at: at(3.2)) == .none)
+    }
+
+    @Test func returnBeforeHoldIsAnOrdinaryChord() {
+        var g = ModifierGesture()
+        _ = g.handle(.commandDown, at: at(0))
+        #expect(g.handle(.finishKeyDown, at: at(0.1)) == .none)
+        #expect(g.handle(.commandUp, at: at(0.2)) == .none)
+    }
 }

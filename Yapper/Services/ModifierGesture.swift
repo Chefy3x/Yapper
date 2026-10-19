@@ -8,11 +8,12 @@ import Foundation
 ///   • held past `holdThreshold` with nothing else touched         → `.holdBegan` (Voice In)
 ///     … then release                                               → `.holdEnded`
 ///     … or any key while holding                                   → `.holdCancelled`
+///     … or Return while holding (`.finishKeyDown`)                   → `.holdEnded`, early
 ///     … a click while holding is ignored: the mic stays open, so the user can click into a
 ///       field mid-dictation
 ///   • any key / click while down (before the hold fires)          → consumed, no tap on release
 struct ModifierGesture {
-    enum Event { case commandDown, commandUp, otherKeyDown, mouseDown, holdTimerFired }
+    enum Event { case commandDown, commandUp, otherKeyDown, finishKeyDown, mouseDown, holdTimerFired }
     enum Action: Equatable { case none, tap, holdBegan, holdEnded, holdCancelled }
 
     static let tapThreshold: TimeInterval = 0.4
@@ -42,7 +43,14 @@ struct ModifierGesture {
         case .mouseDown where holding:
             return .none
 
-        case .otherKeyDown, .mouseDown:
+        // Return while talking: the user is done and reaching for Send. End the hold as if
+        // released; the release that follows is spent.
+        case .finishKeyDown where holding:
+            consumedByCombo = true
+            holding = false
+            return .holdEnded
+
+        case .otherKeyDown, .finishKeyDown, .mouseDown:
             guard isDown else { return .none }
             let wasHolding = holding
             consumedByCombo = true
