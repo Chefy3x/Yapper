@@ -33,10 +33,9 @@ struct SettingsScreenshots {
         }
         // The pill on its own, larger, in each state.
         let pills = HStack(spacing: 28) {
-            RecordingPill(phase: .listening(locked: false, handsFree: false), levels: Self.levels)
-            RecordingPill(phase: .listening(locked: true, handsFree: false), levels: Self.levels)
-            RecordingPill(phase: .transcribing, levels: Self.levels)
-            RecordingPill(phase: .done(.empty), levels: Self.levels)
+            RecordingPill(phase: .listening(locked: false, handsFree: false), motion: PillMotion(fixed: 0.75))
+            RecordingPill(phase: .listening(locked: true, handsFree: false), motion: PillMotion(fixed: 0.75))
+            RecordingPill(phase: .transcribing, motion: PillMotion(working: true))
         }
         .padding(40)
         .background(Brand.canvas)
@@ -45,7 +44,7 @@ struct SettingsScreenshots {
         // The pill opening out of its dot, frame by frame.
         let opening = HStack(spacing: 18) {
             ForEach([0.1, 0.3, 0.5, 0.7, 1.0], id: \.self) { t in
-                RecordingPill(phase: .listening(locked: false, handsFree: false), levels: Self.levels)
+                RecordingPill(phase: .listening(locked: false, handsFree: false), motion: PillMotion(fixed: 0.75))
                     .modifier(PillOpen(open: t))
             }
         }
@@ -65,8 +64,6 @@ struct SettingsScreenshots {
         }
     }
 
-    static let levels: [CGFloat] = [0.05, 0.1, 0.3, 0.55, 0.4, 0.7, 0.9, 0.6, 0.35,
-                                    0.5, 0.8, 0.65, 0.3, 0.45, 0.75, 0.5, 0.25, 0.15]
 
     private func render<V: View>(_ view: V, size: NSSize, dark: Bool) async throws -> Data {
         let host = NSHostingView(rootView: view.frame(width: size.width, height: size.height))

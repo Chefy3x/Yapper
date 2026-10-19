@@ -9,44 +9,69 @@ final class RecordingHUDModel: ObservableObject {
         case hidden
         case listening(locked: Bool, handsFree: Bool)
         case transcribing
-        case done(TurnReport.Outcome)
     }
-
-    static let barCount = 18
 
     @Published var phase: Phase = .hidden
-    /// The last `barCount` mic levels, 0…1, oldest first.
-    @Published private(set) var levels: [CGFloat] = Array(repeating: 0, count: barCount)
+    /// The mic level the bars follow, eased every frame.
+    let motion = PillMotion()
 
-    func push(level rms: Float) {
-        levels.removeFirst()
-        levels.append(Self.normalized(rms))
+    func push(level rms: Float) { motion.hear(db: 20 * log10(max(Double(rms), 1e-7))) }
+
+    func resetLevels() { motion.reset() }
+}
+
+/// The waveform's moving parts, stepped once per display frame rather than once per mic buffer
+/// (about 12 a second), so the bars glide instead of stepping. Not observed: the waveform's
+/// TimelineView redraws every frame anyway.
+@MainActor
+final class PillMotion {
+    /// Loudness the bars are heading for, and where they are now, 0…1.
+    private(set) var target: CGFloat = 0
+    private(set) var level: CGFloat = 0
+    /// 0 while you talk, 1 once the words are being worked out.
+    private(set) var work: CGFloat = 0
+    /// The quietest the mic has been this turn, so a noisy room or a hot mic still reads.
+    private var floor: Double = -50
+    private var last: TimeInterval?
+
+    /// Rising follows the voice closely; falling lets go a little slower, so words don't flicker.
+    static let attack: Double = 0.05, release: Double = 0.16, settle: Double = 0.28
+
+    init(fixed: CGFloat? = nil, working: Bool = false) {
+        if let fixed { target = fixed; level = fixed }
+        work = working ? 1 : 0
     }
 
-    func resetLevels() { levels = Array(repeating: 0, count: Self.barCount) }
+    func hear(db: Double) {
+        floor = max(-62, min(floor, db))
+        floor += 0.15                     // drift back up, so one quiet moment doesn't pin it
+        target = CGFloat(min(1, max(0, (db - floor - 4) / 24)))
+    }
 
-    /// RMS → 0…1 on a decibel scale: a quiet room sits near the floor, normal speech fills
-    /// most of the bar, shouting tops out.
-    nonisolated static func normalized(_ rms: Float) -> CGFloat {
-        let db = 20 * log10(max(Double(rms), 1e-7))
-        return CGFloat(min(1, max(0, (db + 58) / 40)))
+    func reset() { target = 0; level = 0; work = 0; floor = -50; last = nil }
+
+    /// Moves everything on to `now` and returns the current level and work blend.
+    func step(to now: TimeInterval, working: Bool) -> (level: CGFloat, work: CGFloat) {
+        let dt = last.map { min(0.1, max(0, now - $0)) } ?? 0
+        last = now
+        let goal: CGFloat = working ? 0 : target
+        let tau = goal > level ? Self.attack : Self.release
+        level += (goal - level) * CGFloat(1 - exp(-dt / tau))
+        work += ((working ? 1 : 0) - work) * CGFloat(1 - exp(-dt / Self.settle))
+        return (level, work)
     }
 }
 
 /// A small pill at the bottom of the screen while Voice In runs: it opens out of a dot into the
 /// live waveform while you talk, the bars settle into a slow ripple while the words are worked
-/// out, and it closes back into the dot when they land. Never takes focus or clicks,
-/// so it can't steal the paste or swallow a click aimed at what's underneath.
+/// out, and it closes back into the dot when the turn ends, however it ended (the sounds say
+/// how). Never takes focus or clicks, so it can't steal the paste or swallow a click aimed at
+/// what's underneath.
 @MainActor
 final class RecordingHUDController {
-    let model = RecordingHUDModel()
-    private var panel: NSPanel?
-    private var hideTask: Task<Void, Never>?
+    let presenter = RecordingHUDPresenter()
     private var cancellables: Set<AnyCancellable> = []
     private weak var state: AppState?
-
-    /// The pill plus room for its shadow. The panel ignores the mouse, so the margin is free.
-    static let panelSize = NSSize(width: 280, height: 84)
 
     init(state: AppState) {
         self.state = state
@@ -60,63 +85,73 @@ final class RecordingHUDController {
     var enabled: Bool { state?.settings.dictationHUD ?? true }
 
     func level(_ rms: Float) {
-        guard enabled, case .listening = model.phase else { return }
+        guard enabled else { return }
+        presenter.level(rms)
+    }
+
+    /// The turn reported how it ended. The pill doesn't spell it out; it just closes.
+    func finish(_ outcome: TurnReport.Outcome) { presenter.close() }
+
+    private func update(state: VoiceInputCoordinator.State, locked: Bool) {
+        guard enabled else { presenter.close(); return }
+        switch state {
+        case .listening(let mode): presenter.listen(locked: locked, handsFree: mode == .handsFree)
+        case .transcribing: presenter.work()
+        case .idle: presenter.close()
+        }
+    }
+}
+
+/// Puts the pill on screen and moves it between phases. Every animation the pill makes starts
+/// here, so the probe that records it drives exactly what the app does.
+@MainActor
+final class RecordingHUDPresenter {
+    let model = RecordingHUDModel()
+    private var panel: NSPanel?
+
+    /// The pill plus room for its shadow. The panel ignores the mouse, so the margin is free.
+    static let panelSize = NSSize(width: 280, height: 84)
+
+    func level(_ rms: Float) {
+        guard case .listening = model.phase else { return }
         model.push(level: rms)
     }
 
-    /// The turn reported how it ended. Words that landed need no word from the pill: it just
-    /// closes. Anything else says so for a moment, then goes.
-    func finish(_ outcome: TurnReport.Outcome) {
-        guard enabled, panel?.isVisible == true || model.phase != .hidden else { return }
-        if outcome == .pasted { hide(); return }
-        hideTask?.cancel()
-        withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) { model.phase = .done(outcome) }
-        hideTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(1.6))
-            guard !Task.isCancelled else { return }
-            self?.hide()
+    /// Opening: a quick start and a long soft landing, no bounce. Closing: eases in and goes.
+    static let opening = Animation.timingCurve(0.05, 0.6, 0.4, 0.95, duration: 0.28)
+    static let closing = Animation.timingCurve(0.4, 0, 0.6, 1, duration: 0.22)
+
+    init() {
+        // The panel goes up once, empty, and stays: ordering a window in at the moment the pill
+        // opens costs the first few frames of the animation.
+        show()
+    }
+
+    func listen(locked: Bool, handsFree: Bool) {
+        let opening = model.phase == .hidden
+        if case .listening = model.phase {} else if case .transcribing = model.phase {} else { model.resetLevels() }
+        show()
+        withAnimation(opening ? Self.opening : .easeOut(duration: 0.18)) {
+            model.phase = .listening(locked: locked, handsFree: handsFree)
         }
     }
 
-    private func update(state: VoiceInputCoordinator.State, locked: Bool) {
-        guard enabled else { hide(); return }
-        switch state {
-        case .listening(let mode):
-            hideTask?.cancel()
-            if case .listening = model.phase {} else { model.resetLevels() }
-            show()
-            withAnimation(.spring(response: 0.42, dampingFraction: 0.74)) {
-                model.phase = .listening(locked: locked, handsFree: mode == .handsFree)
-            }
-        case .transcribing:
-            hideTask?.cancel()
-            show()
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { model.phase = .transcribing }
-        case .idle:
-            // A turn that ended with an outcome is showing it; anything else (an accidental
-            // hold, a cancelled one, hands-free closing on silence) just goes.
-            if case .done = model.phase { return }
-            hide()
-        }
+    /// The bars ease down and pulse on their own clock; the pill itself doesn't change.
+    func work() {
+        show()
+        model.phase = .transcribing
+    }
+
+    func close() {
+        guard model.phase != .hidden else { return }
+        withAnimation(Self.closing) { model.phase = .hidden }
     }
 
     private func show() {
         let panel = self.panel ?? makePanel()
         self.panel = panel
-        position(panel)
+        if model.phase == .hidden { position(panel) }
         if !panel.isVisible { panel.orderFrontRegardless() }
-    }
-
-    private func hide() {
-        hideTask?.cancel()
-        hideTask = nil
-        guard model.phase != .hidden else { return }
-        withAnimation(.timingCurve(0.5, 0, 0.8, 0.4, duration: 0.26)) { model.phase = .hidden }
-        hideTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(0.32))
-            guard let self, !Task.isCancelled, self.model.phase == .hidden else { return }
-            self.panel?.orderOut(nil)
-        }
     }
 
     /// Bottom centre of the screen you're working on, just above the Dock.
@@ -127,6 +162,9 @@ final class RecordingHUDController {
         panel.setFrame(NSRect(x: v.midX - size.width / 2, y: v.minY + 6, width: size.width, height: size.height),
                        display: false)
     }
+
+    /// Where the pill sits on screen, for the probe that records it.
+    var frame: NSRect? { panel?.frame }
 
     private func makePanel() -> NSPanel {
         let panel = NSPanel(contentRect: NSRect(origin: .zero, size: Self.panelSize),
@@ -159,14 +197,14 @@ struct RecordingHUDView: View {
             // The shadow sits outside the opening mask, so it follows the pill as it grows.
             ZStack {
                 if model.phase != .hidden {
-                    RecordingPill(phase: model.phase, levels: model.levels, shadow: false)
+                    RecordingPill(phase: model.phase, motion: model.motion, shadow: false)
                         .transition(.pillOpen)
                 }
             }
             .shadow(color: .black.opacity(0.28), radius: 10, y: 4)
             .padding(.bottom, 14)
         }
-        .frame(width: RecordingHUDController.panelSize.width, height: RecordingHUDController.panelSize.height)
+        .frame(width: RecordingHUDPresenter.panelSize.width, height: RecordingHUDPresenter.panelSize.height)
     }
 }
 
@@ -191,7 +229,7 @@ private extension AnyTransition {
 /// The pill's face for one phase. Shared by the HUD and the preview in Settings → Voice in.
 struct RecordingPill: View {
     let phase: RecordingHUDModel.Phase
-    let levels: [CGFloat]
+    let motion: PillMotion
     var shadow = true
 
     var body: some View {
@@ -210,8 +248,8 @@ struct RecordingPill: View {
         switch phase {
         case .hidden:
             EmptyView()
-        case .listening, .transcribing, .done(.pasted):
-            Waveform(levels: levels, working: phase != .listening(locked: locked, handsFree: handsFree))
+        case .listening, .transcribing:
+            Waveform(motion: motion, working: phase == .transcribing)
             if locked {
                 Image(systemName: "lock.fill")
                     .font(.system(size: 10, weight: .bold))
@@ -222,8 +260,6 @@ struct RecordingPill: View {
                     .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(.white.opacity(0.6))
             }
-        case .done(let outcome):
-            DoneMark(outcome: outcome)
         }
     }
 
@@ -237,80 +273,48 @@ struct RecordingPill: View {
     }
 }
 
-/// The mic level as bars, newest on the right, mirrored about the centre line. While the words
-/// are worked out the same bars ease down into a slow ripple running left to right, so the pill
-/// keeps its shape from talking to typing.
+/// A row of bars, tallest in the middle, scaled by the eased mic level with a slow wobble
+/// running across them so even a steady voice looks alive. When you let go the level eases to
+/// rest and a soft pulse runs left to right while the words are worked out. Drawn every frame.
 private struct Waveform: View {
-    let levels: [CGFloat]
+    let motion: PillMotion
     let working: Bool
-    @State private var workingSince: Date?
 
-    private static let settle: TimeInterval = 0.35
+    static let count = 13
+    static let barWidth: CGFloat = 2.5, gap: CGFloat = 2.5
+    static let rest: CGFloat = 3, tall: CGFloat = 18
 
     var body: some View {
-        TimelineView(.animation(paused: !working)) { timeline in
+        TimelineView(.animation) { timeline in
             let t = timeline.date.timeIntervalSinceReferenceDate
-            let blend = blend(at: timeline.date)
-            HStack(alignment: .center, spacing: 2.5) {
-                ForEach(Array(levels.enumerated()), id: \.offset) { i, level in
-                    let ripple = pow(max(0, sin(t * 2 * .pi * 0.9 - Double(i) * 0.42)), 2)
-                    let fade = 0.4 + 0.6 * Double(i) / Double(max(1, levels.count - 1))
-                    Capsule()
-                        .fill(.white.opacity(mix(fade, 0.45 + 0.5 * ripple, blend)))
-                        .frame(width: 2.5, height: mix(3 + level * 15, 3 + 5 * ripple, blend))
+            let (level, work) = motion.step(to: t, working: working)
+            let bars = (0..<Self.count).map { Self.bar($0, t: t, level: level, work: work) }
+            Canvas { context, size in
+                for (i, bar) in bars.enumerated() {
+                    let x = CGFloat(i) * (Self.barWidth + Self.gap)
+                    let rect = CGRect(x: x, y: (size.height - bar.height) / 2, width: Self.barWidth, height: bar.height)
+                    context.fill(Path(roundedRect: rect, cornerRadius: Self.barWidth / 2),
+                                 with: .color(.white.opacity(bar.opacity)))
                 }
             }
         }
-        .frame(height: 18)
-        .animation(working ? nil : .easeOut(duration: 0.12), value: levels)
-        .onChange(of: working) { _, now in workingSince = now ? Date() : nil }
+        .frame(width: CGFloat(Self.count) * (Self.barWidth + Self.gap) - Self.gap, height: Self.tall)
     }
 
-    /// 0 shows the live levels, 1 the ripple. A pill that starts out working (a preview) is
-    /// already settled.
-    private func blend(at now: Date) -> Double {
-        guard working else { return 0 }
-        guard let since = workingSince else { return 1 }
-        let x = min(1, max(0, now.timeIntervalSince(since) / Self.settle))
-        return x * x * (3 - 2 * x)
-    }
-
-    private func mix(_ a: Double, _ b: Double, _ t: Double) -> Double { a + (b - a) * t }
-    private func mix(_ a: CGFloat, _ b: Double, _ t: Double) -> CGFloat { a + (CGFloat(b) - a) * CGFloat(t) }
-}
-
-private struct DoneMark: View {
-    let outcome: TurnReport.Outcome
-    var body: some View {
-        HStack(spacing: 7) {
-            Image(systemName: symbol)
-                .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(tint)
-            Text(label)
-                .font(.system(size: 11.5, weight: .medium))
-                .foregroundStyle(.white.opacity(0.92))
-                .lineLimit(1)
-        }
-    }
-
-    private var symbol: String {
-        switch outcome {
-        case .pasted: "checkmark"
-        case .copied: "doc.on.clipboard"
-        case .empty: "ear.trianglebadge.exclamationmark"
-        case .failed: "exclamationmark.triangle.fill"
-        }
-    }
-    private var tint: Color {
-        if case .failed = outcome { return Brand.red }
-        return .white
-    }
-    private var label: String {
-        switch outcome {
-        case .pasted: "Typed"
-        case .copied: "On the clipboard"
-        case .empty: "Didn’t catch that"
-        case .failed: "Couldn’t transcribe"
-        }
+    private static func bar(_ i: Int, t: Double, level: CGFloat, work: CGFloat) -> (height: CGFloat, opacity: Double) {
+        let mid = Double(count - 1) / 2
+        let d = (Double(i) - mid) / mid                      // -1 … 1
+        let shape = 1 - 0.55 * d * d                         // tallest in the middle
+        // Two slow waves at odd rates, running across the bars, so it never visibly loops.
+        let wobble = 0.72 + 0.2 * sin(2 * .pi * (1.1 * t - Double(i) * 0.09))
+                          + 0.1 * sin(2 * .pi * (1.9 * t + Double(i) * 0.23))
+        let voice = (tall - rest) * level * CGFloat(shape * wobble)
+        // The working pulse: a soft hump travelling left to right about once a second.
+        let phase = (0.85 * t).truncatingRemainder(dividingBy: 1) * 1.36 - 0.18
+        let dist = (Double(i) / Double(count - 1)) - phase
+        let pulse = exp(-dist * dist / 0.025)
+        let height = rest + voice + 5 * work * CGFloat(pulse)
+        let opacity = 0.95 - 0.4 * Double(work) * (1 - pulse)
+        return (min(tall, height), opacity)
     }
 }

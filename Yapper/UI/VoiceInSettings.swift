@@ -172,8 +172,6 @@ struct VoiceInPanel: View {
 /// What the recording pill looks like in each state, so the toggle above means something.
 private struct PillPreviewCard: View {
     @Environment(\.settingsSkin) private var skin
-    private static let sampleLevels: [CGFloat] = [0.05, 0.1, 0.3, 0.55, 0.4, 0.7, 0.9, 0.6, 0.35,
-                                                  0.5, 0.8, 0.65, 0.3, 0.45, 0.75, 0.5, 0.25, 0.15]
 
     var body: some View {
         Card {
@@ -194,7 +192,7 @@ private struct PillPreviewCard: View {
 
     private func stage(_ label: String, _ phase: RecordingHUDModel.Phase) -> some View {
         VStack(spacing: 10) {
-            RecordingPill(phase: phase, levels: Self.sampleLevels)
+            RecordingPill(phase: phase, motion: PillMotion(fixed: 0.75, working: phase == .transcribing))
             Text(label)
                 .font(skin.body(9.5, .semibold))
                 .tracking(0.2)
