@@ -31,13 +31,20 @@ LOOKS = {
     "ref": dict(corner_ext=0.20, bow=0.11, ends=0.8, lip_ink=0.058, teeth="big", tooth_ink=0.03, jaw_deg=13.0,
                 # the lower lip drops broadly, so a wide open stays a crescent rather than a V
                 follow_lo=0.70, follow_reach=0.95, follow_od=(0.30, 0.30),
-                oval_drop=0.03, upper_lift=0.10, pitch=4.0, yaw=-5.0, roll=0.0, lips="flat"),
+                oval_drop=0.03, upper_lift=0.10, pitch=4.0, yaw=-5.0, roll=0.0, lips="flat",
+                # clean teeth (picked over the crooked set): straight, even, rounded, small gaps
+                teeth_tilt=0.1, teeth_fill=0.97, teeth_h=0.97, teeth_round=0.3, teeth_push=0.0, teeth_even=True),
 }
 LOOKS["gloss"] = {**LOOKS["ref"], "lips": "gloss"}
 LOOKS["deep"] = {**LOOKS["ref"], "lips": "deep"}
 LOOKS["pop"] = {**LOOKS["ref"], "lips": "pop"}
+# teeth variants on ref: crooked = the big crooked set first tried; tidy = rounder, less crooked
+LOOKS["crooked"] = {**LOOKS["ref"], "teeth_tilt": 1.0, "teeth_fill": 0.9, "teeth_h": 1.0, "teeth_round": 0.2, "teeth_push": 1.0,
+                    "teeth_even": False}
+LOOKS["tidy"] = {**LOOKS["crooked"], "teeth_tilt": 0.45, "teeth_fill": 0.95, "teeth_round": 0.34, "teeth_push": 0.4}
 LOOK_NAME = next((a.split("=", 1)[1] for a in ARGS if a.startswith("--look=")), "ref")
 LOOK = {"corner_ext": 0.08, "bow": 0.19, "ends": 0.45, "lip_ink": 0.045, "teeth": "v1", "tooth_ink": 0.022,
+        "teeth_tilt": 1.0, "teeth_fill": 0.9, "teeth_h": 1.0, "teeth_round": 0.2, "teeth_push": 1.0, "teeth_even": False,
         "jaw_deg": 11.0, "follow_lo": 0.62, "follow_reach": 0.74, "follow_od": (0.24, 0.38), "oval_drop": 0.10, "upper_lift": 0.03, "pitch": 6.0, "yaw": -12.0, "roll": 4.0, "lips": "v1", **LOOKS[LOOK_NAME]}
 
 POSES = [
@@ -526,7 +533,7 @@ def tooth(name, x, z_top, width, height, tilt, depth_y, mat, upper=True):
     ob.location = (x, depth_y, z_top)
     ob.rotation_euler = (0, math.radians(tilt), math.atan(2 * WRAP * x) * 0.9)
     bpy.ops.object.transform_apply(location=True, rotation=True)
-    bev = ob.modifiers.new("Round", "BEVEL"); bev.width = width * 0.2; bev.segments = 4; bev.limit_method = "NONE"
+    bev = ob.modifiers.new("Round", "BEVEL"); bev.width = width * LOOK["teeth_round"]; bev.segments = 4; bev.limit_method = "NONE"
     ob.data.materials.append(mat); ob.data.materials.append(m_ink)
     sol = ob.modifiers.new("Outline", "SOLIDIFY"); sol.thickness = LOOK["tooth_ink"]; sol.offset = 1; sol.use_flip_normals = True
     sol.use_rim = False; sol.material_offset = 1
@@ -534,21 +541,27 @@ def tooth(name, x, z_top, width, height, tilt, depth_y, mat, upper=True):
     return ob
 upper_teeth, lower_teeth = [], []
 if LOOK["teeth"] == "big":
-    # big crooked teeth with gaps between them, each outlined; front ones longest; one gold
-    widths = [0.55, 0.78, 1.02, 1.25, 1.18, 0.96, 0.75, 0.55]; span = 1.95; tot = sum(widths); x = -span / 2
+    # big teeth with gaps between them, each outlined; front ones longest; one gold. The look sets how
+    # crooked, round and spaced they are.
+    K = LOOK; even = K["teeth_even"]
+    widths = [0.55, 0.78, 1.02, 1.25, 1.18, 0.96, 0.75, 0.55] if not even else [0.7, 0.85, 1.0, 1.15, 1.15, 1.0, 0.85, 0.7]
+    span = 1.95; tot = sum(widths); x = -span / 2
     tilts = [-6, 4, -3, 5, -4, 6, -5, 3]; drops = [-0.03, 0.01, 0.05, 0.08, 0.03, 0.06, 0.0, -0.03]
+    if even: drops = [-0.02, 0.0, 0.02, 0.03, 0.03, 0.02, 0.0, -0.02]
     for i, wv in enumerate(widths):
         tw = span * wv / tot; cx = x + tw / 2
-        t = tooth(f"UpperTooth{i}", cx, 0.38, tw * 0.9, 0.58 + drops[i] - 0.14 * abs(cx), tilts[i], 0.27 + wrap(cx) * 0.92,
-                  m_metal if i == 5 else m_tooth, True)
+        t = tooth(f"UpperTooth{i}", cx, 0.38, tw * K["teeth_fill"], (0.58 + drops[i] - 0.14 * abs(cx)) * K["teeth_h"],
+                  tilts[i] * K["teeth_tilt"], 0.27 + wrap(cx) * 0.92, m_metal if i == 5 else m_tooth, True)
         upper_teeth.append(t); x += tw
-    lw = [0.62, 0.88, 1.06, 0.92, 1.1, 0.82, 0.6]; lspan = 1.6; ltot = sum(lw); x = -lspan / 2
+    lw = [0.62, 0.88, 1.06, 0.92, 1.1, 0.82, 0.6] if not even else [0.75, 0.9, 1.0, 1.05, 1.0, 0.9, 0.75]
+    lspan = 1.6; ltot = sum(lw); x = -lspan / 2
     ltilt = [8, -6, 5, -9, 6, -5, 7]; ldrop = [-0.02, 0.03, -0.03, 0.04, 0.0, 0.03, -0.02]
+    if even: ldrop = [0.0] * 7
     lpush = [0.0, -0.025, 0.02, -0.03, 0.025, -0.02, 0.0]          # crowded: some stand forward
     for i, wv in enumerate(lw):
         tw = lspan * wv / ltot; cx = x + tw / 2
-        t = tooth(f"LowerTooth{i}", cx, -0.10, tw * 0.9, 0.40 + ldrop[i] - 0.08 * abs(cx), ltilt[i],
-                  0.34 + wrap(cx) * 0.92 + lpush[i], m_tooth, False)
+        t = tooth(f"LowerTooth{i}", cx, -0.10, tw * K["teeth_fill"], (0.40 + ldrop[i] - 0.08 * abs(cx)) * K["teeth_h"], ltilt[i] * K["teeth_tilt"],
+                  0.34 + wrap(cx) * 0.92 + lpush[i] * K["teeth_push"], m_tooth, False)
         lower_teeth.append(t); x += tw
 else:
     widths = [0.8, 1.0, 1.15, 1.2, 0.95, 0.85]; span = 1.62; tot = sum(widths); x = -span / 2

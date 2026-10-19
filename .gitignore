@@ -38,3 +38,6 @@ project-local.yml
 
 # Local agent instructions — never commit
 CLAUDE.local.md
+
+# Python bytecode (tools/)
+__pycache__/

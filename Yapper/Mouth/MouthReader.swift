@@ -50,7 +50,11 @@ final class MouthReader {
         static let gateDb = 10.0            // speech when the level is this far above the 2 s minimum
         static let hang = 6                 // speech gate hangover, 60 ms
         static let fade = 30                // phrase-end fade, 300 ms
-        static let floorBlock = 25, floorBlocks = 8   // 8 blocks of 250 ms = the 2 s minimum window
+        static let floorBlock = 25, floorBlocks = 24  // 24 blocks of 250 ms = a 6 s minimum window
+        static let floorSkip = 30           // the mic's first 300 ms are often near-silent: no floor from them
+        static let floorRise = 3.0          // dB/s: the floor drops at once but climbs slowly, so talking
+                                            // without a pause doesn't drag it up to the voice
+        static let quietK = 0.5             // below the average level the jaw scales half as steeply
         static let voicedForFormants = 0.45
         static let jawFloor = 0.1           // the jaw never shuts fully inside speech
         static let jawBase = 0.32, jawSlope = 0.55    // envelope at the speaker's average level, per std
@@ -86,6 +90,7 @@ final class MouthReader {
     // speech gate
     private var blocks: [Double]
     private var blockMin = Double.infinity, blockCount = 0
+    private var floorDb: Double
     private var hang = 0, fadeCount = K.fade
     // state held across hops
     private var lows = [Double](repeating: -120, count: 4)
@@ -116,6 +121,7 @@ final class MouthReader {
         formantLo = Int(200 / df); formantHi = Int((3600 / df).rounded(.up))
         fftSetup = vDSP_create_fftsetupD(vDSP_Length(l), FFTRadix(kFFTRadix2))!
         blocks = [Double](repeating: (stats ?? .typical).floorDb, count: K.floorBlocks)
+        floorDb = (stats ?? .typical).floorDb
     }
 
     deinit { vDSP_destroy_fftsetupD(fftSetup) }
@@ -127,6 +133,7 @@ final class MouthReader {
         hops = 0
         blocks = [Double](repeating: stats.floorDb, count: K.floorBlocks)
         blockMin = .infinity; blockCount = 0
+        floorDb = stats.floorDb
         hang = 0; fadeCount = K.fade
         lows = [Double](repeating: -120, count: 4)
         formantHistory.removeAll()
@@ -164,7 +171,7 @@ final class MouthReader {
         let voiced = voicing(seg)
 
         // noise floor: the minimum over the last 2 s; digital silence doesn't count
-        if db > -90 { blockMin = min(blockMin, db) }
+        if db > -90 && hops >= K.floorSkip { blockMin = min(blockMin, db) }
         blockCount += 1
         var floor = min(blocks.min()!, blockMin)
         if blockCount == K.floorBlock {
@@ -173,6 +180,8 @@ final class MouthReader {
             blockMin = .infinity; blockCount = 0
         }
         floor = max(floor, -85)
+        floor = min(floor, floorDb + K.floorRise * dt)
+        floorDb = floor
         let above = db > floor + K.gateDb
         if above { hang = K.hang } else if hang > 0 { hang -= 1 }
         let speaking = above || hang > 0
@@ -202,7 +211,8 @@ final class MouthReader {
         if speaking {
             fadeCount = 0
             // jaw: a continuous envelope of the level against this speaker's running average
-            let u = (loudEased - stats.loudMean) / max(stats.loudStd, 1)
+            var u = (loudEased - stats.loudMean) / max(stats.loudStd, 1)
+            if u < 0 { u *= K.quietK }
             let env = K.jawFloor + (1 - K.jawFloor) * min(1, max(0, K.jawBase + K.jawSlope * u))
             // onset pop: a fast rise in the low band kicks the jaw open, then it cushions back
             if rise > K.popDb && voiced > 0.3 {

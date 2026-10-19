@@ -31,7 +31,11 @@ import numpy as np
 GATE_DB = 10.0          # speech when the level is this far above the 2 s minimum
 HANG = 6                # speech gate hangover, 60 ms
 FADE = 30               # phrase-end fade, 300 ms
-FLOOR_BLOCK, FLOOR_BLOCKS = 25, 8   # 8 blocks of 250 ms = 2 s minimum window
+FLOOR_BLOCK, FLOOR_BLOCKS = 25, 24  # 24 blocks of 250 ms = 6 s minimum window: talk rarely goes 6 s without a dip
+FLOOR_SKIP = 30         # the mic's first 300 ms are often near-silent while it opens: no floor from them
+FLOOR_RISE = 3.0        # dB/s: the floor drops at once but climbs slowly, so 2 s of talking without a
+                        # pause doesn't drag it up to the voice (the mouth would stop opening)
+QUIET_K = 0.5           # below the speaker's average level the jaw scales half as steeply: low talk still opens
 VOICED_FM = 0.45        # voicing needed to read formants
 J_FLOOR = 0.1           # jaw never shuts fully inside speech (coarticulation)
 J_BASE, J_SLOPE = 0.32, 0.55        # envelope: J_BASE at the speaker's average level, +J_SLOPE per std
@@ -128,6 +132,7 @@ class LiveReader:
         # gate
         self.blocks = [self.stats.floorDb] * FLOOR_BLOCKS
         self.block_min, self.block_n = math.inf, 0
+        self.floor = self.stats.floorDb
         self.hang, self.fade_n, self.speaking = 0, FADE, False
         # features held across hops
         self.lows = [-120.0] * 4
@@ -219,13 +224,14 @@ class LiveReader:
         voiced = self.voicing(seg)
 
         # noise floor: minimum over the last 2 s; digital silence doesn't count
-        if db > -90.0: self.block_min = min(self.block_min, db)
+        if db > -90.0 and self.hops >= FLOOR_SKIP: self.block_min = min(self.block_min, db)
         self.block_n += 1
         floor = min(min(self.blocks), self.block_min)
         if self.block_n == FLOOR_BLOCK:
             self.blocks = self.blocks[1:] + [self.block_min if self.block_min < math.inf else self.blocks[-1]]
             self.block_min, self.block_n = math.inf, 0
         floor = max(floor, -85.0)
+        floor = self.floor = min(floor, self.floor + FLOOR_RISE * dt)
         above = db > floor + GATE_DB
         if above: self.hang = HANG
         elif self.hang > 0: self.hang -= 1
@@ -252,6 +258,7 @@ class LiveReader:
             self.fade_n = 0
             # jaw: a continuous envelope of the level against this speaker's running average
             u = (self.loud_s - st.loudMean) / max(st.loudStd, 1.0)
+            if u < 0: u *= QUIET_K
             env = J_FLOOR + (1.0 - J_FLOOR) * min(1.0, max(0.0, J_BASE + J_SLOPE * u))
             # onset pop: a fast rise in the low band kicks the jaw open, then it cushions back
             if rise > POP_DB and voiced > 0.3:
