@@ -77,7 +77,52 @@ enum Disfluency {
                 }
             }
         }
+        dropRestarts(tokens, &drop)
         return rebuild(tokens, drop: drop)
+    }
+
+    // MARK: Restarts
+
+    /// Words a cut-off attempt typically stops on: "I don't like the — I don't like that".
+    private static let restartEnders: Set<String> = ["the", "a", "an", "like", "we're", "i'm", "it's", "they're",
+                                                     "you're", "my", "our", "your"]
+    /// Words that join two real phrases ("not too low and it's not high"): a restart never has them.
+    private static let joiners: Set<String> = ["and", "or", "but", "then", "so", "because", "while", "if", "when"]
+    private static let restartFillers: Set<String> = ["like", "so", "um", "uh", "and", "but", "yeah", "okay", "well", "just"]
+
+    /// A phrase started, cut off, and started again: "the other signs like the other sounds" →
+    /// "the other sounds". Only the clear shape: the same two to four words again within three,
+    /// the abandoned bit ending on a word people restart from, and nothing in it that would make
+    /// the two a pair ("and", "or", a comma). Parallel phrasing ("use them as a timer, use them
+    /// to schedule") stays: checked against 7,000 dictations, that's where looser rules went wrong.
+    private static func dropRestarts(_ tokens: [Token], _ drop: inout [Bool]) {
+        let live = tokens.indices.filter { !drop[$0] }
+        let keys = live.map { tokens[$0].key }
+        var i = 0
+        while i < live.count {
+            var hit: Int?
+            if !keys[i].isEmpty, !restartFillers.contains(keys[i]) {
+                search: for k in stride(from: 4, through: 2, by: -1) {
+                    for tail in 1...3 {
+                        let j = i + k + tail
+                        guard j + k <= live.count else { continue }
+                        guard Array(keys[i..<i + k]) == Array(keys[j..<j + k]) else { continue }
+                        let abandoned = live[i..<j].map { tokens[$0] }
+                        if abandoned.contains(where: { !$0.trail.isEmpty }) { continue }
+                        if keys[(i + k)..<j].contains(where: joiners.contains) { continue }
+                        guard restartEnders.contains(keys[j - 1]) else { continue }
+                        hit = j
+                        break search
+                    }
+                }
+            }
+            if let j = hit {
+                for n in i..<j { drop[live[n]] = true }
+                i = j
+            } else {
+                i += 1
+            }
+        }
     }
 
     // MARK: Tokens

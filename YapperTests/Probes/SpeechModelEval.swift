@@ -195,4 +195,21 @@ struct SpeechModelEval {
             print("PROBE \(raw)\nPROBE   → \(NumberStyle.restrain(spoken: spoken, written: TextNormalizer.shared.normalizeSentence(spoken)))")
         }
     }
+
+    /// YAPPER_RAW_FILES=<comma-separated wav paths>: Parakeet's raw text, then each pipeline step.
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["YAPPER_RAW_FILES"] != nil))
+    func rawParakeet() async throws {
+        let paths = ProcessInfo.processInfo.environment["YAPPER_RAW_FILES"]!.split(separator: ",").map(String.init)
+        let models = try await AsrModels.downloadAndLoad(version: .ultra)
+        let manager = AsrManager(config: .default)
+        try await manager.loadModels(models)
+        for path in paths {
+            let audio = try AudioConverter().resampleAudioFile(path: path)
+            var state = TdtDecoderState.make(decoderLayers: AsrModelVersion.ultra.decoderLayers)
+            let raw = try await manager.transcribe(audio, decoderState: &state).text
+            let spoken = SpokenTimes.normalizeSpoken(raw)
+            let itn = TextNormalizer.shared.normalizeSentence(spoken)
+            print("PROBE raw:  \(raw)\nPROBE itn:  \(itn)\nPROBE kept: \(NumberStyle.restrain(spoken: spoken, written: itn))")
+        }
+    }
 }
