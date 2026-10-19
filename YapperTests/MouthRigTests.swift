@@ -27,11 +27,16 @@ struct MouthRigTests {
             return blob.withUnsafeBytes { raw in (0..<n).map { raw.loadUnaligned(fromByteOffset: off + $0 * 4, as: Float.self) } }
         }
         let poses = (json["poses"] as! [[String: Any]]).map { p -> (String, MouthPose, [String: [Float]]) in
-            let a = p["args"] as! [String: Double]
+            let a = p["args"] as! [String: Any]
+            func f(_ k: String) -> Float { Float((a[k] as? Double) ?? 0) }
+            func pair(_ k: String) -> SIMD2<Float> {
+                let v = (a[k] as? [Double]) ?? [0, 0]; return SIMD2(Float(v[0]), Float(v[1]))
+            }
             var q = MouthPose()
-            q.J = Float(a["J"] ?? 0); q.wide = Float(a["wide"] ?? 0); q.pucker = Float(a["pucker"] ?? 0)
-            q.funnel = Float(a["funnel"] ?? 0); q.part = Float(a["part"] ?? 0); q.close = Float(a["close"] ?? 0)
-            q.slide = Float(a["slide"] ?? 0); q.fv = Float(a["fv"] ?? 0)
+            q.J = f("J"); q.wide = f("wide"); q.pucker = f("pucker"); q.funnel = f("funnel"); q.part = f("part")
+            q.close = f("close"); q.slide = f("slide"); q.fv = f("fv"); q.shift = f("shift")
+            q.rollUpper = f("roll_u"); q.rollLower = f("roll_l")
+            q.smile = pair("smile"); q.upperUp = pair("upper_up"); q.lowerDown = pair("lower_down")
             let data = (p["data"] as! [String: [String: Any]]).mapValues(floats)
             return (p["name"] as! String, q, data)
         }
@@ -43,7 +48,7 @@ struct MouthRigTests {
         #expect(a.bones.prefix(2) == ["root", "jaw"])
         #expect(a.rig.nodes.count == a.bones.count - 2)
         #expect(a.meshes.contains { $0.name == "UpperLip" && $0.binding == .skinned && $0.outline != nil })
-        #expect(a.meshes.filter { $0.binding == .jaw }.count == 6)      // five lower teeth and the tongue
+        #expect(a.meshes.filter { $0.binding == .jaw }.count == 8)      // seven lower teeth and the tongue
         for m in a.meshes {
             #expect(m.positions.count == m.normals.count && m.positions.count == m.uvs.count)
             #expect(m.indices.allSatisfy { Int($0) < m.positions.count })
@@ -52,7 +57,7 @@ struct MouthRigTests {
 
     @Test func lipsAndSkinMatchBlenderInEveryStill() throws {
         let asset = try Self.asset(), fx = try Self.fixture(), rig = MouthRig(asset)
-        #expect(fx.poses.count == 8)
+        #expect(fx.poses.count == 10)
         for (name, pose, data) in fx.poses {
             let m = rig.matrices(rig.targets(pose))
             for object in ["UpperLip", "LowerLip", "SkinUpper", "SkinLower"] {

@@ -2,9 +2,18 @@
  "step": 3,
  "poses": [
   {
-   "name": "fv",
+   "name": "wide",
    "args": {
-    "fv": 1.0
+    "J": 1.05,
+    "upper_up": [
+     0.6,
+     0.7
+    ],
+    "lower_down": [
+     0.2,
+     0.2
+    ],
+    "slide": 1.0
    },
    "data": {
     "UpperLip": {
@@ -30,8 +39,19 @@
    }
   },
   {
-   "name": "rest",
-   "args": {},
+   "name": "snarl",
+   "args": {
+    "J": 0.55,
+    "part": 0.3,
+    "upper_up": [
+     0.8,
+     0.9
+    ],
+    "lower_down": [
+     0.5,
+     0.5
+    ]
+   },
    "data": {
     "UpperLip": {
      "offset": 27888,
@@ -56,9 +76,9 @@
    }
   },
   {
-   "name": "half",
+   "name": "fv",
    "args": {
-    "J": 0.35
+    "fv": 1.0
    },
    "data": {
     "UpperLip": {
@@ -84,10 +104,8 @@
    }
   },
   {
-   "name": "ah",
-   "args": {
-    "J": 1.0
-   },
+   "name": "rest",
+   "args": {},
    "data": {
     "UpperLip": {
      "offset": 83088,
@@ -112,10 +130,9 @@
    }
   },
   {
-   "name": "ee",
+   "name": "half",
    "args": {
-    "J": 0.3,
-    "wide": 0.9
+    "J": 0.35
    },
    "data": {
     "UpperLip": {
@@ -141,10 +158,9 @@
    }
   },
   {
-   "name": "oo",
+   "name": "ah",
    "args": {
-    "J": 0.1,
-    "pucker": 0.9
+    "J": 1.0
    },
    "data": {
     "UpperLip": {
@@ -170,10 +186,10 @@
    }
   },
   {
-   "name": "teeth",
+   "name": "ee",
    "args": {
-    "J": 0.02,
-    "part": 1.0
+    "J": 0.3,
+    "wide": 0.9
    },
    "data": {
     "UpperLip": {
@@ -199,10 +215,10 @@
    }
   },
   {
-   "name": "mbp",
+   "name": "oo",
    "args": {
-    "J": 0.3,
-    "close": 1.0
+    "J": 0.1,
+    "pucker": 0.9
    },
    "data": {
     "UpperLip": {
@@ -223,6 +239,64 @@
     },
     "LowerTooth2": {
      "offset": 220800,
+     "count": 72
+    }
+   }
+  },
+  {
+   "name": "teeth",
+   "args": {
+    "J": 0.02,
+    "part": 1.0
+   },
+   "data": {
+    "UpperLip": {
+     "offset": 221088,
+     "count": 2019
+    },
+    "LowerLip": {
+     "offset": 229164,
+     "count": 2019
+    },
+    "SkinUpper": {
+     "offset": 237240,
+     "count": 1395
+    },
+    "SkinLower": {
+     "offset": 242820,
+     "count": 1395
+    },
+    "LowerTooth2": {
+     "offset": 248400,
+     "count": 72
+    }
+   }
+  },
+  {
+   "name": "mbp",
+   "args": {
+    "J": 0.3,
+    "close": 1.0
+   },
+   "data": {
+    "UpperLip": {
+     "offset": 248688,
+     "count": 2019
+    },
+    "LowerLip": {
+     "offset": 256764,
+     "count": 2019
+    },
+    "SkinUpper": {
+     "offset": 264840,
+     "count": 1395
+    },
+    "SkinLower": {
+     "offset": 270420,
+     "count": 1395
+    },
+    "LowerTooth2": {
+     "offset": 276000,
      "count": 72
     }
    }

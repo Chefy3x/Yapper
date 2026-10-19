@@ -20,6 +20,26 @@ out = POS[0]
 TRACK = POS[1] if len(POS) > 1 else None
 os.makedirs(out, exist_ok=True)
 
+# ---------- looks ----------
+# ref is the app's look (picked 2026-10-19); export with no --look to get it.
+# v1: the first version in the app. ref: closer to the reference art
+# (big crooked outlined teeth with gaps, long pointed corners, a deep cupid's bow, bolder ink, a
+# franker view, a wider jaw). gloss adds painted white highlights; deep adds a third
+# cel band and darker shadows for more form.
+LOOKS = {
+    "v1": {},
+    "ref": dict(corner_ext=0.20, bow=0.11, ends=0.8, lip_ink=0.058, teeth="big", tooth_ink=0.03, jaw_deg=13.0,
+                # the lower lip drops broadly, so a wide open stays a crescent rather than a V
+                follow_lo=0.70, follow_reach=0.95, follow_od=(0.30, 0.30),
+                oval_drop=0.03, upper_lift=0.10, pitch=4.0, yaw=-5.0, roll=0.0, lips="flat"),
+}
+LOOKS["gloss"] = {**LOOKS["ref"], "lips": "gloss"}
+LOOKS["deep"] = {**LOOKS["ref"], "lips": "deep"}
+LOOKS["pop"] = {**LOOKS["ref"], "lips": "pop"}
+LOOK_NAME = next((a.split("=", 1)[1] for a in ARGS if a.startswith("--look=")), "ref")
+LOOK = {"corner_ext": 0.08, "bow": 0.19, "ends": 0.45, "lip_ink": 0.045, "teeth": "v1", "tooth_ink": 0.022,
+        "jaw_deg": 11.0, "follow_lo": 0.62, "follow_reach": 0.74, "follow_od": (0.24, 0.38), "oval_drop": 0.10, "upper_lift": 0.03, "pitch": 6.0, "yaw": -12.0, "roll": 4.0, "lips": "v1", **LOOKS[LOOK_NAME]}
+
 POSES = [
     dict(name="rest",   open=0.0,  width=1.0,  round=0.0, clench=False),
     dict(name="open",   open=1.0,  width=1.0,  round=0.1, clench=False),
@@ -51,7 +71,7 @@ def y_at(pts, x):
 class Curves:
     def __init__(self, p):
         self.p = p
-        w = p["width"]; self.w = w; self.corner = w + 0.08
+        w = p["width"]; self.w = w; self.corner = w + LOOK["corner_ext"]
         self.top = 0.02 + 0.13 * p["open"] + 0.05 * p["round"]
         self.bot = 0.03 + 0.52 * p["open"] + 0.06 * p["round"]
         reach = 0.42 + 0.4 * p["round"]
@@ -60,7 +80,7 @@ class Curves:
         kb = self.bot * 1.33
         self.lo_in = cubic((-w, 0), (-w*reach, -kb), (w*reach, -kb), (w, 0))
         lift = self.top
-        peak = lift + 0.30 + 0.03 * p["round"]; bow = lift + 0.19; c = self.corner
+        peak = lift + 0.30 + 0.03 * p["round"]; bow = lift + LOOK["bow"]; c = self.corner
         pxL, pxR = 0.38 * w, 0.34 * w            # left peak sits wider and higher than the right
         pkL, pkR = peak + 0.025, peak - 0.012
         bx = 0.03 * w                           # the dip is a touch off centre
@@ -91,7 +111,7 @@ def lip_points(cv, upper):
         xi = -cv.w + 2 * cv.w * s
         xo = -cv.corner + 2 * cv.corner * s
         pin = (xi, y_at(inner, xi)); pout = (xo, y_at(outer, xo))
-        ends = math.sin(math.pi * s) ** 0.45
+        ends = math.sin(math.pi * s) ** LOOK["ends"]
         fr, bk = [], []
         for j in range(NT + 1):
             t = j / NT
@@ -209,7 +229,29 @@ def stroke_mask(nt, uvsep, strokes, width):
         acc = hit if acc is None else math_node("MAXIMUM", acc, hit)
     return acc
 
-def matte(name, shade, base, light, cut1, cut2, band=None, strokes=None, stroke_col=None):
+def gloss_mask(nt, uvsep, gloss):
+    """Painted highlights running along the lip: each is (v0, u0, u1, bend, width) in (s, t)."""
+    N = nt.nodes.new; L = nt.links.new
+    def math_node(op, a=None, b=None):
+        m = N("ShaderNodeMath"); m.operation = op
+        for k, x in enumerate((a, b)):
+            if x is None: continue
+            if isinstance(x, (int, float)): m.inputs[k].default_value = x
+            else: L(x, m.inputs[k])
+        return m.outputs[0]
+    u, v = uvsep.outputs[0], uvsep.outputs[1]
+    acc = None
+    for (v0, u0, u1, bend, width) in gloss:
+        um = math_node("SUBTRACT", u, (u0 + u1) / 2)
+        dv = math_node("ABSOLUTE", math_node("SUBTRACT", math_node("SUBTRACT", v, v0),
+                                             math_node("MULTIPLY", math_node("MULTIPLY", um, um), bend)))
+        along = math_node("SUBTRACT", 1.0, math_node("DIVIDE", math_node("ABSOLUTE", um), (u1 - u0) / 2))
+        w = math_node("MULTIPLY", math_node("POWER", math_node("MAXIMUM", along, 0.0), 0.5), width)
+        hit = math_node("LESS_THAN", dv, w)
+        acc = hit if acc is None else math_node("MAXIMUM", acc, hit)
+    return acc
+
+def matte(name, shade, base, light, cut1, cut2, band=None, strokes=None, stroke_col=None, gloss=None, gloss_col=None):
     m = bpy.data.materials.new(name); m.use_nodes = True
     nt = m.node_tree; nt.nodes.clear(); N = nt.nodes.new; L = nt.links.new
     outp = N("ShaderNodeOutputMaterial"); em = N("ShaderNodeEmission")
@@ -234,6 +276,12 @@ def matte(name, shade, base, light, cut1, cut2, band=None, strokes=None, stroke_
         mx = N("ShaderNodeMix"); mx.data_type = "RGBA"; mx.blend_type = "MIX"
         L(mask, mx.inputs[0]); L(col, mx.inputs[6]); mx.inputs[7].default_value = (*stroke_col, 1)
         col = mx.outputs[2]
+    if gloss:
+        uv3 = N("ShaderNodeUVMap"); uv3.uv_map = "st"; sep3 = N("ShaderNodeSeparateXYZ"); L(uv3.outputs[0], sep3.inputs[0])
+        gm = gloss_mask(nt, sep3, gloss)
+        gx = N("ShaderNodeMix"); gx.data_type = "RGBA"; gx.blend_type = "MIX"
+        L(gm, gx.inputs[0]); L(col, gx.inputs[6]); gx.inputs[7].default_value = (*gloss_col, 1)
+        col = gx.outputs[2]
     L(col, em.inputs[0]); L(em.outputs[0], outp.inputs[0])
     return m
 
@@ -259,10 +307,20 @@ CHROME, CHROME_SH = srgb(0xD8DCE0), srgb(0x6E747B)
 
 UP_STROKES = [(0.27, 0.16, 0.66, 0.14), (0.71, 0.18, 0.62, -0.14)]
 LO_STROKES = [(0.30, 0.16, 0.74, -0.16), (0.46, 0.22, 0.80, -0.05), (0.66, 0.18, 0.72, 0.12)]
-m_lip_up = matte("LipUpper", srgb(0x9E1D18), srgb(0xD3302A), srgb(0xE24438), 0.24, 0.47, band=0.13,
-                 strokes=UP_STROKES, stroke_col=srgb(0x7A130F))
-m_lip = matte("LipLower", srgb(0x9E1D18), srgb(0xD3302A), srgb(0xE24438), 0.24, 0.47, band=0.13,
-              strokes=LO_STROKES, stroke_col=srgb(0x7A130F))
+# Lips per look. Brightness here runs from 0.04 (facing away) to 0.29 (facing the sun).
+UP_GLOSS = [(0.66, 0.20, 0.36, -1.4, 0.07), (0.62, 0.60, 0.72, -1.6, 0.06)]
+LO_GLOSS = [(0.52, 0.34, 0.58, 1.2, 0.075), (0.48, 0.64, 0.70, 1.0, 0.05)]
+if LOOK["lips"] == "v1":
+    LIP = dict(shade=srgb(0x9E1D18), base=srgb(0xD3302A), light=srgb(0xE24438), cut1=0.24, cut2=0.47)
+elif LOOK["lips"] in ("deep", "pop"):   # three bands that all show: shadow under the forms, base, a lit top
+    LIP = dict(shade=srgb(0x8A1611), base=srgb(0xD9302A), light=srgb(0xF0563F), cut1=0.17, cut2=0.27)
+else:                          # flat / gloss: the reference's flat red, a soft shadow only where it turns away
+    LIP = dict(shade=srgb(0xB8241C), base=srgb(0xE8392B), light=srgb(0xE8392B), cut1=0.15, cut2=0.9)
+GL = dict(gloss=None) if LOOK["lips"] not in ("gloss", "pop") else dict(gloss_col=srgb(0xFFF4EC))
+m_lip_up = matte("LipUpper", LIP["shade"], LIP["base"], LIP["light"], LIP["cut1"], LIP["cut2"], band=0.13,
+                 strokes=UP_STROKES, stroke_col=srgb(0x7A130F), **({**GL, "gloss": UP_GLOSS} if "gloss_col" in GL else {}))
+m_lip = matte("LipLower", LIP["shade"], LIP["base"], LIP["light"], LIP["cut1"], LIP["cut2"], band=0.13,
+              strokes=LO_STROKES, stroke_col=srgb(0x7A130F), **({**GL, "gloss": LO_GLOSS} if "gloss_col" in GL else {}))
 m_tooth = toon("Tooth", CREAM, CREAM_SH, cut=0.16)
 m_metal = matte("Gold", srgb(0xB3801F), srgb(0xEDBC3E), srgb(0xFFE38C), 0.10, 0.30)  # gold tooth, cel-shaded like the rest
 m_tongue = toon("Tongue", TONGUE, TONGUE_SH, cut=0.38)
@@ -328,8 +386,8 @@ def lens_mesh(name, upper):
 
 upper_lip, up_s, up_t = lens_mesh("UpperLip", True)
 lower_lip, lo_s, lo_t = lens_mesh("LowerLip", False)
-outline(upper_lip, 0.045, [m_lip_up])
-outline(lower_lip, 0.045, [m_lip])
+outline(upper_lip, LOOK["lip_ink"], [m_lip_up])
+outline(lower_lip, LOOK["lip_ink"], [m_lip])
 def ink_weights(ob, upper):
     vg = ob.vertex_groups.new(name="ink")
     xs = [v.co.x for v in ob.data.vertices]; lo, hi = min(xs), max(xs)
@@ -356,7 +414,7 @@ skin_lo = build_sheet("SkinLower", skin_rows_lo); skin_lo.parent = rig; skin_lo.
 # lip, the upper teeth are fixed to the skull, and the jaw hinges far back at upper-teeth height with
 # small opens (a few degrees in speech, ~11 on a big "ah") and a slight forward slide.
 HINGE = Vector((0.0, 3.4, 0.30))
-JAW_MAX = math.radians(11.0)
+JAW_MAX = math.radians(LOOK["jaw_deg"])
 NODES = 8                                     # ring bones every 1/8 of the lip, corners shared
 def rim(upper, s):
     x = -rest.w + 2 * rest.w * s
@@ -389,8 +447,8 @@ FOLLOW = {}
 for n, s_ in S_OF.items():
     if n in ("c.L", "c.R"): FOLLOW[n] = 0.06
     elif n in ("oc.L", "oc.R"): FOLLOW[n] = 0.16
-    elif n.startswith("d"): FOLLOW[n] = 0.06 + 0.62 * ell(s_, 0.74) ** 0.45   # broad and flat-topped: drops as one piece
-    elif n.startswith("od"): FOLLOW[n] = 0.24 + 0.38 * ell(s_, 1.35) ** 0.4      # a flatter drop: a gentle curve, not a U
+    elif n.startswith("d"): FOLLOW[n] = 0.06 + LOOK["follow_lo"] * ell(s_, LOOK["follow_reach"]) ** 0.45   # broad and flat-topped: drops as one piece
+    elif n.startswith("od"): FOLLOW[n] = LOOK["follow_od"][0] + LOOK["follow_od"][1] * ell(s_, 1.35) ** 0.4      # a flatter drop: a gentle curve, not a U
     elif n.startswith("ou"): FOLLOW[n] = 0.04
     else: FOLLOW[n] = 0.06 * (1 - ell(s_, 0.52))
 
@@ -470,25 +528,43 @@ def tooth(name, x, z_top, width, height, tilt, depth_y, mat, upper=True):
     bpy.ops.object.transform_apply(location=True, rotation=True)
     bev = ob.modifiers.new("Round", "BEVEL"); bev.width = width * 0.2; bev.segments = 4; bev.limit_method = "NONE"
     ob.data.materials.append(mat); ob.data.materials.append(m_ink)
-    sol = ob.modifiers.new("Outline", "SOLIDIFY"); sol.thickness = 0.022; sol.offset = 1; sol.use_flip_normals = True
+    sol = ob.modifiers.new("Outline", "SOLIDIFY"); sol.thickness = LOOK["tooth_ink"]; sol.offset = 1; sol.use_flip_normals = True
     sol.use_rim = False; sol.material_offset = 1
     ob.parent = rig
     return ob
 upper_teeth, lower_teeth = [], []
-widths = [0.8, 1.0, 1.15, 1.2, 0.95, 0.85]; span = 1.62; tot = sum(widths); x = -span / 2
-tilts = [-5, 3, -2, 4, -6, 3]; drops = [-0.02, 0.0, 0.06, 0.07, 0.0, -0.02]
-for i, wv in enumerate(widths):
-    tw = span * wv / tot; cx = x + tw / 2
-    # front teeth longest; the edge at about -0.08, side teeth shorter
-    t = tooth(f"UpperTooth{i}", cx, 0.36, tw * 1.01, 0.44 + drops[i] - 0.06 * abs(cx), tilts[i], 0.27 + wrap(cx) * 0.92,
-              m_metal if i == 4 else m_tooth, True)
-    upper_teeth.append(t); x += tw
-lw = [0.9, 1.1, 1.0, 1.15, 0.85]; lspan = 1.2; ltot = sum(lw); x = -lspan / 2
-ltilt = [6, -4, 3, -5, 4]; ldrop = [0.0, 0.02, -0.02, 0.01, 0.0]
-for i, wv in enumerate(lw):
-    tw = lspan * wv / ltot; cx = x + tw / 2
-    t = tooth(f"LowerTooth{i}", cx, -0.29, tw * 1.01, 0.36 + ldrop[i], ltilt[i], 0.34 + wrap(cx) * 0.92, m_tooth, False)
-    lower_teeth.append(t); x += tw
+if LOOK["teeth"] == "big":
+    # big crooked teeth with gaps between them, each outlined; front ones longest; one gold
+    widths = [0.55, 0.78, 1.02, 1.25, 1.18, 0.96, 0.75, 0.55]; span = 1.95; tot = sum(widths); x = -span / 2
+    tilts = [-6, 4, -3, 5, -4, 6, -5, 3]; drops = [-0.03, 0.01, 0.05, 0.08, 0.03, 0.06, 0.0, -0.03]
+    for i, wv in enumerate(widths):
+        tw = span * wv / tot; cx = x + tw / 2
+        t = tooth(f"UpperTooth{i}", cx, 0.38, tw * 0.9, 0.58 + drops[i] - 0.14 * abs(cx), tilts[i], 0.27 + wrap(cx) * 0.92,
+                  m_metal if i == 5 else m_tooth, True)
+        upper_teeth.append(t); x += tw
+    lw = [0.62, 0.88, 1.06, 0.92, 1.1, 0.82, 0.6]; lspan = 1.6; ltot = sum(lw); x = -lspan / 2
+    ltilt = [8, -6, 5, -9, 6, -5, 7]; ldrop = [-0.02, 0.03, -0.03, 0.04, 0.0, 0.03, -0.02]
+    lpush = [0.0, -0.025, 0.02, -0.03, 0.025, -0.02, 0.0]          # crowded: some stand forward
+    for i, wv in enumerate(lw):
+        tw = lspan * wv / ltot; cx = x + tw / 2
+        t = tooth(f"LowerTooth{i}", cx, -0.10, tw * 0.9, 0.40 + ldrop[i] - 0.08 * abs(cx), ltilt[i],
+                  0.34 + wrap(cx) * 0.92 + lpush[i], m_tooth, False)
+        lower_teeth.append(t); x += tw
+else:
+    widths = [0.8, 1.0, 1.15, 1.2, 0.95, 0.85]; span = 1.62; tot = sum(widths); x = -span / 2
+    tilts = [-5, 3, -2, 4, -6, 3]; drops = [-0.02, 0.0, 0.06, 0.07, 0.0, -0.02]
+    for i, wv in enumerate(widths):
+        tw = span * wv / tot; cx = x + tw / 2
+        # front teeth longest; the edge at about -0.08, side teeth shorter
+        t = tooth(f"UpperTooth{i}", cx, 0.36, tw * 1.01, 0.44 + drops[i] - 0.06 * abs(cx), tilts[i], 0.27 + wrap(cx) * 0.92,
+                  m_metal if i == 4 else m_tooth, True)
+        upper_teeth.append(t); x += tw
+    lw = [0.9, 1.1, 1.0, 1.15, 0.85]; lspan = 1.2; ltot = sum(lw); x = -lspan / 2
+    ltilt = [6, -4, 3, -5, 4]; ldrop = [0.0, 0.02, -0.02, 0.01, 0.0]
+    for i, wv in enumerate(lw):
+        tw = lspan * wv / ltot; cx = x + tw / 2
+        t = tooth(f"LowerTooth{i}", cx, -0.29, tw * 1.01, 0.36 + ldrop[i], ltilt[i], 0.34 + wrap(cx) * 0.92, m_tooth, False)
+        lower_teeth.append(t); x += tw
 m_tongue2 = toon("Tongue2", srgb(0xB04A5A), srgb(0x7A2C3C), cut=0.3)
 bpy.ops.mesh.primitive_uv_sphere_add(segments=32, ring_count=16, radius=1)
 tongue = bpy.context.active_object; tongue.name = "Tongue"
@@ -504,7 +580,7 @@ def about(p, M): return Matrix.Translation(p) @ M @ Matrix.Translation(-p)
 def hole(s):                                  # a narrow bump at the centre: a round hole, not a slit
     return ell(s, 0.24)
 def anat_targets(J=0.0, wide=0.0, pucker=0.0, funnel=0.0, part=0.0, close=0.0, slide=0.0, roll_u=0.0, roll_l=0.0,
-                 smile=(0.0, 0.0), upper_up=(0.0, 0.0), lower_down=(0.0, 0.0), fv=0.0):
+                 smile=(0.0, 0.0), upper_up=(0.0, 0.0), lower_down=(0.0, 0.0), fv=0.0, shift=0.0):
     """fv: F/V. The jaw nearly shut; the lower lip's centre rolls up and back and tucks under the
     upper front teeth, which rest on it; the upper lip lifts a little so those teeth show. The teeth
     never move for it: only the lips do."""
@@ -512,7 +588,8 @@ def anat_targets(J=0.0, wide=0.0, pucker=0.0, funnel=0.0, part=0.0, close=0.0, s
     """Per-bone targets [angle, ox, oy, oz, sy, sz] plus the jaw. J 0..1.2 (1 = a big 'ah', ~11 deg).
     part: lips part over closed teeth (s, t, ee); close: lips seal over an open jaw (m, b, p)."""
     J = max(0.0, min(1.2, J))
-    u_ = sm(0.25, 1.0, J); slideV = Vector((0.0, -0.09 * slide * u_, -0.015 * slide * u_))
+    # slide: the jaw comes forward and down as it opens; shift: it moves a little to one side
+    u_ = sm(0.25, 1.0, J); slideV = Vector((shift, -0.09 * slide * u_, -0.015 * slide * u_))
     tg = {"_jaw": (J, slideV)}
     drop_at = lambda f: 3.4 * math.sin(JAW_MAX * J * f)                  # how far a lip point drops
     for name, p in RING.items():
@@ -532,7 +609,7 @@ def anat_targets(J=0.0, wide=0.0, pucker=0.0, funnel=0.0, part=0.0, close=0.0, s
         if top:
             uu = upper_up[si] if side else 0.5 * sum(upper_up)
             h_ = hole(s_)
-            off.z += k_edge * (c_ * (0.03 * J + 0.05 * part + 0.07 * uu + 0.02 * wide)
+            off.z += k_edge * (c_ * (LOOK["upper_lift"] * J + 0.05 * part + 0.07 * uu + 0.02 * wide)
                                + h_ * 0.05 * sm(0.4, 1.0, J)
                                - c_ ** 1.5 * 0.11 * min(1.0, pucker + 0.6 * funnel))
             off.z -= k_edge * c_ * 0.5 * close * drop_at(FOLLOW["d4"])      # meet the lower lip halfway
@@ -544,7 +621,7 @@ def anat_targets(J=0.0, wide=0.0, pucker=0.0, funnel=0.0, part=0.0, close=0.0, s
             # big opens: the lower lip's centre drops further, so the gap becomes a tall oval
             off.z -= k_edge * (c_ * (0.06 * part + 0.07 * ld) + (0.5 * c_ + 0.5 * cw) * 0.05 * wide
                                + h_ * (0.20 * funnel + 0.10 * pucker) - c_ ** 1.5 * 0.05 * min(1.0, pucker + funnel)
-                               + h_ ** 0.7 * 0.10 * sm(0.4, 1.1, J) + c_ * 0.05 * sm(0.15, 0.8, J))
+                               + h_ ** 0.7 * LOOK["oval_drop"] * sm(0.4, 1.1, J) + c_ * 0.05 * sm(0.15, 0.8, J))
             off.z += k_edge * c_ * 0.5 * close * drop_at(FOLLOW[name])      # press up to seal
             # the lower lip rolls out and fills as the jaw drops (volume): its outer edge leads
             rnd_ = pucker + funnel
@@ -582,6 +659,46 @@ def from_arkit(ch):
                         smile=(g("mouthSmileL"), g("mouthSmileR")), upper_up=(g("mouthUpperUpL"), g("mouthUpperUpR")),
                         lower_down=(g("mouthLowerDownL"), g("mouthLowerDownR")),
                         fv=min(1.0, 2.0 * g("mouthRollLower") * (0.5 + (g("mouthUpperUpL") + g("mouthUpperUpR")) / 2)) * (1 - min(1.0, g("jawOpen") / 0.2)))
+class Performer:
+    """Acting on top of the lip-sync, the way an animator would: the syllable that lands pops the
+    mouth a little further and lifts the upper lip off the teeth (a snarl, one side leading), the
+    corners drift into a smirk, the jaw shifts sideways, fast opens stretch the mouth tall and fast
+    closes squash it, and the head nods on accents and tilts slowly. Keep in step with
+    MouthPerformance in Yapper/Mouth/MouthRig.swift."""
+    def __init__(self):
+        self.t = 0.0; self.prevJ = 0.0; self.pop = 0.0
+        self.sq = [0.0, 0.0]; self.nod = [0.0, 0.0]; self.tilt = [0.0, 0.0]
+    @staticmethod
+    def wander(t, a, b, phase=0.0):            # smooth -1..1 drift from two unrelated slow waves
+        return 0.6 * math.sin(2 * math.pi * a * t + phase) + 0.4 * math.sin(2 * math.pi * b * t + 1.7 * phase + 0.5)
+    @staticmethod
+    def spring(st, goal, f, z, dt):
+        w0 = 2 * math.pi * f; h = dt / 4
+        for _ in range(4):
+            st[1] += (w0 * w0 * (goal - st[0]) - 2 * z * w0 * st[1]) * h; st[0] += st[1] * h
+        return st[0]
+    def step(self, J, W, T, dt):
+        self.t += dt; t = self.t
+        vJ = (J - self.prevJ) / dt; self.prevJ = J
+        if vJ > 2.5 and J > 0.25: self.pop = max(self.pop, min(1.0, (vJ - 2.5) / 4))
+        self.pop *= math.exp(-dt / 0.18)
+        side = self.wander(t, 0.11, 0.27)
+        smirk = self.wander(t, 0.07, 0.19, 2.0)
+        snarl = min(1.0, 0.55 * J + 0.45 * self.pop)
+        n, w = max(0.0, -W), max(0.0, W)
+        kw = dict(J=min(1.05, J + 0.08 * self.pop),       # past ~1 the lower lip sags into a V
+                  wide=w, pucker=n * (1 - J), funnel=n * min(1.0, J * 1.4),
+                  part=T * (1 - J), slide=1.0,
+                  upper_up=(snarl * (1 + 0.35 * side), snarl * (1 - 0.35 * side)),
+                  lower_down=(0.2 * J * (1 - 0.25 * side), 0.2 * J * (1 + 0.25 * side)),
+                  smile=(max(0.0, 0.12 + 0.18 * smirk) + 0.2 * w, max(0.0, 0.12 - 0.18 * smirk) + 0.2 * w),
+                  shift=0.05 * side * min(1.0, J * 1.5))
+        nod = self.spring(self.nod, 3.0 * self.pop - 1.0 * J, 2.2, 0.45, dt)
+        tilt = self.spring(self.tilt, 2.5 * smirk + 2.0 * self.pop * side, 1.2, 0.6, dt)
+        head = (nod, tilt, 3.0 * self.wander(t, 0.05, 0.13, 4.0))
+        squash = self.spring(self.sq, max(-1.0, min(1.0, vJ / 10.0)) * 0.09, 3.5, 0.35, dt)
+        return kw, head, squash
+
 def from_voice(fr):
     J, W, T = fr["J"], fr["W"], fr.get("T", 0.0); n = max(0.0, -W)
     return anat_targets(J=J, wide=max(0.0, W), pucker=n * (1 - J), funnel=n * min(1.0, J * 1.4), part=T * (1 - J), slide=1.0)
@@ -592,11 +709,11 @@ BOARD = {"0213": {}, "0090": {"J": 0.62, "part": 0.15, "funnel": 0.15}, "0033": 
 TUNE = {**{f"d{i}": (5.0, 0.45) for i in range(1, NODES)}, **{f"u{i}": (7.0, 0.55) for i in range(1, NODES)},
         **{f"od{i}": (4.5, 0.42) for i in range(1, NODES)}, **{f"ou{i}": (6.5, 0.5) for i in range(1, NODES)},
         "c.L": (11.0, 0.75), "c.R": (11.0, 0.75), "oc.L": (10.0, 0.7), "oc.R": (10.0, 0.7)}
-STILLS = {"fv": {"fv": 1.0}, "rest": {}, "half": {"J": 0.35}, "ah": {"J": 1.0}, "ee": {"J": 0.3, "wide": 0.9},
+STILLS = {"wide": {"J": 1.05, "upper_up": (0.6, 0.7), "lower_down": (0.2, 0.2), "slide": 1.0}, "snarl": {"J": 0.55, "part": 0.3, "upper_up": (0.8, 0.9), "lower_down": (0.5, 0.5)}, "fv": {"fv": 1.0}, "rest": {}, "half": {"J": 0.35}, "ah": {"J": 1.0}, "ee": {"J": 0.3, "wide": 0.9},
           "oo": {"J": 0.1, "pucker": 0.9}, "teeth": {"J": 0.02, "part": 1.0}, "mbp": {"J": 0.3, "close": 1.0}}
 
 # ---------- camera, light ----------
-rig.rotation_euler = (math.radians(6), math.radians(4), math.radians(-12))
+rig.rotation_euler = (math.radians(LOOK["pitch"]), math.radians(LOOK["roll"]), math.radians(LOOK["yaw"]))
 cam_data = bpy.data.cameras.new("Cam"); cam_data.type = "ORTHO"; cam_data.ortho_scale = 3.0
 cam = bpy.data.objects.new("Cam", cam_data); bpy.context.collection.objects.link(cam)
 cam.location = (0, -10, -0.12); cam.rotation_euler = (math.radians(90), 0, 0)
@@ -738,13 +855,14 @@ def export(rig_path, fix_dir):
     header = {
         "version": 1,
         "bones": bones,
-        "rig": {"hinge": list(HINGE), "jawMax": JAW_MAX, "nodes": NODES, "wrap": WRAP,
+        "look": LOOK_NAME,
+        "rig": {"hinge": list(HINGE), "jawMax": JAW_MAX, "nodes": NODES, "wrap": WRAP, "upperLift": LOOK["upper_lift"], "ovalDrop": LOOK["oval_drop"],
                 "ring": {n: {"p": list(RING[n]), "s": S_OF[n], "follow": FOLLOW[n]} for n in RING},
                 "upIn": UP_IN, "loIn": LO_IN, "upOut": UP_OUT, "loOut": LO_OUT,
                 "tune": {n: list(v) for n, v in TUNE.items()}},
         # EEVEE's Diffuse BSDF (albedo 0.8) under a strength-1 sun gives 0.8/pi * N.L, plus the world's
         # uniform background light (Blender 5 gives a new world a 0.05 grey Background node).
-        "view": {"rotationDeg": [6.0, 4.0, -12.0], "ortho": 3.0, "camZ": -0.12, "camY": -10.0,
+        "view": {"rotationDeg": [LOOK["pitch"], LOOK["roll"], LOOK["yaw"]], "ortho": 3.0, "camZ": -0.12, "camY": -10.0,
                  "lightTowards": list((-d).normalized()), "diffuse": 0.8 / math.pi,
                  "ambient": 0.8 * world_light()},
         "materials": mats, "objects": objects,
@@ -787,8 +905,8 @@ def export(rig_path, fix_dir):
     # reference renders at the test framing, for the renderer's golden check
     sc.render.resolution_x, sc.render.resolution_y = 320, 200
     cam_data.ortho_scale = 4.0; cam.location.z = -0.25
-    rig.rotation_euler = (math.radians(6), math.radians(4), math.radians(-12))
-    for pose in ("rest", "ah", "ee", "oo", "fv"):
+    rig.rotation_euler = (math.radians(LOOK["pitch"]), math.radians(LOOK["roll"]), math.radians(LOOK["yaw"]))
+    for pose in ("rest", "ah", "ee", "oo", "fv", "snarl"):
         apply_targets(anat_targets(**STILLS[pose])); shoot(os.path.join(os.path.abspath(fix_dir), f"ref_{pose}.png"))
     apply_targets(anat_targets())
     print("FIXTURES", fix_dir)
@@ -829,9 +947,14 @@ else:
     ONLY = int(opt("--only", "0"))               # render just this frame (springs still run up to it)
     if "--hide-lips" in ARGS:                    # teeth-only check: hide the lips, skin and inside
         for nm in ("UpperLip", "LowerLip", "SkinUpper", "SkinLower", "Inside"): bpy.data.objects[nm].hide_render = True
+    perf = Performer() if "--perform" in ARGS else None
     for i, fr in enumerate(frs, start=1):
         sc.frame_set(i)
-        tg = from_arkit(fr) if arkit else from_voice(fr)
+        if perf:
+            kw, head, squash = perf.step(fr["J"], fr["W"], fr.get("T", 0.0), 1.0 / fps)
+            tg = anat_targets(**kw)
+        else:
+            tg = from_arkit(fr) if arkit else from_voice(fr)
         smear = None
         if SPRING_K > 0:
             for n, (f, z) in TUNE.items():
@@ -848,11 +971,16 @@ else:
                 sg = 1.0 if vJ > 0 else -1.0
                 smear = {n: (0.4 * amt * centre(S_OF[n]), 0.05 * amt * sg * centre(S_OF[n])) for n in RING if n.startswith("d") or n.startswith("od")}
         apply_targets(tg, smear=smear)
-        if arkit:
+        if perf:
+            rig.rotation_euler = (math.radians(LOOK["pitch"] + head[0]), math.radians(LOOK["roll"] + head[1]),
+                                  math.radians(LOOK["yaw"] + head[2]))
+            rig.scale = (1 - 0.5 * squash, 1.0, 1 + squash)
+        elif arkit:
             rig.rotation_euler = (math.radians(6 + HEAD_SCALE * fr.get("headPitch", 0.0)),
                                   math.radians(HEAD_SCALE * fr.get("headRoll", 0.0)), math.radians(HEAD_SCALE * fr.get("headYaw", 0.0)))
         else:
-            rig.rotation_euler = (math.radians(6 + fr.get("head", 0.0)), 0, math.radians(-12 + 2.0 * math.sin(i / fps * 0.7)))
+            rig.rotation_euler = (math.radians(LOOK["pitch"] + fr.get("head", 0.0)), 0,
+                                  math.radians(LOOK["yaw"] + 2.0 * math.sin(i / fps * 0.7)))
         if ONLY and i != ONLY: continue
         shoot(os.path.join(out, f"f_{i:04d}.png"))
         if ONLY: break

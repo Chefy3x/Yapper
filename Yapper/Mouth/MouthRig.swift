@@ -15,6 +15,8 @@ struct MouthPose: Equatable, Sendable {
     var close: Float = 0
     /// The jaw slides forward and down as it opens.
     var slide: Float = 0
+    /// The jaw moves a little to one side (world units, + right).
+    var shift: Float = 0
     var rollUpper: Float = 0
     var rollLower: Float = 0
     /// Left, right.
@@ -57,6 +59,8 @@ struct MouthRig: Sendable {
     let hinge: SIMD3<Float>
     let jawMax: Float
     let wrapK: Float
+    let upperLift: Float
+    let ovalDrop: Float
     let nodes: [Node]
     let boneCount: Int
     let jawBone = 1
@@ -68,6 +72,8 @@ struct MouthRig: Sendable {
         hinge = asset.rig.hinge
         jawMax = asset.rig.jawMax
         wrapK = asset.rig.wrap
+        upperLift = asset.rig.upperLift
+        ovalDrop = asset.rig.ovalDrop
         boneCount = asset.bones.count
         tune = asset.rig.tune
         nodes = asset.rig.nodes.map { n in
@@ -86,7 +92,7 @@ struct MouthRig: Sendable {
         var J = q.J + 0.07 * q.fv * (1 - q.J)
         J = min(1.2, max(0, J))
         let u = Self.smooth(0.25, 1.0, J)
-        let slide = SIMD3<Float>(0, -0.09 * q.slide * u, -0.015 * q.slide * u)
+        let slide = SIMD3<Float>(q.shift, -0.09 * q.slide * u, -0.015 * q.slide * u)
         let dropAt = { (f: Float) -> Float in 3.4 * sin(jawMax * J * f) }
         var bones = [SIMD8<Float>](repeating: .zero, count: boneCount)
         for n in nodes {
@@ -103,7 +109,7 @@ struct MouthRig: Sendable {
             if n.top {
                 let uu = side != 0 ? q.upperUp[si] : 0.5 * (q.upperUp.x + q.upperUp.y)
                 let h = Self.hole(s)
-                off.z += kEdge * (c * (0.03 * J + 0.05 * q.part + 0.07 * uu + 0.02 * q.wide)
+                off.z += kEdge * (c * (upperLift * J + 0.05 * q.part + 0.07 * uu + 0.02 * q.wide)
                                   + h * 0.05 * Self.smooth(0.4, 1.0, J)
                                   - pow(c, 1.5) * 0.11 * min(1, q.pucker + 0.6 * q.funnel))
                 off.z -= kEdge * c * 0.5 * q.close * dropAt(followD4)         // meet the lower lip halfway
@@ -115,7 +121,7 @@ struct MouthRig: Sendable {
                 let h = Self.hole(s)
                 off.z -= kEdge * (c * (0.06 * q.part + 0.07 * ld) + (0.5 * c + 0.5 * cw) * 0.05 * q.wide
                                   + h * (0.20 * q.funnel + 0.10 * q.pucker) - pow(c, 1.5) * 0.05 * min(1, q.pucker + q.funnel)
-                                  + pow(h, 0.7) * 0.10 * Self.smooth(0.4, 1.1, J) + c * 0.05 * Self.smooth(0.15, 0.8, J))
+                                  + pow(h, 0.7) * ovalDrop * Self.smooth(0.4, 1.1, J) + c * 0.05 * Self.smooth(0.15, 0.8, J))
                 off.z += kEdge * c * 0.5 * q.close * dropAt(n.follow)        // press up to seal
                 // the lower lip rolls out and fills as the jaw drops: its outer edge leads
                 let round = q.pucker + q.funnel
@@ -172,6 +178,64 @@ struct MouthRig: Sendable {
         return simd_float4x4(columns: (SIMD4(1, 0, 0, 0), SIMD4(0, c, s, 0), SIMD4(0, -s, c, 0), SIMD4(0, 0, 0, 1)))
     }
     static func about(_ p: SIMD3<Float>, _ m: simd_float4x4) -> simd_float4x4 { translation(p) * m * translation(-p) }
+}
+
+/// Acting on top of the lip-sync, the way an animator would: the syllable that lands pops the
+/// mouth a little further and lifts the upper lip off the teeth (a snarl, one side leading), the
+/// corners drift into a smirk, the jaw shifts sideways, fast opens stretch the mouth tall and fast
+/// closes squash it, and the head nods on accents and tilts slowly. A port of `Performer` in
+/// tools/mouth/build_mouth.py; keep the two in step.
+struct MouthPerformance: Sendable {
+    struct Output: Sendable {
+        var pose: MouthPose
+        /// Added to the head's pitch, roll and yaw, in degrees.
+        var head: SIMD3<Float>
+        /// + stretches the mouth tall and narrow, - squashes it.
+        var squash: Float
+    }
+
+    private var t: Double = 0
+    private var lastJ: Float = 0
+    private var pop: Float = 0
+    private var squashSpring = SIMD2<Float>(0, 0), nod = SIMD2<Float>(0, 0), tilt = SIMD2<Float>(0, 0)
+
+    mutating func step(J: Float, W: Float, T: Float, dt: Float) -> Output {
+        guard dt > 0 else { return Output(pose: .voice(J: J, W: W, T: T), head: .zero, squash: 0) }
+        t += Double(dt)
+        let speed = (J - lastJ) / dt
+        lastJ = J
+        if speed > 2.5 && J > 0.25 { pop = max(pop, min(1, (speed - 2.5) / 4)) }   // the syllable lands
+        pop *= exp(-dt / 0.18)
+        let side = Self.wander(t, 0.11, 0.27), smirk = Self.wander(t, 0.07, 0.19, 2)
+        let snarl = min(1, 0.55 * J + 0.45 * pop)
+        let narrow = max(0, -W), wide = max(0, W)
+        var p = MouthPose()
+        p.J = min(1.05, J + 0.08 * pop)                   // past ~1 the lower lip sags into a V
+        p.wide = wide
+        p.pucker = narrow * (1 - J)
+        p.funnel = narrow * min(1, J * 1.4)
+        p.part = T * (1 - J)
+        p.slide = 1
+        p.upperUp = SIMD2(snarl * (1 + 0.35 * side), snarl * (1 - 0.35 * side))
+        p.lowerDown = SIMD2(0.2 * J * (1 - 0.25 * side), 0.2 * J * (1 + 0.25 * side))
+        p.smile = SIMD2(max(0, 0.12 + 0.18 * smirk) + 0.2 * wide, max(0, 0.12 - 0.18 * smirk) + 0.2 * wide)
+        p.shift = 0.05 * side * min(1, J * 1.5)
+        let nodDeg = Self.spring(&nod, 3 * pop - J, hz: 2.2, damping: 0.45, dt: dt)
+        let tiltDeg = Self.spring(&tilt, 2.5 * smirk + 2 * pop * side, hz: 1.2, damping: 0.6, dt: dt)
+        let squash = Self.spring(&squashSpring, max(-1, min(1, speed / 10)) * 0.09, hz: 3.5, damping: 0.35, dt: dt)
+        return Output(pose: p, head: SIMD3(nodDeg, tiltDeg, 3 * Self.wander(t, 0.05, 0.13, 4)), squash: squash)
+    }
+
+    /// A smooth -1…1 drift from two unrelated slow waves.
+    static func wander(_ t: Double, _ a: Double, _ b: Double, _ phase: Double = 0) -> Float {
+        Float(0.6 * sin(2 * .pi * a * t + phase) + 0.4 * sin(2 * .pi * b * t + 1.7 * phase + 0.5))
+    }
+
+    private static func spring(_ s: inout SIMD2<Float>, _ goal: Float, hz: Float, damping z: Float, dt: Float) -> Float {
+        let w0 = 2 * Float.pi * hz, h = dt / 4
+        for _ in 0..<4 { s.y += (w0 * w0 * (goal - s.x) - 2 * z * w0 * s.y) * h; s.x += s.y * h }
+        return s.x
+    }
 }
 
 /// Follow-through on the lip bones: each channel trails its target through a damped spring, and

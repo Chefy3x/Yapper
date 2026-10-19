@@ -78,12 +78,15 @@ final class MouthMetalView: MTKView, MTKViewDelegate {
     }
     private let renderer: MouthRenderer
     private let model: MouthModel
+    private var performance = MouthPerformance()
+    private let rest: SIMD3<Float>
     private var last: CFTimeInterval?
     private let born = CACurrentMediaTime()
 
     init(asset: MouthAsset, renderer: MouthRenderer) {
         self.renderer = renderer
-        model = MouthModel(asset: asset, springs: 0.5)
+        model = MouthModel(asset: asset, springs: 0.7)
+        rest = asset.view.rotationDegrees
         super.init(frame: CGRect(origin: .zero, size: MouthStage.viewSize), device: renderer.device)
         colorPixelFormat = MouthRenderer.colorFormat
         depthStencilPixelFormat = MouthRenderer.depthFormat
@@ -119,20 +122,23 @@ final class MouthMetalView: MTKView, MTKViewDelegate {
         let t = now - born
         var dt = last.map { Float(min(0.1, now - $0)) } ?? 0
         last = now
-        var head = SIMD3<Float>(6, 0, -12 + 2 * Float(sin(0.7 * t)))   // a slow, small sway
+        var framing = MouthFraming(rotationDegrees: rest)
         let pose: MouthPose
         switch mode {
         case .live:
             let d = live?.drive(at: now) ?? .rest
-            pose = .voice(J: d.J, W: d.W, T: d.T)
-            head.x += 1.5 * d.J
+            let acted = performance.step(J: d.J, W: d.W, T: d.T, dt: dt)
+            pose = acted.pose
+            framing.rotationDegrees += acted.head
+            framing.squash = acted.squash
         case .thinking:
             pose = MouthStage.thinking(t)
+            framing.rotationDegrees.z += 2 * Float(sin(0.7 * t))         // a slow, small sway
         case .still(let p):
-            pose = p; dt = 0; head = SIMD3(6, 0, -12)
+            pose = p; dt = 0
         }
         model.pose(pose, dt: dt)
-        guard renderer.encode(model, framing: MouthFraming(rotationDegrees: head), size: drawableSize,
+        guard renderer.encode(model, framing: framing, size: drawableSize,
                               pass: pass, into: commands) else { return }   // GPU behind: skip this frame
         commands.present(drawable)
         commands.commit()

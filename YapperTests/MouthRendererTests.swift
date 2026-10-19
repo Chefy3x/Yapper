@@ -40,6 +40,7 @@ struct MouthRendererTests {
     static let poses: [(String, MouthPose)] = [
         ("rest", MouthPose()), ("ah", MouthPose(J: 1)), ("ee", MouthPose(J: 0.3, wide: 0.9)),
         ("oo", MouthPose(J: 0.1, pucker: 0.9)), ("fv", MouthPose(fv: 1)),
+        ("snarl", MouthPose(J: 0.55, part: 0.3, upperUp: SIMD2(0.8, 0.9), lowerDown: SIMD2(0.5, 0.5))),
     ]
 
     @Test func matchesBlenderStills() throws {
@@ -48,7 +49,8 @@ struct MouthRendererTests {
         let model = MouthModel(asset: asset, springs: 0)
         for (name, pose) in Self.poses {
             model.pose(pose, dt: 0)
-            let got = try #require(renderer.image(model, framing: MouthFraming(), width: 320, height: 200))
+            let got = try #require(renderer.image(model, framing: MouthFraming(rotationDegrees: asset.view.rotationDegrees),
+                                                  width: 320, height: 200))
             Self.save(got, "metal_\(name).png")
             let ref = Pixels(try Self.load(MouthRigTests.fixtures.appendingPathComponent("ref_\(name).png")))
             let mine = Pixels(got)

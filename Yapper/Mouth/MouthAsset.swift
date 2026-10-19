@@ -63,6 +63,10 @@ struct MouthAsset: Sendable {
         var hinge: SIMD3<Float>
         var jawMax: Float
         var wrap: Float
+        /// How far the upper lip's centre lifts off the teeth as the jaw opens.
+        var upperLift: Float
+        /// The lower lip's centre drops this much further on big opens (a taller oval).
+        var ovalDrop: Float
         var nodes: [Node]
         /// Follow-through per bone: spring frequency (Hz) and damping ratio.
         var tune: [Int: SIMD2<Float>]
@@ -139,7 +143,9 @@ struct MouthAsset: Sendable {
         for (name, v) in (rig["tune"] as? [String: [Double]]) ?? [:] {
             if let b = boneIndex[name], v.count == 2 { tune[b] = SIMD2(Float(v[0]), Float(v[1])) }
         }
-        self.rig = Rig(hinge: vec3(rig["hinge"]), jawMax: num(rig["jawMax"]), wrap: num(rig["wrap"]), nodes: nodes, tune: tune)
+        self.rig = Rig(hinge: vec3(rig["hinge"]), jawMax: num(rig["jawMax"]), wrap: num(rig["wrap"]),
+                       upperLift: rig["upperLift"] == nil ? 0.03 : num(rig["upperLift"]),
+                       ovalDrop: rig["ovalDrop"] == nil ? 0.10 : num(rig["ovalDrop"]), nodes: nodes, tune: tune)
         self.view = View(rotationDegrees: vec3(view["rotationDeg"]), lightTowards: simd_normalize(vec3(view["lightTowards"])),
                          diffuse: num(view["diffuse"]), ambient: num(view["ambient"]))
 

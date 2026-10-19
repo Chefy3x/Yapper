@@ -11,8 +11,10 @@ struct MouthFraming: Equatable, Sendable {
     var ortho: Float = 4.0
     /// Height of the view's centre, in world units.
     var centreZ: Float = -0.25
-    /// The head: pitch, roll, yaw in degrees (Blender's XYZ Euler).
-    var rotationDegrees = SIMD3<Float>(6, 4, -12)
+    /// The head: pitch, roll, yaw in degrees (Blender's XYZ Euler). The asset's own view is the rest.
+    var rotationDegrees = SIMD3<Float>(4, 0, -5)
+    /// Squash and stretch: + tall and narrow, - short and wide.
+    var squash: Float = 0
 }
 
 /// The posed mouth for one frame: bone matrices from the rig, with follow-through. Cheap; the
@@ -245,6 +247,7 @@ final class MouthRenderer {
         enc.setDepthStencilState(depth)
         enc.setFrontFacing(.counterClockwise)
         let head = Self.rotation(framing.rotationDegrees)
+            * simd_float4x4(diagonal: SIMD4(1 - 0.5 * framing.squash, 1, 1 + framing.squash, 1))   // as Blender scales the rig
         let vp = Self.viewProjection(framing, aspect: Float(size.width / max(1, size.height)))
         let light = SIMD4(asset.view.lightTowards, 0)
 

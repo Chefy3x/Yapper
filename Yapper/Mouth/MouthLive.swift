@@ -19,101 +19,25 @@ protocol MouthVoiceReading: AnyObject {
     func reset()
 }
 
-/// The quick reader, until the full one lands: loudness opens the jaw (with a pop on each new
-/// syllable), the balance of bright to low voice energy picks wide or round lips (ee is bright,
-/// oo and oh are dark), and hiss brings the teeth together. Everything eases through the demo
-/// clips' near-critical springs.
-final class MouthLoudnessReader: MouthVoiceReading {
-    static let hop = 160                                  // 10 ms at 16 kHz
-    private var pending: [Float] = []
-    private var low = Biquad.bandpass(520, q: 0.9), mid = Biquad.bandpass(2300, q: 1.0), hiss = Biquad.highpass(4500)
-    private var floor: Float = -50
-    private var peak: Float = -30
-    private var energy: Float = 0
-    private var lastLow: Float = -90
-    private var brightMean: Float = 0, brightVar: Float = 16
-    private var jaw = Spring(), width = Spring(), teeth = Spring()
+/// The live reader (`MouthReader`), remembering what it learns about your voice and mic between
+/// turns so the mouth starts tuned.
+final class MouthReaderVoice: MouthVoiceReading {
+    static let statsKey = "mouthSpeakerStats"
+    private let reader: MouthReader
 
-    func reset() {
-        pending = []; floor = -50; peak = -30; energy = 0; lastLow = -90; brightMean = 0; brightVar = 16
-        low.reset(); mid.reset(); hiss.reset(); jaw = Spring(); width = Spring(); teeth = Spring()
+    init() {
+        let saved = UserDefaults.standard.data(forKey: Self.statsKey).flatMap { try? JSONDecoder().decode(SpeakerStats.self, from: $0) }
+        reader = MouthReader(sampleRate: MouthLive.rate, stats: saved)
     }
 
     func feed(_ samples: UnsafeBufferPointer<Float>) -> [MouthDrive] {
-        pending.append(contentsOf: samples)
-        var out: [MouthDrive] = []
-        var start = 0
-        while pending.count - start >= Self.hop {
-            var all: Float = 0, eLow: Float = 0, eMid: Float = 0, eHiss: Float = 0
-            for i in start..<start + Self.hop {
-                let x = pending[i]
-                all += x * x
-                let l = low.run(x), m = mid.run(x), h = hiss.run(x)
-                eLow += l * l; eMid += m * m; eHiss += h * h
-            }
-            start += Self.hop
-            func db(_ e: Float) -> Float { 10 * log10(max(1e-14, e / Float(Self.hop))) }
-            energy += (all - energy) * 0.45                // ~20 ms: smooths over single pitch periods
-            let level = db(energy), lowDB = db(eLow)
-            floor = max(-62, min(floor, level))
-            floor += 0.02                                 // drift back up, as the pill's bars do
-            // the loudest you've been lately (falls 3 dB a second): loud syllables open fully
-            peak = max(level, peak - 0.03, floor + 18)
-            let speaking = level > floor + 8
-
-            let span = max(6, peak - floor - 6)
-            var goalJ = pow(min(1, max(0, (level - floor - 6) / span)), 1.4)
-            let rise = lowDB - lastLow                    // a new syllable: open a touch further
-            lastLow += (lowDB - lastLow) * 0.3
-            if rise > 4 { goalJ = min(1.1, goalJ + min(0.2, (rise - 4) * 0.03)) }
-
-            var goalW: Float = 0, goalT: Float = 0
-            if speaking {
-                let bright = db(eMid) - lowDB
-                brightMean += (bright - brightMean) * 0.01
-                brightVar += ((bright - brightMean) * (bright - brightMean) - brightVar) * 0.01
-                goalW = min(0.9, max(-0.9, 0.6 * (bright - brightMean) / max(2, brightVar.squareRoot())))
-                if eHiss / max(1e-12, all) > 0.25 { goalT = 0.85; goalJ = min(goalJ, 0.15) }
-            } else {
-                goalJ = 0
-            }
-            let J = jaw.step(to: goalJ, open: 9, close: 10.5, damping: 0.78)
-            let W = width.step(to: goalW, open: 7, close: 7, damping: 0.9)
-            let T = teeth.step(to: goalT, open: 10, close: 10, damping: 0.9)
-            out.append(MouthDrive(J: max(0, J), W: W, T: max(0, T)))
-        }
-        pending.removeFirst(start)
-        return out
+        reader.feed(samples).map { MouthDrive(J: $0.J, W: $0.W, T: $0.T) }
     }
 
-    /// A second-order follower stepped once per 10 ms hop.
-    struct Spring {
-        var x: Float = 0, v: Float = 0
-        mutating func step(to goal: Float, open: Float, close: Float, damping z: Float) -> Float {
-            let w0 = 2 * Float.pi * (goal > x ? open : close), h: Float = 0.01 / 4
-            for _ in 0..<4 { v += (w0 * w0 * (goal - x) - 2 * z * w0 * v) * h; x += v * h }
-            return x
-        }
-    }
-
-    /// RBJ cookbook filters at 16 kHz.
-    struct Biquad {
-        var b0: Float, b1: Float, b2: Float, a1: Float, a2: Float
-        var x1: Float = 0, x2: Float = 0, y1: Float = 0, y2: Float = 0
-        static func bandpass(_ f: Float, q: Float) -> Biquad {
-            let w = 2 * Float.pi * f / 16_000, a = sin(w) / (2 * q), a0 = 1 + a
-            return Biquad(b0: a / a0, b1: 0, b2: -a / a0, a1: -2 * cos(w) / a0, a2: (1 - a) / a0)
-        }
-        static func highpass(_ f: Float) -> Biquad {
-            let w = 2 * Float.pi * f / 16_000, a = sin(w) / (2 * 0.707), c = cos(w), a0 = 1 + a
-            return Biquad(b0: (1 + c) / 2 / a0, b1: -(1 + c) / a0, b2: (1 + c) / 2 / a0, a1: -2 * c / a0, a2: (1 - a) / a0)
-        }
-        mutating func reset() { x1 = 0; x2 = 0; y1 = 0; y2 = 0 }
-        mutating func run(_ x: Float) -> Float {
-            let y = b0 * x + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2
-            x2 = x1; x1 = x; y2 = y1; y1 = y
-            return y
-        }
+    /// A new turn: keep what was learned (saved for next launch too), clear the moment-to-moment state.
+    func reset() {
+        if let data = try? JSONEncoder().encode(reader.stats) { UserDefaults.standard.set(data, forKey: Self.statsKey) }
+        reader.reset()
     }
 }
 
@@ -145,7 +69,7 @@ final class MouthLive: @unchecked Sendable {
     private let drivesLock = NSLock()
     private var drives: [(t: CFTimeInterval, d: MouthDrive)] = []
 
-    init(reader: MouthVoiceReading = MouthLoudnessReader()) {
+    init(reader: MouthVoiceReading = MouthReaderVoice()) {
         self.reader = reader
         ring = .allocate(capacity: capacity)
         ring.initialize(repeating: 0, count: capacity)
