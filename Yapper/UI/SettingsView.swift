@@ -800,118 +800,126 @@ private struct HotkeysPanel: View {
     @Environment(\.settingsSkin) private var skin
     @EnvironmentObject private var state: AppState
     @EnvironmentObject private var settings: SettingsStore
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Card {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("The Yapper key: \(settings.yapperKey.displayName)")
-                        .font(skin.body(14, .semibold))
-                    Text("Tap, hold, or chord with one modifier to control Yapper without leaving your current app. The left-hand twin is never touched. Add shortcuts of your own on top, as many per action as you like.")
-                        .font(skin.body(11))
-                        .foregroundStyle(Brand.muted)
-                }
-            }
-
-            VStack(spacing: 8) {
-                shortcutRow(.readLatest, subtitle: "Tap reads latest, or pauses/resumes while playing. Double-tap always reads the focused chat.")
-                HotkeyRow(
-                    keys: [.named(settings.yapperKey.keycap), .named("hold")],
-                    title: "Talk",
-                    subtitle: "Hold to listen, release (or press Return) to type what you said into the focused app. Yapper never sends it; you do."
-                )
-                shortcutRow(.readSelection, subtitle: "Speak the currently selected text")
-                shortcutRow(.repasteLast, subtitle: settings.yapperKey == .rightCommand
-                    ? "The Right ⌘ chord is the system's own paste, so add a shortcut to use this one."
-                    : "Types what you last said again, when a paste missed or landed in the wrong place.")
-                shortcutRow(.toggleConversation, subtitle: "Auto-read new assistant messages. Not while you're holding to talk: there, Return just finishes.")
-                shortcutRow(.skipNext, subtitle: "Next queued reply. Only taken while something is playing or queued — idle, it stays the app's.")
-                shortcutRow(.dumpAXTree, subtitle: "Snapshot the accessibility tree to disk")
-            }
-
-            Card {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 14) {
-                        Image(systemName: "keyboard")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(skin.iconTint)
-                            .iconTile(skin.iconChipBG, size: 34)
-                        RowLabel("Yapper key",
-                                 subtitle: "Which right-hand modifier drives everything above. Right ⌥ is inert on its own in almost every app; Right ⌘ isn't.")
-                        Spacer()
-                        Picker("", selection: $settings.yapperKey) {
-                            ForEach(YapperKey.allCases) { key in
-                                Text(key.displayName).tag(key)
-                            }
-                        }
-                        .labelsHidden()
-                        .frame(maxWidth: 170)
-                    }
-                    if let caveat = settings.yapperKey.caveat {
-                        Label(caveat, systemImage: "info.circle")
-                            .font(skin.body(11))
-                            .foregroundStyle(Brand.muted)
-                            .padding(.leading, 50)
-                    }
-                }
-            }
-
-            HStack(spacing: 8) {
-                Image(systemName: "lock.fill")
-                    .foregroundStyle(Brand.faint)
-                Text("Hold-to-talk and Space-to-lock stay on the Yapper key; everything else can take extra shortcuts.")
-                    .font(skin.body(11))
-                    .foregroundStyle(Brand.muted)
-                Spacer()
-                Button("Replay setup guide") { state.pendingOnboardingOpen = true }
-                    .controlSize(.small)
-            }
-            .padding(.horizontal, 4)
-            .padding(.top, 4)
-        }
-    }
-
-    // MARK: Recording a shortcut
 
     @State private var recording: HotkeyAction?
     @State private var problems: [HotkeyAction: String] = [:]
     @State private var keyMonitor: Any?
 
-    private func shortcutRow(_ action: HotkeyAction, subtitle: String) -> some View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 28) {
+            yapperKeyCard
+
+            VStack(alignment: .leading, spacing: 0) {
+                SectionLabel(text: "On the Yapper key")
+                HotkeyList {
+                    row(.readLatest, subtitle: "Tap. Pauses and resumes while playing; double-tap reads the focused chat.")
+                    HotkeyListRow(title: "Talk",
+                                  subtitle: "Hold and speak. Let go, or press Return, to type it where you are. You send it.") {
+                        ChordKeys(keys: [.named(settings.yapperKey.keycap)], suffix: "hold")
+                        AddButtonSlot()
+                    }
+                    HotkeyListRow(title: "Keep listening",
+                                  subtitle: "While talking, press Space and let go. Press the key again to finish.",
+                                  last: true) {
+                        ChordKeys(keys: [.named(settings.yapperKey.keycap), .named("Space")])
+                        AddButtonSlot()
+                    }
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 0) {
+                SectionLabel(text: "Chords")
+                HotkeyList {
+                    row(.readSelection, subtitle: "Speak the selected text.")
+                    row(.repasteLast, subtitle: settings.yapperKey == .rightCommand
+                        ? "Right ⌘ + V is the system's paste, so add a shortcut for this one."
+                        : "Type what you last said again, when a paste missed.")
+                    row(.toggleConversation, subtitle: "Read new assistant replies as they arrive.")
+                    row(.skipNext, subtitle: "Next queued reply. Idle, the chord stays the app's.")
+                    row(.dumpAXTree, subtitle: "Save the focused app's accessibility tree, for debugging.", last: true)
+                }
+            }
+
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: "plus.circle")
+                    .foregroundStyle(Brand.faint)
+                Text("Use + to add your own shortcuts, as many per action as you like. Each needs ⌃, ⌥ or ⌘, or use an F-key on its own.")
+                    .font(skin.body(11))
+                    .foregroundStyle(Brand.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 16)
+                Button("Replay setup guide") { state.pendingOnboardingOpen = true }
+                    .controlSize(.small)
+            }
+            .padding(.horizontal, 2)
+        }
+        .onDisappear { stopRecording() }
+    }
+
+    private var yapperKeyCard: some View {
+        Card {
+            HStack(spacing: 14) {
+                Image(systemName: "keyboard")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(skin.iconTint)
+                    .iconTile(skin.iconChipBG, size: 34)
+                RowLabel("Yapper key",
+                         subtitle: "One right-hand modifier runs everything below. The left-hand one is never touched.")
+                Spacer(minLength: 16)
+                Picker("", selection: $settings.yapperKey) {
+                    ForEach(YapperKey.allCases) { key in
+                        Text(key.displayName).tag(key)
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 160)
+            }
+            if let caveat = settings.yapperKey.caveat {
+                RowDivider()
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Image(systemName: "info.circle")
+                        .foregroundStyle(Brand.faint)
+                    Text(caveat)
+                        .font(skin.body(11))
+                        .foregroundStyle(Brand.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+    }
+
+    // MARK: Rows that take shortcuts
+
+    private func row(_ action: HotkeyAction, subtitle: String, last: Bool = false) -> some View {
         let extras = settings.customShortcuts[action] ?? []
         let isRecording = recording == action
         var chord: [KeyCap] = [.named(settings.yapperKey.keycap)]
-        if let key = defaultChordKey(action) { chord.append(key) }
-        return HotkeyRow(keys: chord,
-                         title: action.title,
-                         subtitle: problems[action] ?? (isRecording ? "Press the new shortcut, or Esc to cancel." : subtitle),
-                         warning: problems[action] != nil,
-                         below: extras.isEmpty && !isRecording ? nil : AnyView(
-                            HStack(spacing: 6) {
-                                ForEach(extras, id: \.self) { shortcut in
-                                    ShortcutChip(label: shortcut.parts.joined()) {
-                                        settings.customShortcuts[action]?.removeAll { $0 == shortcut }
-                                        if settings.customShortcuts[action]?.isEmpty == true {
-                                            settings.customShortcuts[action] = nil
-                                        }
-                                    }
-                                }
-                                if isRecording { ShortcutChip(label: "Press a shortcut…", remove: nil) }
-                            }
-                         )) {
-            Group {
+        if let key = chordKey(action) { chord.append(key) }
+        return HotkeyListRow(title: action.title,
+                             subtitle: problems[action] ?? (isRecording ? "Press the shortcut you want. Esc cancels." : subtitle),
+                             warning: problems[action] != nil,
+                             last: last) {
+            HStack(spacing: 8) {
+                ChordKeys(keys: chord)
+                ForEach(extras, id: \.self) { shortcut in
+                    OrLabel()
+                    ShortcutCap(label: shortcut.parts.joined()) { remove(shortcut, from: action) }
+                }
                 if isRecording {
-                    Button("Cancel") { stopRecording() }
+                    OrLabel()
+                    ShortcutCap(label: "Type shortcut", remove: nil)
+                }
+                if isRecording {
+                    RowIconButton(symbol: "xmark", help: "Cancel") { stopRecording() }
                 } else {
-                    Button { startRecording(action) } label: { Label("Add shortcut", systemImage: "plus") }
-                        .help("Add another way to trigger \(action.title); the \(settings.yapperKey.keycap) one keeps working")
+                    RowIconButton(symbol: "plus", help: "Add a shortcut for \(action.title)") { startRecording(action) }
+                        .accessibilityLabel("Add shortcut for \(action.title)")
                 }
             }
-            .controlSize(.small)
         }
-        .onDisappear { if recording == action { stopRecording() } }
     }
 
-    private func defaultChordKey(_ action: HotkeyAction) -> KeyCap? {
+    private func chordKey(_ action: HotkeyAction) -> KeyCap? {
         switch action {
         case .readLatest:         nil
         case .readSelection:      .letter("S")
@@ -921,6 +929,13 @@ private struct HotkeysPanel: View {
         case .dumpAXTree:         .letter("D")
         }
     }
+
+    private func remove(_ shortcut: KeyShortcut, from action: HotkeyAction) {
+        settings.customShortcuts[action]?.removeAll { $0 == shortcut }
+        if settings.customShortcuts[action]?.isEmpty == true { settings.customShortcuts[action] = nil }
+    }
+
+    // MARK: Recording a shortcut
 
     /// Listens in the Settings window only. The event tap stands aside while this runs, so the
     /// shortcut being recorded never fires Yapper's current bindings.
@@ -938,6 +953,7 @@ private struct HotkeysPanel: View {
     private func stopRecording() {
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
         keyMonitor = nil
+        if let recording { problems[recording] = nil }
         recording = nil
         state.hotkeys.isRecordingShortcut = false
     }
@@ -946,7 +962,6 @@ private struct HotkeysPanel: View {
         let flags = UInt64(event.modifierFlags.intersection([.control, .option, .shift, .command]).rawValue)
         let keyCode = Int64(event.keyCode)
         if keyCode == KeyShortcut.Code.escape, flags == 0 {
-            problems[action] = nil
             stopRecording()
             return
         }
@@ -959,7 +974,6 @@ private struct HotkeysPanel: View {
             return
         }
         settings.customShortcuts[action, default: []].append(shortcut)
-        problems[action] = nil
         stopRecording()
     }
 }
@@ -1015,92 +1029,146 @@ private struct KeycapView: View {
     }
 }
 
-private struct HotkeyRow<Trailing: View>: View {
-    let keys: [KeyCap]
+/// One card holding a list of hotkey rows, split by hairlines.
+private struct HotkeyList<Content: View>: View {
+    @ViewBuilder var content: Content
+    var body: some View {
+        Card(padding: 0) { content }
+    }
+}
+
+/// Title and subtitle on the left, the keys on the right.
+private struct HotkeyListRow<Keys: View>: View {
     let title: String
     let subtitle: String
     var warning = false
-    /// Under the subtitle: the row's recorded shortcuts.
-    var below: AnyView? = nil
-    @ViewBuilder var trailing: Trailing
+    var last = false
+    @ViewBuilder var keys: Keys
     @Environment(\.settingsSkin) private var skin
 
     var body: some View {
-        HStack(spacing: 14) {
-            HStack(spacing: 6) {
-                ForEach(Array(keys.enumerated()), id: \.offset) { idx, key in
-                    if idx > 0 {
-                        Text("+")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundStyle(Brand.faint)
-                    }
-                    key.view
-                }
-            }
-            .padding(.vertical, 4)
-            .frame(minWidth: 170, alignment: .leading)
-
-            VStack(alignment: .leading, spacing: 2) {
+        HStack(alignment: .center, spacing: 20) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(title)
                     .font(skin.body(13, .semibold))
+                    .foregroundStyle(Brand.ink)
                 // Red is kept for REC and destructive; a clash just reads louder.
-                Text(subtitle)
-                    .font(skin.body(11, warning ? .semibold : .regular))
-                    .foregroundStyle(warning ? Brand.ink : Brand.muted)
-                if let below { below.padding(.top, 6) }
+                Label {
+                    Text(subtitle).fixedSize(horizontal: false, vertical: true)
+                } icon: {
+                    if warning { Image(systemName: "exclamationmark.circle.fill") }
+                }
+                .labelStyle(SubtitleLabelStyle(showsIcon: warning))
+                .font(skin.body(11.5, warning ? .medium : .regular))
+                .foregroundStyle(warning ? Brand.ink : Brand.muted)
             }
-            Spacer()
-            trailing
+            .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 8) { keys }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Brand.surface)
-                .shadow(color: Brand.ink.opacity(0.04), radius: 1, y: 1)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(Brand.line, lineWidth: 1)
-        )
+        .padding(.horizontal, 18)
+        .padding(.vertical, 14)
+        .overlay(alignment: .bottom) {
+            if !last { Rectangle().fill(Brand.line).frame(height: 1).padding(.leading, 18) }
+        }
     }
 }
 
-extension HotkeyRow where Trailing == EmptyView {
-    init(keys: [KeyCap], title: String, subtitle: String) {
-        self.init(keys: keys, title: title, subtitle: subtitle) { EmptyView() }
+private struct SubtitleLabelStyle: LabelStyle {
+    let showsIcon: Bool
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 5) {
+            if showsIcon { configuration.icon }
+            configuration.title
+        }
     }
 }
 
-/// One recorded shortcut under a hotkey row, with its remove button.
-private struct ShortcutChip: View {
-    let label: String
-    let remove: (() -> Void)?
-    @Environment(\.settingsSkin) private var skin
+/// The Yapper-key chord: keycaps joined by a light plus, with an optional word after ("hold").
+private struct ChordKeys: View {
+    let keys: [KeyCap]
+    var suffix: String? = nil
 
     var body: some View {
-        HStack(spacing: 5) {
-            Text(label)
-                .font(.system(size: 11.5, weight: .semibold, design: remove == nil ? .default : .monospaced))
-                .foregroundStyle(remove == nil ? Brand.muted : Brand.ink)
-            if let remove {
-                Button(action: remove) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 8.5, weight: .bold))
-                        .foregroundStyle(Brand.muted)
-                        .frame(width: 14, height: 14)
-                        .contentShape(Rectangle())
+        HStack(spacing: 4) {
+            ForEach(Array(keys.enumerated()), id: \.offset) { idx, key in
+                if idx > 0 {
+                    Image(systemName: "plus")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(Brand.faint)
                 }
-                .buttonStyle(.plain)
-                .help("Remove this shortcut")
-                .accessibilityLabel("Remove \(label)")
+                key.view
+            }
+            if let suffix {
+                Text(suffix)
+                    .font(.system(size: 11.5, weight: .medium))
+                    .foregroundStyle(Brand.muted)
+                    .padding(.leading, 2)
             }
         }
-        .padding(.leading, 8)
-        .padding(.trailing, remove == nil ? 8 : 4)
-        .padding(.vertical, 3)
-        .background(Capsule(style: .continuous).fill(Brand.sunken))
-        .overlay(Capsule(style: .continuous).strokeBorder(Brand.line, lineWidth: 1))
+        .fixedSize()
+    }
+}
+
+/// Holds the + button's place on rows that can't take shortcuts, so every row's keys line up.
+private struct AddButtonSlot: View {
+    var body: some View { Color.clear.frame(width: 26, height: 26) }
+}
+
+private struct OrLabel: View {
+    var body: some View {
+        Text("or")
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(Brand.faint)
+    }
+}
+
+/// A recorded shortcut as one keycap ("⌃⇧P"). Hover shows its remove button; right-click too.
+/// With no `remove` it is the dashed slot waiting for a key press.
+private struct ShortcutCap: View {
+    let label: String
+    let remove: (() -> Void)?
+    @State private var hovering = false
+
+    var body: some View {
+        Text(label)
+            .font(.system(size: 12.5, weight: remove == nil ? .medium : .semibold))
+            .foregroundStyle(remove == nil ? Brand.muted : Brand.ink)
+            .frame(minHeight: 28)
+            .padding(.horizontal, 10)
+            .background {
+                if remove == nil {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .strokeBorder(Brand.lineStrong, style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                } else {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(Brand.surface)
+                        .shadow(color: Brand.ink.opacity(0.14), radius: 0, y: 1)
+                        .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .strokeBorder(Brand.lineStrong, lineWidth: 1))
+                }
+            }
+            .overlay(alignment: .topTrailing) {
+                if let remove {
+                    Button(action: remove) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 7, weight: .heavy))
+                            .foregroundStyle(.white)
+                            .frame(width: 15, height: 15)
+                            .background(Circle().fill(Brand.muted))
+                    }
+                    .buttonStyle(.plain)
+                    .offset(x: 6, y: -6)
+                    .opacity(hovering ? 1 : 0)
+                    .help("Remove \(label)")
+                    .accessibilityLabel("Remove \(label)")
+                }
+            }
+            .onHover { hovering = $0 }
+            .contextMenu {
+                if let remove { Button("Remove \(label)", role: .destructive, action: remove) }
+            }
+            // The hover button is invisible to VoiceOver until hovered; this keeps removal reachable.
+            .accessibilityAction(named: Text("Remove")) { remove?() }
     }
 }
 
