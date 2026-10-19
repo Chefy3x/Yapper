@@ -48,7 +48,8 @@ struct MouthRigTests {
         #expect(a.bones.prefix(2) == ["root", "jaw"])
         #expect(a.rig.nodes.count == a.bones.count - 2)
         #expect(a.meshes.contains { $0.name == "UpperLip" && $0.binding == .skinned && $0.outline != nil })
-        #expect(a.meshes.filter { $0.binding == .jaw }.count == 8)      // seven lower teeth and the tongue
+        #expect(a.meshes.filter { $0.binding == .jaw }.count == 9)      // seven lower teeth, the tongue, the lower gum
+        #expect(a.mesh(named: "GumUpper")?.binding == .root)             // the upper gum stays with the head
         for m in a.meshes {
             #expect(m.positions.count == m.normals.count && m.positions.count == m.uvs.count)
             #expect(m.indices.allSatisfy { Int($0) < m.positions.count })

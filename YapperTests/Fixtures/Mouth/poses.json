@@ -217,8 +217,9 @@
   {
    "name": "oo",
    "args": {
-    "J": 0.1,
-    "pucker": 0.9
+    "J": 0.75,
+    "pucker": 1.0,
+    "funnel": 0.3
    },
    "data": {
     "UpperLip": {

@@ -39,7 +39,7 @@ struct MouthRendererTests {
 
     static let poses: [(String, MouthPose)] = [
         ("rest", MouthPose()), ("ah", MouthPose(J: 1)), ("ee", MouthPose(J: 0.3, wide: 0.9)),
-        ("oo", MouthPose(J: 0.1, pucker: 0.9)), ("fv", MouthPose(fv: 1)),
+        ("oo", MouthPose(J: 0.75, pucker: 1, funnel: 0.3)), ("fv", MouthPose(fv: 1)),
         ("snarl", MouthPose(J: 0.55, part: 0.3, upperUp: SIMD2(0.8, 0.9), lowerDown: SIMD2(0.5, 0.5))),
     ]
 

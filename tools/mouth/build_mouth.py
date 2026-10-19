@@ -328,7 +328,7 @@ m_lip_up = matte("LipUpper", LIP["shade"], LIP["base"], LIP["light"], LIP["cut1"
                  strokes=UP_STROKES, stroke_col=srgb(0x7A130F), **({**GL, "gloss": UP_GLOSS} if "gloss_col" in GL else {}))
 m_lip = matte("LipLower", LIP["shade"], LIP["base"], LIP["light"], LIP["cut1"], LIP["cut2"], band=0.13,
               strokes=LO_STROKES, stroke_col=srgb(0x7A130F), **({**GL, "gloss": LO_GLOSS} if "gloss_col" in GL else {}))
-m_tooth = toon("Tooth", CREAM, CREAM_SH, cut=0.16)
+m_tooth = toon("Tooth", CREAM, CREAM_SH, cut=0.10)
 m_metal = matte("Gold", srgb(0xB3801F), srgb(0xEDBC3E), srgb(0xFFE38C), 0.10, 0.30)  # gold tooth, cel-shaded like the rest
 m_tongue = toon("Tongue", TONGUE, TONGUE_SH, cut=0.38)
 m_inside = flat("Inside", INSIDE)
@@ -405,7 +405,7 @@ def ink_weights(ob, upper):
         else:
             wgt = 0.4 + 0.6 * math.sin(math.pi * s_) ** 1.6
         edge = min(s_, 1 - s_)
-        wgt *= min(1.0, max(0.0, (edge - 0.012) / 0.05))
+        wgt *= 0.45 + 0.55 * min(1.0, max(0.0, (edge - 0.012) / 0.05))   # thinner at the tips, never gone
         vg.add([v.index], wgt, "REPLACE")
     md = ob.modifiers["Outline"]; md.vertex_group = "ink"; md.thickness_vertex_group = 0.0
 ink_weights(upper_lip, True); ink_weights(lower_lip, False)
@@ -540,6 +540,7 @@ def tooth(name, x, z_top, width, height, tilt, depth_y, mat, upper=True):
     ob.parent = rig
     return ob
 upper_teeth, lower_teeth = [], []
+LOW_Y = 0.43        # the lower row's depth: wholly behind the upper row and its ink, so the rows never cut into each other
 if LOOK["teeth"] == "big":
     # big teeth with gaps between them, each outlined; front ones longest; one gold. The look sets how
     # crooked, round and spaced they are.
@@ -561,7 +562,7 @@ if LOOK["teeth"] == "big":
     for i, wv in enumerate(lw):
         tw = lspan * wv / ltot; cx = x + tw / 2
         t = tooth(f"LowerTooth{i}", cx, -0.10, tw * K["teeth_fill"], (0.40 + ldrop[i] - 0.08 * abs(cx)) * K["teeth_h"], ltilt[i] * K["teeth_tilt"],
-                  0.34 + wrap(cx) * 0.92 + lpush[i] * K["teeth_push"], m_tooth, False)
+                  LOW_Y + wrap(cx) * 0.92 + lpush[i] * K["teeth_push"], m_tooth, False)
         lower_teeth.append(t); x += tw
 else:
     widths = [0.8, 1.0, 1.15, 1.2, 0.95, 0.85]; span = 1.62; tot = sum(widths); x = -span / 2
@@ -578,20 +579,62 @@ else:
         tw = lspan * wv / ltot; cx = x + tw / 2
         t = tooth(f"LowerTooth{i}", cx, -0.29, tw * 1.01, 0.36 + ldrop[i], ltilt[i], 0.34 + wrap(cx) * 0.92, m_tooth, False)
         lower_teeth.append(t); x += tw
-m_tongue2 = toon("Tongue2", srgb(0xB04A5A), srgb(0x7A2C3C), cut=0.3)
+def ink_shell(ob, mat, thick=0.03):
+    ob.data.materials.append(mat); ob.data.materials.append(m_ink)
+    sol = ob.modifiers.new("Outline", "SOLIDIFY"); sol.thickness = thick; sol.offset = 1; sol.use_flip_normals = True
+    sol.use_rim = False; sol.material_offset = 1
+
+# gums: a pink band under the lower teeth (it rides the jaw) and one over the upper teeth (fixed to the
+# head), so a lip pulled off the teeth shows gum, never the empty inside
+m_gum = toon("Gum", srgb(0xE9848C), srgb(0xB9545F), cut=0.12)
+def gum_band(name, z_top, z_bot, y_front, depth, half_w):
+    """A box bent round the face like the teeth, sitting just behind their front faces."""
+    NX = 48; co, faces = [], []
+    for i in range(NX + 1):
+        x = -half_w + 2 * half_w * i / NX
+        for yy, zz in ((y_front, z_top), (y_front + depth, z_top), (y_front + depth, z_bot), (y_front, z_bot)):
+            co.append((x, yy + wrap(x) * 0.92, zz))
+    for i in range(NX):
+        a, b = 4 * i, 4 * (i + 1)
+        faces += [(a + k, b + k, b + (k + 1) % 4, a + (k + 1) % 4) for k in range(4)]
+    faces += [(0, 1, 2, 3), (4 * NX + 3, 4 * NX + 2, 4 * NX + 1, 4 * NX)]
+    me = bpy.data.meshes.new(name); me.from_pydata(co, [], faces); me.update()
+    ob = bpy.data.objects.new(name, me); bpy.context.collection.objects.link(ob)
+    outward(ob); ink_shell(ob, m_gum); ob.parent = rig
+    return ob
+# a dark plate just behind the upper row: the gaps between teeth read as dark lines, and the lower
+# teeth hide behind it where the rows overlap
+teeth_back = build_sheet("TeethBack", [[(x, 0.355 + wrap(x) * 0.92, 0.40 - 0.53 * j / NT + 0.13 * abs(x)) for j in range(NT + 1)]
+                                       for x in (-1.05 + 2.1 * i / 40 for i in range(41))])
+teeth_back.parent = rig; teeth_back.data.materials.append(m_inside)
+rigid(teeth_back, "root"); armature_first(teeth_back)
+low_y = LOW_Y
+gum_lower = gum_band("GumLower", -0.07, -0.75, low_y - 0.01, 0.06, 0.92)
+gum_upper = gum_band("GumUpper", 0.95, 0.35, 0.26, 0.05, 1.1)
+
+# the tongue: a broad pink mound behind the lower teeth, its top near their tips, with a dip at the
+# middle of its top edge; on a big open it fills the bottom of the hole
+m_tongue2 = toon("Tongue2", srgb(0xF06A66), srgb(0xC23E40), cut=0.2)
 bpy.ops.mesh.primitive_uv_sphere_add(segments=32, ring_count=16, radius=1)
 tongue = bpy.context.active_object; tongue.name = "Tongue"
-tongue.scale = (0.5, 0.12, 0.14); tongue.location = (0, 0.50, -0.36)
+tongue.scale = (0.72, 0.05, 0.36); tongue.location = (0, 0.555, 0.10)
 bpy.ops.object.transform_apply(location=True, scale=True)
-tongue.data.materials.append(m_tongue2); tongue.parent = rig
+for v in tongue.data.vertices:
+    x, z = v.co.x, v.co.z
+    v.co.y += wrap(x) * 0.8                                          # follow the curve of the face
+    v.co.z -= 0.07 * math.exp(-(x / 0.10) ** 2) * max(0.0, z - 0.1) / 0.4
+ink_shell(tongue, m_tongue2); tongue.parent = rig
 for p in tongue.data.polygons: p.use_smooth = True
-for ob in lower_teeth + [tongue]: rigid(ob, "jaw"); armature_first(ob)
+for ob in lower_teeth + [tongue, gum_lower]: rigid(ob, "jaw"); armature_first(ob)
+rigid(gum_upper, "root"); armature_first(gum_upper)
 for ob in upper_teeth: rigid(ob, "root"); armature_first(ob)       # fixed to the skull
 
 # ---------- posing: anatomy channels -> bone targets ----------
 def about(p, M): return Matrix.Translation(p) @ M @ Matrix.Translation(-p)
 def hole(s):                                  # a narrow bump at the centre: a round hole, not a slit
     return ell(s, 0.24)
+def hole_o(s):                                # the round hole of an O: the sides stay sealed
+    return ell(s, 0.34)
 def anat_targets(J=0.0, wide=0.0, pucker=0.0, funnel=0.0, part=0.0, close=0.0, slide=0.0, roll_u=0.0, roll_l=0.0,
                  smile=(0.0, 0.0), upper_up=(0.0, 0.0), lower_down=(0.0, 0.0), fv=0.0, shift=0.0):
     """fv: F/V. The jaw nearly shut; the lower lip's centre rolls up and back and tucks under the
@@ -624,18 +667,21 @@ def anat_targets(J=0.0, wide=0.0, pucker=0.0, funnel=0.0, part=0.0, close=0.0, s
             h_ = hole(s_)
             off.z += k_edge * (c_ * (LOOK["upper_lift"] * J + 0.05 * part + 0.07 * uu + 0.02 * wide)
                                + h_ * 0.05 * sm(0.4, 1.0, J)
-                               - c_ ** 1.5 * 0.11 * min(1.0, pucker + 0.6 * funnel))
+                               + hole_o(s_) * (0.20 * pucker + 0.10 * funnel) * sm(0.05, 0.4, J))   # the O opens with the jaw
             off.z -= k_edge * c_ * 0.5 * close * drop_at(FOLLOW["d4"])      # meet the lower lip halfway
             off.y += 0.06 * roll_u * c_; sy -= 0.25 * roll_u * c_; sz -= 0.3 * roll_u * c_
             off.z += k_edge * 0.11 * fv * c_                               # F/V: lift to show the front teeth
+            seal = min(1.0, pucker + funnel) * (1 - hole_o(s_))             # O: the sides close, the middle opens
+            off.z -= k_edge * seal * 0.5 * drop_at(FOLLOW["d" + nm_[1:]])
         if bot:
             ld = lower_down[si] if side else 0.5 * sum(lower_down)
-            h_ = hole(s_)
             # big opens: the lower lip's centre drops further, so the gap becomes a tall oval
             off.z -= k_edge * (c_ * (0.06 * part + 0.07 * ld) + (0.5 * c_ + 0.5 * cw) * 0.05 * wide
-                               + h_ * (0.20 * funnel + 0.10 * pucker) - c_ ** 1.5 * 0.05 * min(1.0, pucker + funnel)
-                               + h_ ** 0.7 * LOOK["oval_drop"] * sm(0.4, 1.1, J) + c_ * 0.05 * sm(0.15, 0.8, J))
+                               + hole_o(s_) * 0.03 * (funnel + pucker) * sm(0.05, 0.4, J)
+                               + ell(s_, 0.5) ** 0.7 * LOOK["oval_drop"] * sm(0.4, 1.1, J) + c_ * 0.05 * sm(0.15, 0.8, J))
             off.z += k_edge * c_ * 0.5 * close * drop_at(FOLLOW[name])      # press up to seal
+            seal = min(1.0, pucker + funnel) * (1 - hole_o(s_))
+            off.z += k_edge * seal * 0.5 * drop_at(FOLLOW["d" + nm_[1:]])
             # the lower lip rolls out and fills as the jaw drops (volume): its outer edge leads
             rnd_ = pucker + funnel
             off.y -= (0.08 if outer else 0.04) * J * c_ + (0.07 if outer else 0.03) * rnd_ * c_
@@ -700,7 +746,7 @@ class Performer:
         snarl = min(1.0, 0.55 * J + 0.45 * self.pop)
         n, w = max(0.0, -W), max(0.0, W)
         kw = dict(J=min(1.05, J + 0.08 * self.pop),       # past ~1 the lower lip sags into a V
-                  wide=w, pucker=n * (1 - J), funnel=n * min(1.0, J * 1.4),
+                  wide=w, pucker=n, funnel=n * min(1.0, J * 1.4),
                   part=T * (1 - J), slide=1.0,
                   upper_up=(snarl * (1 + 0.35 * side), snarl * (1 - 0.35 * side)),
                   lower_down=(0.2 * J * (1 - 0.25 * side), 0.2 * J * (1 + 0.25 * side)),
@@ -714,7 +760,7 @@ class Performer:
 
 def from_voice(fr):
     J, W, T = fr["J"], fr["W"], fr.get("T", 0.0); n = max(0.0, -W)
-    return anat_targets(J=J, wide=max(0.0, W), pucker=n * (1 - J), funnel=n * min(1.0, J * 1.4), part=T * (1 - J), slide=1.0)
+    return anat_targets(J=J, wide=max(0.0, W), pucker=n, funnel=n * min(1.0, J * 1.4), part=T * (1 - J), slide=1.0)
 
 BOARD = {"0213": {}, "0090": {"J": 0.62, "part": 0.15, "funnel": 0.15}, "0033": {"J": 0.2, "wide": 0.45, "part": 0.35},
          "0068": {"J": 0.08, "pucker": 0.75, "funnel": 0.25}, "0285": {"J": 0.28, "part": 0.1}, "0177": {"J": 0.12, "funnel": 0.6, "pucker": 0.5}}
@@ -723,7 +769,7 @@ TUNE = {**{f"d{i}": (5.0, 0.45) for i in range(1, NODES)}, **{f"u{i}": (7.0, 0.5
         **{f"od{i}": (4.5, 0.42) for i in range(1, NODES)}, **{f"ou{i}": (6.5, 0.5) for i in range(1, NODES)},
         "c.L": (11.0, 0.75), "c.R": (11.0, 0.75), "oc.L": (10.0, 0.7), "oc.R": (10.0, 0.7)}
 STILLS = {"wide": {"J": 1.05, "upper_up": (0.6, 0.7), "lower_down": (0.2, 0.2), "slide": 1.0}, "snarl": {"J": 0.55, "part": 0.3, "upper_up": (0.8, 0.9), "lower_down": (0.5, 0.5)}, "fv": {"fv": 1.0}, "rest": {}, "half": {"J": 0.35}, "ah": {"J": 1.0}, "ee": {"J": 0.3, "wide": 0.9},
-          "oo": {"J": 0.1, "pucker": 0.9}, "teeth": {"J": 0.02, "part": 1.0}, "mbp": {"J": 0.3, "close": 1.0}}
+          "oo": {"J": 0.75, "pucker": 1.0, "funnel": 0.3}, "teeth": {"J": 0.02, "part": 1.0}, "mbp": {"J": 0.3, "close": 1.0}}
 
 # ---------- camera, light ----------
 rig.rotation_euler = (math.radians(LOOK["pitch"]), math.radians(LOOK["roll"]), math.radians(LOOK["yaw"]))
@@ -810,8 +856,8 @@ def export(rig_path, fix_dir):
                 c = bg.inputs[0].default_value; return float(bg.inputs[1].default_value) * (c[0] + c[1] + c[2]) / 3
         return float(sum(w.color) / 3)
 
-    order = ["Inside", "SkinUpper", "SkinLower", "UpperLip", "LowerLip"] + \
-            [o.name for o in upper_teeth] + [o.name for o in lower_teeth] + ["Tongue"]
+    order = ["Inside", "SkinUpper", "SkinLower", "UpperLip", "LowerLip", "TeethBack"] + \
+            [o.name for o in upper_teeth] + [o.name for o in lower_teeth] + ["GumUpper", "GumLower", "Tongue"]
     objects = []
     for name in order:
         ob = bpy.data.objects[name]

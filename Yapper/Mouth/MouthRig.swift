@@ -30,7 +30,7 @@ struct MouthPose: Equatable, Sendable {
     /// and T, teeth together (`from_voice`).
     static func voice(J: Float, W: Float, T: Float) -> MouthPose {
         let narrow = max(0, -W)
-        return MouthPose(J: J, wide: max(0, W), pucker: narrow * (1 - J), funnel: narrow * min(1, J * 1.4),
+        return MouthPose(J: J, wide: max(0, W), pucker: narrow, funnel: narrow * min(1, J * 1.4),
                          part: T * (1 - J), slide: 1)
     }
 }
@@ -54,6 +54,8 @@ struct MouthRig: Sendable {
         var follow: Float
         var outer: Bool, top: Bool, bot: Bool
         var side: Float
+        /// The follow of the lower lip's mouth-edge bone at this point along the lip (an O seals to it).
+        var followLower: Float
     }
 
     let hinge: SIMD3<Float>
@@ -76,12 +78,14 @@ struct MouthRig: Sendable {
         ovalDrop = asset.rig.ovalDrop
         boneCount = asset.bones.count
         tune = asset.rig.tune
+        let follows = Dictionary(asset.rig.nodes.map { ($0.name, $0.follow) }, uniquingKeysWith: { a, _ in a })
         nodes = asset.rig.nodes.map { n in
             let outer = n.name.hasPrefix("o")
             let base = outer ? String(n.name.dropFirst()) : n.name
             let side: Float = n.p.x < -1e-6 ? -1 : (n.p.x > 1e-6 ? 1 : 0)
+            let lower = follows["d" + base.dropFirst()] ?? n.follow
             return Node(bone: n.bone, p: n.p, s: n.s, follow: n.follow, outer: outer,
-                        top: base.hasPrefix("u"), bot: base.hasPrefix("d"), side: side)
+                        top: base.hasPrefix("u"), bot: base.hasPrefix("d"), side: side, followLower: lower)
         }
         followD4 = asset.rig.nodes.first { $0.name == "d4" }?.follow ?? 0.68
     }
@@ -106,23 +110,25 @@ struct MouthRig: Sendable {
             off.y += wrap(n.p.x + off.x) - wrap(n.p.x)            // corners slide along the face
             var sy = 1 + 0.30 * q.pucker + 0.12 * q.funnel - 0.08 * q.wide
             var sz = 1 + 0.20 * q.pucker + 0.10 * q.funnel - 0.15 * q.wide
+            let seal = min(1, q.pucker + q.funnel) * (1 - Self.holeO(s))   // an O: the sides close, the middle opens
             if n.top {
                 let uu = side != 0 ? q.upperUp[si] : 0.5 * (q.upperUp.x + q.upperUp.y)
                 let h = Self.hole(s)
                 off.z += kEdge * (c * (upperLift * J + 0.05 * q.part + 0.07 * uu + 0.02 * q.wide)
                                   + h * 0.05 * Self.smooth(0.4, 1.0, J)
-                                  - pow(c, 1.5) * 0.11 * min(1, q.pucker + 0.6 * q.funnel))
+                                  + Self.holeO(s) * (0.20 * q.pucker + 0.10 * q.funnel) * Self.smooth(0.05, 0.4, J))   // the O opens with the jaw
                 off.z -= kEdge * c * 0.5 * q.close * dropAt(followD4)         // meet the lower lip halfway
                 off.y += 0.06 * q.rollUpper * c; sy -= 0.25 * q.rollUpper * c; sz -= 0.3 * q.rollUpper * c
                 off.z += kEdge * 0.11 * q.fv * c                              // F/V: show the front teeth
+                off.z -= kEdge * seal * 0.5 * dropAt(n.followLower)
             }
             if n.bot {
                 let ld = side != 0 ? q.lowerDown[si] : 0.5 * (q.lowerDown.x + q.lowerDown.y)
-                let h = Self.hole(s)
                 off.z -= kEdge * (c * (0.06 * q.part + 0.07 * ld) + (0.5 * c + 0.5 * cw) * 0.05 * q.wide
-                                  + h * (0.20 * q.funnel + 0.10 * q.pucker) - pow(c, 1.5) * 0.05 * min(1, q.pucker + q.funnel)
-                                  + pow(h, 0.7) * ovalDrop * Self.smooth(0.4, 1.1, J) + c * 0.05 * Self.smooth(0.15, 0.8, J))
+                                  + Self.holeO(s) * 0.03 * (q.funnel + q.pucker) * Self.smooth(0.05, 0.4, J)
+                                  + pow(Self.ellipse(s, 0.5), 0.7) * ovalDrop * Self.smooth(0.4, 1.1, J) + c * 0.05 * Self.smooth(0.15, 0.8, J))
                 off.z += kEdge * c * 0.5 * q.close * dropAt(n.follow)        // press up to seal
+                off.z += kEdge * seal * 0.5 * dropAt(n.followLower)
                 // the lower lip rolls out and fills as the jaw drops: its outer edge leads
                 let round = q.pucker + q.funnel
                 off.y -= (n.outer ? 0.08 : 0.04) * J * c + (n.outer ? 0.07 : 0.03) * round * c
@@ -169,6 +175,8 @@ struct MouthRig: Sendable {
     }
     /// A narrow bump at the centre: a round hole, not a slit.
     static func hole(_ s: Float) -> Float { ellipse(s, 0.24) }
+    /// The round hole of an O: wider, with the sides sealed.
+    static func holeO(_ s: Float) -> Float { ellipse(s, 0.34) }
 
     static func translation(_ v: SIMD3<Float>) -> simd_float4x4 {
         var m = matrix_identity_float4x4; m.columns.3 = SIMD4(v, 1); return m
@@ -212,7 +220,7 @@ struct MouthPerformance: Sendable {
         var p = MouthPose()
         p.J = min(1.05, J + 0.08 * pop)                   // past ~1 the lower lip sags into a V
         p.wide = wide
-        p.pucker = narrow * (1 - J)
+        p.pucker = narrow                                  // an O is made with the jaw: the pucker holds
         p.funnel = narrow * min(1, J * 1.4)
         p.part = T * (1 - J)
         p.slide = 1
