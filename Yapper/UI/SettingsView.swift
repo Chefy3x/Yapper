@@ -170,18 +170,34 @@ struct SettingsView: View {
 /// there's no strip above it. The traffic lights stay, and the top edge
 /// remains draggable through the transparent title bar, so the window still moves.
 private struct WindowChrome: NSViewRepresentable {
+    /// The size the window opens at: tall enough to show the whole General page without
+    /// scrolling. The scene's 780×580 minimum is only the floor for dragging it smaller.
+    static let openingSize = NSSize(width: 1000, height: 800)
+
+    final class Coordinator {
+        weak var sizedWindow: NSWindow?
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
-        DispatchQueue.main.async { [weak view] in apply(to: view?.window) }
+        let coordinator = context.coordinator
+        DispatchQueue.main.async { [weak view] in apply(to: view?.window, coordinator) }
         return view
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
-        DispatchQueue.main.async { [weak nsView] in apply(to: nsView?.window) }
+        let coordinator = context.coordinator
+        DispatchQueue.main.async { [weak nsView] in apply(to: nsView?.window, coordinator) }
     }
 
-    private func apply(to window: NSWindow?) {
+    private func apply(to window: NSWindow?, _ coordinator: Coordinator) {
         guard let window else { return }
+        if coordinator.sizedWindow !== window {
+            coordinator.sizedWindow = window
+            growToOpeningSize(window)
+        }
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.styleMask.insert(.fullSizeContentView)
@@ -189,6 +205,29 @@ private struct WindowChrome: NSViewRepresentable {
         window.styleMask.insert(.resizable)
         window.appearance = NSAppearance(named: .aqua)
         window.backgroundColor = NSColor(Brand.canvas)
+    }
+
+    /// Grows the window to `openingSize` (never shrinks one the user already made larger),
+    /// clamped to the screen's visible area and kept centred on where it was.
+    private func growToOpeningSize(_ window: NSWindow) {
+        let current = window.frame
+        var target = window.frameRect(forContentRect: NSRect(origin: .zero, size: Self.openingSize)).size
+        target.width = max(target.width, current.width)
+        target.height = max(target.height, current.height)
+        guard target != current.size else { return }
+
+        let visible = (window.screen ?? NSScreen.main)?.visibleFrame
+        if let visible {
+            target.width = min(target.width, visible.width)
+            target.height = min(target.height, visible.height)
+        }
+        var frame = NSRect(x: current.midX - target.width / 2, y: current.midY - target.height / 2,
+                           width: target.width, height: target.height)
+        if let visible {
+            frame.origin.x = min(max(frame.minX, visible.minX), visible.maxX - frame.width)
+            frame.origin.y = min(max(frame.minY, visible.minY), visible.maxY - frame.height)
+        }
+        window.setFrame(frame, display: true)
     }
 }
 
