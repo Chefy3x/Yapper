@@ -30,7 +30,7 @@ struct MouthPose: Equatable, Sendable {
     /// and T, teeth together (`from_voice`).
     static func voice(J: Float, W: Float, T: Float) -> MouthPose {
         let narrow = max(0, -W)
-        return MouthPose(J: J, wide: max(0, W), pucker: narrow, funnel: narrow * min(1, J * 1.4),
+        return MouthPose(J: J, wide: max(0, W), pucker: narrow * (1 - 0.5 * J), funnel: narrow * min(1, J * 1.4),
                          part: T * (1 - J), slide: 1)
     }
 }
@@ -191,8 +191,10 @@ struct MouthRig: Sendable {
 /// Acting on top of the lip-sync, the way an animator would: the syllable that lands pops the
 /// mouth a little further and lifts the upper lip off the teeth (a snarl, one side leading), the
 /// corners drift into a smirk, the jaw shifts sideways, fast opens stretch the mouth tall and fast
-/// closes squash it, and the head nods on accents and tilts slowly. A port of `Performer` in
-/// tools/mouth/build_mouth.py; keep the two in step.
+/// closes squash it, and the head nods on accents. Each phrase picks its own lean, the head glances
+/// now and then, and in a pause the mouth breathes and does one small thing every few seconds (a
+/// lip press, a smirk, a tooth click, a part as if about to speak, a purse). A port of `Performer`
+/// in tools/mouth/build_mouth.py; keep the two in step.
 struct MouthPerformance: Sendable {
     struct Output: Sendable {
         var pose: MouthPose
@@ -202,10 +204,36 @@ struct MouthPerformance: Sendable {
         var squash: Float
     }
 
+    /// The small things a quiet mouth does.
+    enum IdleAction: CaseIterable, Sendable {
+        case press, smirk, click, part, purse
+        var seconds: Float {
+            switch self { case .press: 0.55; case .smirk: 1.4; case .click: 0.3; case .part: 1.0; case .purse: 0.9 }
+        }
+        /// Adds this action at strength `k` (0…1); `side` picks which corner leads.
+        func apply(_ k: Float, side: Int, to p: inout MouthPose) {
+            switch self {
+            case .press: p.rollUpper += 0.6 * k; p.rollLower += 0.6 * k; p.J += 0.03 * k     // "mm"
+            case .smirk:
+                let one = side == 0 ? SIMD2<Float>(1, 0) : SIMD2<Float>(0, 1)
+                p.smile += 0.8 * k * one; p.upperUp += 0.25 * k * one
+            case .click: p.J += 0.18 * k; p.part += 0.4 * k                                 // teeth tap
+            case .part: p.J += 0.08 * k; p.part += 0.6 * k                                  // about to speak
+            case .purse: p.pucker += 0.5 * k; p.J += 0.03 * k                               // hmm
+            }
+        }
+    }
+
     private var t: Double = 0
     private var lastJ: Float = 0
     private var pop: Float = 0
     private var squashSpring = SIMD2<Float>(0, 0), nod = SIMD2<Float>(0, 0), tilt = SIMD2<Float>(0, 0)
+    // pauses, phrases and glances
+    private var rng = SplitMix(seed: 7)
+    private var silentFor: Float = 9, quiet = SIMD2<Float>(1, 0), wasSpeaking = false
+    private var nextAction: Float = 1.5, action: IdleAction?, actionT: Float = 0, lastAction: IdleAction?, actionSide = 0
+    private var nextGlance: Float = 0.4, gaze = SIMD2<Float>(0, 0), gazeYaw = SIMD2<Float>(0, 0), gazePitch = SIMD2<Float>(0, 0)
+    private var lean: Float = 0, leanSpring = SIMD2<Float>(0, 0), flip: Float = 1
 
     mutating func step(J: Float, W: Float, T: Float, dt: Float) -> Output {
         guard dt > 0 else { return Output(pose: .voice(J: J, W: W, T: T), head: .zero, squash: 0) }
@@ -220,7 +248,7 @@ struct MouthPerformance: Sendable {
         var p = MouthPose()
         p.J = min(1.05, J + 0.08 * pop)                   // past ~1 the lower lip sags into a V
         p.wide = wide
-        p.pucker = narrow                                  // an O is made with the jaw: the pucker holds
+        p.pucker = narrow * (1 - 0.5 * J)                  // eases as the jaw opens, but an O keeps its round
         p.funnel = narrow * min(1, J * 1.4)
         p.part = T * (1 - J)
         p.slide = 1
@@ -231,7 +259,48 @@ struct MouthPerformance: Sendable {
         let nodDeg = Self.spring(&nod, 3 * pop - J, hz: 2.2, damping: 0.45, dt: dt)
         let tiltDeg = Self.spring(&tilt, 2.5 * smirk + 2 * pop * side, hz: 1.2, damping: 0.6, dt: dt)
         let squash = Self.spring(&squashSpring, max(-1, min(1, speed / 10)) * 0.09, hz: 3.5, damping: 0.35, dt: dt)
-        return Output(pose: p, head: SIMD3(nodDeg, tiltDeg, 3 * Self.wander(t, 0.05, 0.13, 4)), squash: squash)
+
+        // a pause: the voice has been quiet a moment (the reader fades the jaw shut at a phrase end)
+        let speaking = J > 0.06
+        silentFor = speaking ? 0 : silentFor + dt
+        let q = min(1, max(0, Self.spring(&quiet, silentFor > 0.35 ? 1 : 0, hz: speaking ? 10 : 6, damping: 1, dt: dt)))
+        if speaking && !wasSpeaking {                      // a new phrase picks its own lean
+            if rng.uniform(0, 1) < 0.7 { flip = -flip }
+            lean = flip * rng.uniform(0.4, 1)
+        }
+        wasSpeaking = speaking
+        let leanNow = Self.spring(&leanSpring, lean, hz: 1, damping: 0.8, dt: dt)
+        p.smile += SIMD2(0.18 * max(0, leanNow), 0.18 * max(0, -leanNow))
+        // glances: a quick turn of the head, then it holds; half as often while talking
+        nextGlance -= dt * (q > 0.5 ? 1 : 0.5)
+        if nextGlance <= 0 {
+            gaze = SIMD2(rng.uniform(-6, 6), rng.uniform(-2, 2.5))
+            nextGlance = rng.uniform(3, 7)
+        }
+        let yaw = Self.spring(&gazeYaw, gaze.x, hz: 3.5, damping: 0.8, dt: dt)
+        let pitch = Self.spring(&gazePitch, gaze.y, hz: 3.5, damping: 0.8, dt: dt)
+        // breathing, and one small action at a time
+        let breath = Float(sin(2 * Double.pi * 0.22 * t))
+        p.J += q * 0.02 * (1 + breath)
+        p.part += q * 0.12 * max(0, breath)
+        if q > 0.8 && action == nil {
+            nextAction -= dt
+            if nextAction <= 0 {
+                let choices = IdleAction.allCases.filter { $0 != lastAction }
+                let next = choices[min(choices.count - 1, Int(rng.uniform(0, Float(choices.count))))]
+                action = next; lastAction = next; actionT = 0
+                actionSide = rng.uniform(0, 1) < 0.5 ? 0 : 1
+            }
+        }
+        if let a = action {
+            actionT += dt
+            let u = min(1, max(0, actionT / a.seconds))
+            let k = pow(sin(Float.pi * u), 2) * q
+            a.apply(k, side: actionSide, to: &p)
+            if actionT >= a.seconds { action = nil; nextAction = rng.uniform(2.5, 6) }
+        }
+        let head = SIMD3(0.6 * nodDeg + pitch, 0.6 * tiltDeg + 2 * leanNow, 1.2 * Self.wander(t, 0.05, 0.13, 4) + yaw)
+        return Output(pose: p, head: head, squash: squash)
     }
 
     /// A smooth -1…1 drift from two unrelated slow waves.
@@ -243,6 +312,23 @@ struct MouthPerformance: Sendable {
         let w0 = 2 * Float.pi * hz, h = dt / 4
         for _ in 0..<4 { s.y += (w0 * w0 * (goal - s.x) - 2 * z * w0 * s.y) * h; s.x += s.y * h }
         return s.x
+    }
+}
+
+/// A small seeded random source, so the mouth's choices repeat run to run (and match the Python).
+struct SplitMix: Sendable {
+    private var state: UInt64
+    init(seed: UInt64) { state = seed }
+    mutating func next() -> UInt64 {
+        state &+= 0x9E37_79B9_7F4A_7C15
+        var z = state
+        z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
+        z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
+        return z ^ (z >> 31)
+    }
+    /// Uniform in a…b.
+    mutating func uniform(_ a: Float, _ b: Float) -> Float {
+        a + (b - a) * Float(Double(next() >> 11) / 9_007_199_254_740_992)
     }
 }
 

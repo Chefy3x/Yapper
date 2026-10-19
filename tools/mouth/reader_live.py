@@ -8,8 +8,8 @@ with the whole clip is replaced by something that runs as the audio arrives:
   - noise floor: the minimum level over the last 2 s (blocks of 250 ms), not a clip percentile
   - speaker normalisation: running formant and loudness stats, seeded from typical adult values and
     saved between sessions (SpeakerStats), not Lobanov stats over the clip
-  - jaw: a continuous envelope of the level above the floor, plus an onset "pop" when the low band
-    jumps, not one key per syllable
+  - jaw: one open per syllable (the level climbing 6 dB from its last dip), sized by how loud the
+    syllable gets, held, then a soft close; shallow dips carry part of the open into the next one
   - width: soft vowel classes (v3's decision list made smooth), hiss pulls the teeth together
   - speech gate with a 60 ms hangover, then the phrase-end fade (300 ms)
   - the same near-critical springs (J 9/10.5 Hz z0.85, W 7 Hz z0.9, T 10 Hz z0.9); no lead
@@ -30,6 +30,7 @@ import numpy as np
 # ---- tuning (all times in 10 ms hops unless named otherwise) ----
 GATE_DB = 10.0          # speech when the level is this far above the 2 s minimum
 HANG = 6                # speech gate hangover, 60 ms
+ONSET = 3               # a sound must stay above the gate 30 ms before it counts as speech
 FADE = 30               # phrase-end fade, 300 ms
 FLOOR_BLOCK, FLOOR_BLOCKS = 25, 24  # 24 blocks of 250 ms = 6 s minimum window: talk rarely goes 6 s without a dip
 FLOOR_SKIP = 30         # the mic's first 300 ms are often near-silent while it opens: no floor from them
@@ -39,7 +40,6 @@ QUIET_K = 0.5           # below the speaker's average level the jaw scales half 
 VOICED_FM = 0.45        # voicing needed to read formants
 J_FLOOR = 0.1           # jaw never shuts fully inside speech (coarticulation)
 J_BASE, J_SLOPE = 0.32, 0.55        # envelope: J_BASE at the speaker's average level, +J_SLOPE per std
-POP_DB, POP_K, POP_TAU = 9.0, 0.30, 5.0    # onset pop: low band rising this fast in 40 ms, size, decay
 LOUD_TAU = 2.0          # the level is eased over 20 ms before it drives the jaw
 SHAPE_TAU = 1.0         # vowel width eases to a new vowel over ~10 ms
 JM_TAU = 4.0            # the vowel's jaw multiplier (ah wider, ee narrower) eases slower, ~40 ms
@@ -52,7 +52,18 @@ SOFT = 0.18             # softness of the vowel-class boundaries, in z units
 W_GAIN = 1.5            # soft classes blend towards the middle; this pushes widths out to the extremes
 HISS_LO, HISS_HI = 0.07, 0.20   # share of energy above 4 kHz over which a frame counts as hiss
 CLOSE_LO, CLOSE_HI, CLOSE_T = 0.12, 0.30, 0.5   # jaw envelope below which teeth meet (consonant gaps)
-HISS_CLOSE = 0.3        # s / sh / f: the jaw closes this much of the way, teeth together
+HISS_CLOSE = 0.7        # s / sh / f: the jaw closes this much of the way, teeth together
+JAW_HISS_HZ = 10.5      # ... and closes at this speed rather than the soft one
+# syllable jaw: one open per syllable, held, then a soft close, instead of chasing every wiggle in the level
+SYL_RISE_DB = 6.0       # the eased level must climb this far above the last dip to start a syllable
+SYL_FALL_DB = 6.0       # ... and fall this far below the syllable's peak to end it
+SYL_GAP = 24            # a new syllable no sooner than 240 ms after the last one started
+SYL_HOLD = 9            # a syllable holds the jaw open at least 90 ms
+SYL_MIN, SYL_MAX = 0.42, 1.0        # jaw for a quiet syllable .. a stressed one
+SYL_SLOPE = 0.32        # jaw per std of the syllable's peak level above the speaker's average
+SYL_DIP = 0.14          # jaw between syllables inside a phrase, after a real dip
+SYL_CARRY = 0.55        # a shallow dip between syllables keeps this share of the last open (they run together)
+SYL_DEEP_DB = 9.0       # a dip this far below the last peak is a real break: the jaw comes back to SYL_DIP
 
 
 @dataclass
@@ -99,8 +110,8 @@ class Spring:
         self.f_up, self.f_down, self.z = f_up, f_down, zeta
         self.x = self.v = 0.0
 
-    def step(self, target, dt):
-        w0 = 2.0 * math.pi * (self.f_up if target > self.x else self.f_down)
+    def step(self, target, dt, f_down=None):
+        w0 = 2.0 * math.pi * (self.f_up if target > self.x else (f_down or self.f_down))
         h = dt / 2.0
         for _ in range(2):
             self.v += (w0 * w0 * (target - self.x) - 2.0 * self.z * w0 * self.v) * h
@@ -117,7 +128,7 @@ class LiveReader:
         n = np.arange(self.win)
         self.hamm = 0.54 - 0.46 * np.cos(2.0 * math.pi * n / (self.win - 1))
         df = sr / self.nfft
-        self.lo_band = (int(math.ceil(150.0 / df)), int(math.ceil(1000.0 / df)))   # [a, b) bins
+        self.lo_band = (int(math.ceil(150.0 / df)), int(math.ceil(1000.0 / df)))   # [a, b) bins; a starts the voice band
         self.hi_band = int(math.ceil(4000.0 / df))
         self.lag_lo, self.lag_hi = int(sr / 400), int(sr / 75)                      # [lo, hi) lags
         self.fm_lo, self.fm_hi = int(200.0 / df), int(math.ceil(3600.0 / df))       # peak search bins
@@ -134,26 +145,29 @@ class LiveReader:
         self.block_min, self.block_n = math.inf, 0
         self.floor = self.stats.floorDb
         self.hang, self.fade_n, self.speaking = 0, FADE, False
+        self.run = 0
+        self.hissy = 0.0
         # features held across hops
-        self.lows = [-120.0] * 4
         self.fms = []                     # last FM_MEDIAN formant readings (F1, F2)
-        self.pop = 0.0
+        self.syl_open, self.syl_age, self.syl_since = False, 0, SYL_GAP
+        self.syl_peak, self.syl_dip, self.syl_j = -1e9, 1e9, 0.0
         self.loud_s = 0.0
         self.w_vowel, self.j_mul = 0.0, 1.0       # latest vowel reading
         self.w_s, self.jm_s = 0.0, 1.0            # eased towards it every hop
         self.last = (0.0, 0.0, 0.0)       # last speaking targets, faded at phrase end
-        self.sj, self.sw, self.st = Spring(9.0, 10.5, 0.85), Spring(7.0, 7.0, 0.9), Spring(10.0, 10.0, 0.9)
+        # the jaw opens briskly (in step with the voice) and closes softly, so each open reads
+        self.sj, self.sw, self.st = Spring(8.0, 4.5, 0.85), Spring(5.0, 5.0, 0.9), Spring(10.0, 10.0, 0.9)
 
     # ---------------- analysis ----------------
     def spectrum(self, seg):
         X = np.fft.rfft(seg * self.hamm, self.nfft)
         m2 = X.real * X.real + X.imag * X.imag
-        tot = float(m2.sum())
-        low = float(m2[self.lo_band[0]:self.lo_band[1]].sum())
+        # the level counts only what's above 150 Hz: a voice lives there, while desk bumps, breath on
+        # the mic and fan rumble sit below it and would otherwise open the mouth
+        band = float(m2[self.lo_band[0]:].sum())
         hi = float(m2[self.hi_band:].sum())
-        db = 10.0 * math.log10(tot / self.win + 1e-12)
-        low_db = 10.0 * math.log10(low / self.win + 1e-12)
-        return db, low_db, hi / (tot + 1e-12)
+        db = 10.0 * math.log10(band / self.win + 1e-12)
+        return db, hi / (band + 1e-12)
 
     def voicing(self, seg):
         s = seg - seg.mean()
@@ -220,7 +234,7 @@ class LiveReader:
     def hop_frame(self, seg):
         st = self.stats
         dt = self.hop / self.sr
-        db, low_db, hiss = self.spectrum(seg)
+        db, hiss = self.spectrum(seg)
         voiced = self.voicing(seg)
 
         # noise floor: minimum over the last 2 s; digital silence doesn't count
@@ -232,15 +246,16 @@ class LiveReader:
             self.block_min, self.block_n = math.inf, 0
         floor = max(floor, -85.0)
         floor = self.floor = min(floor, self.floor + FLOOR_RISE * dt)
+        loud = db - floor
+        self.loud_s += (loud - self.loud_s) * (1.0 - math.exp(-1.0 / LOUD_TAU))
         above = db > floor + GATE_DB
+        # a sound has to last ONSET hops before it counts as speech, so a click or a breath doesn't
+        # open the mouth; once talking, the hangover carries it over short dips
+        self.run = self.run + 1 if above else 0
+        if self.hang == 0: above = self.run >= ONSET
         if above: self.hang = HANG
         elif self.hang > 0: self.hang -= 1
         speaking = above or self.hang > 0
-
-        loud = db - floor
-        self.loud_s += (loud - self.loud_s) * (1.0 - math.exp(-1.0 / LOUD_TAU))
-        rise = low_db - min(self.lows)
-        self.lows = self.lows[1:] + [low_db]
 
         # running stats (only from real speech)
         w = 1.0 / min(st.weight + 1.0, STATS_MAX)
@@ -260,20 +275,36 @@ class LiveReader:
             u = (self.loud_s - st.loudMean) / max(st.loudStd, 1.0)
             if u < 0: u *= QUIET_K
             env = J_FLOOR + (1.0 - J_FLOOR) * min(1.0, max(0.0, J_BASE + J_SLOPE * u))
-            # onset pop: a fast rise in the low band kicks the jaw open, then it cushions back
-            if rise > POP_DB and voiced > 0.3:
-                self.pop = max(self.pop, POP_K * min(1.0, (rise - POP_DB) / 8.0 + 0.5))
+            # syllables: a climb of SYL_RISE_DB from the last dip opens the jaw, sized by how loud the
+            # syllable gets against this speaker's average; a fall of SYL_FALL_DB from its peak closes it
+            e = self.loud_s
+            self.syl_age += 1; self.syl_since += 1
+            if self.syl_open:
+                self.syl_peak = max(self.syl_peak, e)
+                us = (self.syl_peak - st.loudMean) / max(st.loudStd, 1.0)
+                self.syl_j = max(self.syl_j, min(SYL_MAX, max(SYL_MIN, SYL_MIN + 0.2 + SYL_SLOPE * us)))
+                if e < self.syl_peak - SYL_FALL_DB and self.syl_age >= SYL_HOLD:
+                    self.syl_open, self.syl_dip = False, e
+            else:
+                self.syl_dip = min(self.syl_dip, e)
+                if e > self.syl_dip + SYL_RISE_DB and self.syl_since >= SYL_GAP:
+                    self.syl_open, self.syl_age, self.syl_since = True, 0, 0
+                    self.syl_peak, self.syl_j = e, 0.0
+            if self.syl_open: syl = self.syl_j
+            else:
+                deep = _smooth(SYL_FALL_DB, SYL_DEEP_DB, self.syl_peak - e)
+                syl = max(SYL_DIP, SYL_CARRY * self.syl_j * (1.0 - deep) + SYL_DIP * deep)
             # vowel shape from the median of the last few formant readings
             if fm is not None and len(self.fms) >= 2:
                 f1 = float(np.median([q[0] for q in self.fms])); f2 = float(np.median([q[1] for q in self.fms]))
                 z1 = (f1 - st.f1Mean) / max(st.f1Std, 30.0); z2 = (f2 - st.f2Mean) / max(st.f2Std, 60.0)
                 self.w_vowel, self.j_mul = self.vowel(z1, z2)
             a = 1.0 - math.exp(-1.0 / SHAPE_TAU)
-            self.w_s += (W_GAIN * self.w_vowel - self.w_s) * a
+            self.w_s += (W_GAIN * self.w_vowel - self.w_s) * a * 0.25     # the width eases over ~40 ms
             self.jm_s += (self.j_mul - self.jm_s) * (1.0 - math.exp(-1.0 / JM_TAU))
-            hissy = _smooth(HISS_LO, HISS_HI, hiss)
+            hissy = self.hissy = _smooth(HISS_LO, HISS_HI, hiss)
             vw = _smooth(VW_LO, VW_HI, voiced) * (1.0 - hissy)
-            jt = min(1.2, (env + self.pop) * self.jm_s) * (1.0 - HISS_CLOSE * hissy)
+            jt = min(1.2, syl * self.jm_s) * (1.0 - HISS_CLOSE * hissy)
             wt = vw * self.w_s + (1.0 - vw) * 0.15 * hissy
             closure = 1.0 - _smooth(CLOSE_LO, CLOSE_HI, env)
             tt = max(0.85 * hissy, CLOSE_T * closure) * (1.0 - vw * (1.0 - closure))
@@ -284,14 +315,15 @@ class LiveReader:
             k = 1.0 - self.fade_n / FADE
             jt, wt, tt = self.last[0] * k, self.last[1] * k, 0.0
             if self.fade_n == FADE: self.fms = []
-        self.pop *= math.exp(-1.0 / POP_TAU)
+            self.syl_open, self.syl_dip, self.syl_since = False, 1e9, SYL_GAP
         self.speaking = speaking
         if self.trace is not None:
-            self.trace.append(dict(db=db, low=low_db, floor=floor, loud=loud, hiss=hiss, voiced=voiced, fm=fm,
+            self.trace.append(dict(db=db, floor=floor, loud=loud, hiss=hiss, voiced=voiced, fm=fm,
                                    jt=jt, wt=wt, tt=tt, wv=self.w_s, sp=speaking,
-                                   above=above, pop=self.pop, jm=self.jm_s, lm=st.loudMean, ls=st.loudStd))
+                                   above=above, jm=self.jm_s, lm=st.loudMean, ls=st.loudStd))
 
-        J = min(1.2, max(0.0, self.sj.step(jt, dt)))
+        # s / sh / f bring the teeth together fast; every other close stays soft
+        J = min(1.2, max(0.0, self.sj.step(jt, dt, JAW_HISS_HZ if self.hissy > 0.5 else None)))
         W = min(1.0, max(-1.0, self.sw.step(wt, dt)))
         T = min(1.0, max(0.0, self.st.step(tt, dt)))
         self.hops += 1

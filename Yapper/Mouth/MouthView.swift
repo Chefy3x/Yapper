@@ -6,11 +6,16 @@ import QuartzCore
 enum MouthMode: Equatable {
     /// Lip-syncing the mic, live.
     case live
-    /// The words are being worked out: lips pressed, a slow sideways purse.
+    /// The words are being worked out: chewing it over.
     case thinking
+    /// The turn just ended: a grin when the words landed, a grimace when nothing did.
+    case reacting(MouthReaction)
     /// Held still in one pose (Settings' preview).
     case still(MouthPose)
 }
+
+/// How the mouth sees a turn off, in the moment before the pill closes.
+enum MouthReaction: Equatable, Sendable { case done, cancel }
 
 /// The pieces every mouth on screen shares: the exported rig and one renderer, whose shaders
 /// compile once. `warmUp` does that early so the pill's first opening doesn't hitch.
@@ -38,16 +43,41 @@ final class MouthStage {
     /// The size the mouth is drawn at; `MouthFraming`'s defaults fit it (about 85 pt wide at rest).
     static let viewSize = CGSize(width: 160, height: 100)
 
-    /// The thinking loop at `t` seconds.
+    /// The thinking loop at `t` seconds: chewing it over. The lips purse and drift side to side and
+    /// the jaw works a little, pressing the lips together between bites.
     nonisolated static func thinking(_ t: Double) -> MouthPose {
         let side = Float(sin(2 * Double.pi * 0.42 * t))
         let purse = Float(sin(2 * Double.pi * 0.23 * t + 1))
+        let chew = pow(max(0, Float(sin(2 * Double.pi * 1.5 * t))), 2)
         var pose = MouthPose()
-        pose.J = 0.02
-        pose.pucker = 0.2 + 0.08 * purse
-        pose.smile = SIMD2(max(0, 0.4 * side), max(0, -0.4 * side))
-        pose.rollLower = 0.15
+        pose.J = 0.03 + 0.10 * chew
+        pose.pucker = 0.22 + 0.10 * purse
+        pose.smile = SIMD2(max(0, 0.45 * side), max(0, -0.45 * side))
+        pose.rollLower = 0.15 + 0.2 * (1 - chew)
+        pose.shift = 0.04 * side
+        pose.slide = 1
         return pose
+    }
+
+    /// The head while thinking: a held tilt, turning a little with the chew's drift (pitch, roll, yaw).
+    nonisolated static func thinkingHead(_ t: Double) -> SIMD3<Float> {
+        SIMD3(1.5, 4, 3 * Float(sin(2 * Double.pi * 0.42 * t)))
+    }
+
+    /// The pose, head and squash for a turn's last moment.
+    nonisolated static func reaction(_ r: MouthReaction) -> (pose: MouthPose, head: SIMD3<Float>, squash: Float) {
+        var pose = MouthPose()
+        pose.slide = 1
+        switch r {
+        case .done:          // a pleased grin, teeth showing
+            pose.J = 0.16; pose.part = 1; pose.wide = 0.8
+            pose.smile = SIMD2(1.6, 1.6); pose.upperUp = SIMD2(0.6, 0.6)
+            return (pose, SIMD3(-2, 0, 0), -0.04)
+        case .cancel:        // an "eek": both rows bared, corners pulled down
+            pose.J = 0.14; pose.part = 1; pose.wide = 0.8
+            pose.smile = SIMD2(-1.2, -1.2); pose.upperUp = SIMD2(0.5, 0.5); pose.lowerDown = SIMD2(1.6, 1.6)
+            return (pose, SIMD3(3, 0, 0), 0.03)
+        }
     }
 }
 
@@ -151,7 +181,7 @@ final class MouthFrames: NSObject, CAMetalDisplayLinkDelegate, @unchecked Sendab
     init(asset: MouthAsset, renderer: MouthRenderer, layer: CAMetalLayer) {
         self.renderer = renderer
         self.layer = layer
-        model = MouthModel(asset: asset, springs: 0.7)
+        model = MouthModel(asset: asset, springs: 0.5)
         rest = asset.view.rotationDegrees
     }
 
@@ -214,7 +244,12 @@ final class MouthFrames: NSObject, CAMetalDisplayLinkDelegate, @unchecked Sendab
             framing.squash = acted.squash
         case .thinking:
             pose = MouthStage.thinking(t)
-            framing.rotationDegrees.z += 2 * Float(sin(0.7 * t))         // a slow, small sway
+            framing.rotationDegrees += MouthStage.thinkingHead(t)
+        case .reacting(let r):
+            let (p, head, squash) = MouthStage.reaction(r)
+            pose = p
+            framing.rotationDegrees += head
+            framing.squash = squash
         case .still(let p):
             pose = p; dt = 0
         }

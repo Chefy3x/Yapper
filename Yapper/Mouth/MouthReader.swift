@@ -40,7 +40,7 @@ struct SpeakerStats: Codable, Equatable, Sendable {
 ///
 /// Per hop: a 25 ms Hamming window gives the level, the 150–1000 Hz level, the share of energy above
 /// 4 kHz (hiss), voicing from the autocorrelation, and F1/F2 from peaks of the LPC envelope. A speech
-/// gate against the 2 s minimum level drives a continuous jaw envelope with an onset pop; soft vowel
+/// gate against the 2 s minimum level; the jaw opens once per syllable, sized by its loudness; soft vowel
 /// classes set the width; hiss brings the teeth together. Near-critical springs smooth all three.
 ///
 /// Not thread-safe: create it and feed it from one serial queue.
@@ -49,6 +49,7 @@ final class MouthReader {
     private enum K {
         static let gateDb = 10.0            // speech when the level is this far above the 2 s minimum
         static let hang = 6                 // speech gate hangover, 60 ms
+        static let onset = 3                // a sound must stay above the gate 30 ms before it counts as speech
         static let fade = 30                // phrase-end fade, 300 ms
         static let floorBlock = 25, floorBlocks = 24  // 24 blocks of 250 ms = a 6 s minimum window
         static let floorSkip = 30           // the mic's first 300 ms are often near-silent: no floor from them
@@ -58,7 +59,6 @@ final class MouthReader {
         static let voicedForFormants = 0.45
         static let jawFloor = 0.1           // the jaw never shuts fully inside speech
         static let jawBase = 0.32, jawSlope = 0.55    // envelope at the speaker's average level, per std
-        static let popDb = 9.0, popSize = 0.30, popTau = 5.0    // onset pop: low-band rise in 40 ms
         static let loudTau = 2.0            // the level is eased over 20 ms before it drives the jaw
         static let shapeTau = 1.0           // vowel width eases to a new vowel over ~10 ms
         static let jawMulTau = 4.0          // the vowel's jaw multiplier eases slower, ~40 ms
@@ -70,7 +70,19 @@ final class MouthReader {
         static let widthGain = 1.5          // pushes the soft classes' widths out to the extremes
         static let hissLo = 0.07, hissHi = 0.20      // share of energy above 4 kHz that counts as hiss
         static let closeLo = 0.12, closeHi = 0.30, closeTeeth = 0.5   // jaw envelope below which teeth meet
-        static let hissClose = 0.3          // s / sh / f close the jaw this much of the way
+        static let hissClose = 0.7          // s / sh / f close the jaw this much of the way
+        static let jawHissHz = 10.5         // ... and close it at this speed rather than the soft one
+        // syllable jaw: one open per syllable, held, then a soft close, rather than chasing every
+        // wiggle in the level
+        static let sylRiseDb = 6.0          // the eased level climbs this far above the last dip: a syllable starts
+        static let sylFallDb = 6.0          // ... and falls this far below its peak: it ends
+        static let sylGap = 24              // a new syllable no sooner than 240 ms after the last one started
+        static let sylHold = 9              // a syllable holds the jaw open at least 90 ms
+        static let sylMin = 0.42, sylMax = 1.0      // jaw for a quiet syllable .. a stressed one
+        static let sylSlope = 0.32          // jaw per std of the syllable's peak level above average
+        static let sylDip = 0.14            // jaw between syllables, after a real dip
+        static let sylCarry = 0.55          // a shallow dip keeps this share of the last open
+        static let sylDeepDb = 9.0          // a dip this far below the peak is a real break
         // v3's lip width per vowel class
         static let widthAh = 0.0, widthOo = -0.95, widthOh = -0.55, widthEe = 0.9, widthUh = 0.3
     }
@@ -91,16 +103,19 @@ final class MouthReader {
     private var blocks: [Double]
     private var blockMin = Double.infinity, blockCount = 0
     private var floorDb: Double
-    private var hang = 0, fadeCount = K.fade
+    private var hang = 0, fadeCount = K.fade, run = 0
+    private var hiss_ = 0.0                // the last speaking hop's hiss, 0…1
     // state held across hops
-    private var lows = [Double](repeating: -120, count: 4)
     private var formantHistory: [(f1: Double, f2: Double)] = []
-    private var pop = 0.0, loudEased = 0.0
+    private var loudEased = 0.0
     private var vowelWidth = 0.0, vowelJawMul = 1.0
     private var widthEased = 0.0, jawMulEased = 1.0
     private var last = (J: 0.0, W: 0.0, T: 0.0)
-    private var jaw = Spring(up: 9, down: 10.5, zeta: 0.85)
-    private var width = Spring(up: 7, down: 7, zeta: 0.9)
+    private var sylOpen = false, sylAge = 0, sylSince = K.sylGap
+    private var sylPeak = -1e9, sylDip = 1e9, sylJaw = 0.0
+    // the jaw opens briskly, in step with the voice, and closes softly, so each open reads
+    private var jaw = Spring(up: 8, down: 4.5, zeta: 0.85)
+    private var width = Spring(up: 5, down: 5, zeta: 0.9)
     private var teeth = Spring(up: 10, down: 10, zeta: 0.9)
 
     init(sampleRate: Double = 16_000, stats: SpeakerStats? = nil) {
@@ -134,14 +149,14 @@ final class MouthReader {
         blocks = [Double](repeating: stats.floorDb, count: K.floorBlocks)
         blockMin = .infinity; blockCount = 0
         floorDb = stats.floorDb
-        hang = 0; fadeCount = K.fade
-        lows = [Double](repeating: -120, count: 4)
+        hang = 0; fadeCount = K.fade; run = 0; hiss_ = 0
         formantHistory.removeAll()
-        pop = 0; loudEased = 0
+        loudEased = 0
         vowelWidth = 0; vowelJawMul = 1; widthEased = 0; jawMulEased = 1
         last = (0, 0, 0)
-        jaw = Spring(up: 9, down: 10.5, zeta: 0.85)
-        width = Spring(up: 7, down: 7, zeta: 0.9)
+        sylOpen = false; sylAge = 0; sylSince = K.sylGap; sylPeak = -1e9; sylDip = 1e9; sylJaw = 0
+        jaw = Spring(up: 8, down: 4.5, zeta: 0.85)
+        width = Spring(up: 5, down: 5, zeta: 0.9)
         teeth = Spring(up: 10, down: 10, zeta: 0.9)
     }
 
@@ -167,7 +182,7 @@ final class MouthReader {
 
     private func step(_ seg: [Double]) -> MouthFrame {
         let dt = Double(hop) / sampleRate
-        let (db, lowDb, hiss) = spectrum(seg)
+        let (db, hiss) = spectrum(seg)
         let voiced = voicing(seg)
 
         // noise floor: the minimum over the last 2 s; digital silence doesn't count
@@ -182,14 +197,16 @@ final class MouthReader {
         floor = max(floor, -85)
         floor = min(floor, floorDb + K.floorRise * dt)
         floorDb = floor
-        let above = db > floor + K.gateDb
+        var above = db > floor + K.gateDb
+        // a sound has to last `onset` hops before it counts as speech, so a click or a breath doesn't
+        // open the mouth; once talking, the hangover carries it over short dips
+        run = above ? run + 1 : 0
+        if hang == 0 { above = run >= K.onset }
         if above { hang = K.hang } else if hang > 0 { hang -= 1 }
         let speaking = above || hang > 0
 
         let loud = db - floor
         loudEased += (loud - loudEased) * (1 - exp(-1 / K.loudTau))
-        let rise = lowDb - lows.min()!
-        lows.removeFirst(); lows.append(lowDb)
 
         // running stats, only from real speech
         let w = 1 / min(stats.weight + 1, K.statsMax)
@@ -214,9 +231,25 @@ final class MouthReader {
             var u = (loudEased - stats.loudMean) / max(stats.loudStd, 1)
             if u < 0 { u *= K.quietK }
             let env = K.jawFloor + (1 - K.jawFloor) * min(1, max(0, K.jawBase + K.jawSlope * u))
-            // onset pop: a fast rise in the low band kicks the jaw open, then it cushions back
-            if rise > K.popDb && voiced > 0.3 {
-                pop = max(pop, K.popSize * min(1, (rise - K.popDb) / 8 + 0.5))
+            // syllables: a climb of sylRiseDb from the last dip opens the jaw, sized by how loud the
+            // syllable gets against this speaker's average; a fall of sylFallDb from its peak closes it
+            let e = loudEased
+            sylAge += 1; sylSince += 1
+            if sylOpen {
+                sylPeak = max(sylPeak, e)
+                let us = (sylPeak - stats.loudMean) / max(stats.loudStd, 1)
+                sylJaw = max(sylJaw, min(K.sylMax, max(K.sylMin, K.sylMin + 0.2 + K.sylSlope * us)))
+                if e < sylPeak - K.sylFallDb && sylAge >= K.sylHold { sylOpen = false; sylDip = e }
+            } else {
+                sylDip = min(sylDip, e)
+                if e > sylDip + K.sylRiseDb && sylSince >= K.sylGap {
+                    sylOpen = true; sylAge = 0; sylSince = 0; sylPeak = e; sylJaw = 0
+                }
+            }
+            let syl: Double
+            if sylOpen { syl = sylJaw } else {
+                let deep = Self.smooth(K.sylFallDb, K.sylDeepDb, sylPeak - e)
+                syl = max(K.sylDip, K.sylCarry * sylJaw * (1 - deep) + K.sylDip * deep)
             }
             // vowel shape from the median of the last few formant readings
             if fm != nil && formantHistory.count >= 2 {
@@ -224,11 +257,12 @@ final class MouthReader {
                 let z1 = (f1 - stats.f1Mean) / max(stats.f1Std, 30), z2 = (f2 - stats.f2Mean) / max(stats.f2Std, 60)
                 (vowelWidth, vowelJawMul) = Self.vowel(z1, z2)
             }
-            widthEased += (K.widthGain * vowelWidth - widthEased) * (1 - exp(-1 / K.shapeTau))
+            widthEased += (K.widthGain * vowelWidth - widthEased) * (1 - exp(-1 / K.shapeTau)) * 0.25   // eases over ~40 ms
             jawMulEased += (vowelJawMul - jawMulEased) * (1 - exp(-1 / K.jawMulTau))
             let hissy = Self.smooth(K.hissLo, K.hissHi, hiss)
+            hiss_ = hissy
             let vw = Self.smooth(K.voicedLo, K.voicedHi, voiced) * (1 - hissy)
-            jt = min(1.2, (env + pop) * jawMulEased) * (1 - K.hissClose * hissy)
+            jt = min(1.2, syl * jawMulEased) * (1 - K.hissClose * hissy)
             wt = vw * widthEased + (1 - vw) * 0.15 * hissy
             let closure = 1 - Self.smooth(K.closeLo, K.closeHi, env)
             tt = max(0.85 * hissy, K.closeTeeth * closure) * (1 - vw * (1 - closure))
@@ -239,10 +273,11 @@ final class MouthReader {
             let k = 1 - Double(fadeCount) / Double(K.fade)
             jt = last.J * k; wt = last.W * k; tt = 0
             if fadeCount == K.fade { formantHistory.removeAll() }
+            sylOpen = false; sylDip = 1e9; sylSince = K.sylGap
         }
-        pop *= exp(-1 / K.popTau)
 
-        let J = min(1.2, max(0, jaw.step(jt, dt)))
+        // s / sh / f bring the teeth together fast; every other close stays soft
+        let J = min(1.2, max(0, jaw.step(jt, dt, down: hiss_ > 0.5 ? K.jawHissHz : nil)))
         let W = min(1, max(-1, width.step(wt, dt)))
         let T = min(1, max(0, teeth.step(tt, dt)))
         hops += 1
@@ -269,18 +304,18 @@ final class MouthReader {
     // MARK: - Analysis
 
     /// Level in dB, 150–1000 Hz level in dB, and the share of energy above 4 kHz.
-    private func spectrum(_ seg: [Double]) -> (db: Double, lowDb: Double, hiss: Double) {
+    /// The level counts only what's above 150 Hz: a voice lives there, while desk bumps, breath on
+    /// the mic and fan rumble sit below it and would otherwise open the mouth.
+    private func spectrum(_ seg: [Double]) -> (db: Double, hiss: Double) {
         var x = [Double](repeating: 0, count: win)
         vDSP_vmulD(seg, 1, hamming, 1, &x, 1, vDSP_Length(win))
         let m2 = power(x)
-        var total = 0.0, low = 0.0, high = 0.0
-        vDSP_sveD(m2, 1, &total, vDSP_Length(m2.count))
+        var band = 0.0, high = 0.0
         m2.withUnsafeBufferPointer { p in
-            vDSP_sveD(p.baseAddress! + lowBand.lowerBound, 1, &low, vDSP_Length(lowBand.count))
+            vDSP_sveD(p.baseAddress! + lowBand.lowerBound, 1, &band, vDSP_Length(m2.count - lowBand.lowerBound))
             vDSP_sveD(p.baseAddress! + hissBin, 1, &high, vDSP_Length(m2.count - hissBin))
         }
-        let n = Double(win)
-        return (10 * log10(total / n + 1e-12), 10 * log10(low / n + 1e-12), high / (total + 1e-12))
+        return (10 * log10(band / Double(win) + 1e-12), high / (band + 1e-12))
     }
 
     /// Peak of the normalised autocorrelation over 75–400 Hz pitch lags.
@@ -414,8 +449,8 @@ final class MouthReader {
 
         init(up: Double, down: Double, zeta: Double) { self.up = up; self.down = down; self.zeta = zeta }
 
-        mutating func step(_ target: Double, _ dt: Double) -> Double {
-            let w0 = 2 * Double.pi * (target > x ? up : down)
+        mutating func step(_ target: Double, _ dt: Double, down fastDown: Double? = nil) -> Double {
+            let w0 = 2 * Double.pi * (target > x ? up : (fastDown ?? down))
             let h = dt / 2
             for _ in 0..<2 {
                 v += (w0 * w0 * (target - x) - 2 * zeta * w0 * v) * h

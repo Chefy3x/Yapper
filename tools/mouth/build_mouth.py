@@ -718,15 +718,45 @@ def from_arkit(ch):
                         smile=(g("mouthSmileL"), g("mouthSmileR")), upper_up=(g("mouthUpperUpL"), g("mouthUpperUpR")),
                         lower_down=(g("mouthLowerDownL"), g("mouthLowerDownR")),
                         fv=min(1.0, 2.0 * g("mouthRollLower") * (0.5 + (g("mouthUpperUpL") + g("mouthUpperUpR")) / 2)) * (1 - min(1.0, g("jawOpen") / 0.2)))
+class SplitMix:
+    """A small seeded random source, the same as SplitMix in Yapper/Mouth/MouthRig.swift."""
+    M = (1 << 64) - 1
+    def __init__(self, seed): self.state = seed
+    def next(self):
+        self.state = (self.state + 0x9E3779B97F4A7C15) & self.M
+        z = self.state
+        z = ((z ^ (z >> 30)) * 0xBF58476D1CE4E5B9) & self.M
+        z = ((z ^ (z >> 27)) * 0x94D049BB133111EB) & self.M
+        return z ^ (z >> 31)
+    def uniform(self, a, b): return a + (b - a) * ((self.next() >> 11) / 9007199254740992.0)
+
+IDLE_ACTIONS = ["press", "smirk", "click", "part", "purse"]
+IDLE_SECONDS = {"press": 0.55, "smirk": 1.4, "click": 0.3, "part": 1.0, "purse": 0.9}
+def idle_apply(name, k, side, kw):
+    if name == "press": kw["roll_u"] = kw.get("roll_u", 0.0) + 0.6 * k; kw["roll_l"] = kw.get("roll_l", 0.0) + 0.6 * k; kw["J"] += 0.03 * k
+    elif name == "smirk":
+        one = (1.0, 0.0) if side == 0 else (0.0, 1.0)
+        kw["smile"] = (kw["smile"][0] + 0.8 * k * one[0], kw["smile"][1] + 0.8 * k * one[1])
+        kw["upper_up"] = (kw["upper_up"][0] + 0.25 * k * one[0], kw["upper_up"][1] + 0.25 * k * one[1])
+    elif name == "click": kw["J"] += 0.18 * k; kw["part"] += 0.4 * k
+    elif name == "part": kw["J"] += 0.08 * k; kw["part"] += 0.6 * k
+    elif name == "purse": kw["pucker"] += 0.5 * k; kw["J"] += 0.03 * k
+
 class Performer:
     """Acting on top of the lip-sync, the way an animator would: the syllable that lands pops the
     mouth a little further and lifts the upper lip off the teeth (a snarl, one side leading), the
     corners drift into a smirk, the jaw shifts sideways, fast opens stretch the mouth tall and fast
-    closes squash it, and the head nods on accents and tilts slowly. Keep in step with
-    MouthPerformance in Yapper/Mouth/MouthRig.swift."""
+    closes squash it, and the head nods on accents. Each phrase picks its own lean, the head glances
+    now and then, and in a pause the mouth breathes and does one small thing every few seconds.
+    Keep in step with MouthPerformance in Yapper/Mouth/MouthRig.swift."""
     def __init__(self):
         self.t = 0.0; self.prevJ = 0.0; self.pop = 0.0
         self.sq = [0.0, 0.0]; self.nod = [0.0, 0.0]; self.tilt = [0.0, 0.0]
+        self.rng = SplitMix(7)
+        self.silent_for = 9.0; self.quiet = [1.0, 0.0]; self.was_speaking = False
+        self.next_action = 1.5; self.action = None; self.action_t = 0.0; self.last_action = None; self.action_side = 0
+        self.next_glance = 0.4; self.gaze = (0.0, 0.0); self.gyaw = [0.0, 0.0]; self.gpitch = [0.0, 0.0]
+        self.lean = 0.0; self.lean_st = [0.0, 0.0]; self.flip = 1.0
     @staticmethod
     def wander(t, a, b, phase=0.0):            # smooth -1..1 drift from two unrelated slow waves
         return 0.6 * math.sin(2 * math.pi * a * t + phase) + 0.4 * math.sin(2 * math.pi * b * t + 1.7 * phase + 0.5)
@@ -746,7 +776,7 @@ class Performer:
         snarl = min(1.0, 0.55 * J + 0.45 * self.pop)
         n, w = max(0.0, -W), max(0.0, W)
         kw = dict(J=min(1.05, J + 0.08 * self.pop),       # past ~1 the lower lip sags into a V
-                  wide=w, pucker=n, funnel=n * min(1.0, J * 1.4),
+                  wide=w, pucker=n * (1 - 0.5 * J), funnel=n * min(1.0, J * 1.4),
                   part=T * (1 - J), slide=1.0,
                   upper_up=(snarl * (1 + 0.35 * side), snarl * (1 - 0.35 * side)),
                   lower_down=(0.2 * J * (1 - 0.25 * side), 0.2 * J * (1 + 0.25 * side)),
@@ -754,19 +784,50 @@ class Performer:
                   shift=0.05 * side * min(1.0, J * 1.5))
         nod = self.spring(self.nod, 3.0 * self.pop - 1.0 * J, 2.2, 0.45, dt)
         tilt = self.spring(self.tilt, 2.5 * smirk + 2.0 * self.pop * side, 1.2, 0.6, dt)
-        head = (nod, tilt, 3.0 * self.wander(t, 0.05, 0.13, 4.0))
         squash = self.spring(self.sq, max(-1.0, min(1.0, vJ / 10.0)) * 0.09, 3.5, 0.35, dt)
+        # a pause: the voice has been quiet a moment
+        speaking = J > 0.06
+        self.silent_for = 0.0 if speaking else self.silent_for + dt
+        q = min(1.0, max(0.0, self.spring(self.quiet, 1.0 if self.silent_for > 0.35 else 0.0, 10.0 if speaking else 6.0, 1.0, dt)))
+        if speaking and not self.was_speaking:      # a new phrase picks its own lean
+            if self.rng.uniform(0, 1) < 0.7: self.flip = -self.flip
+            self.lean = self.flip * self.rng.uniform(0.4, 1.0)
+        self.was_speaking = speaking
+        lean = self.spring(self.lean_st, self.lean, 1.0, 0.8, dt)
+        kw["smile"] = (kw["smile"][0] + 0.18 * max(0.0, lean), kw["smile"][1] + 0.18 * max(0.0, -lean))
+        self.next_glance -= dt * (1.0 if q > 0.5 else 0.5)
+        if self.next_glance <= 0:
+            self.gaze = (self.rng.uniform(-6, 6), self.rng.uniform(-2, 2.5))
+            self.next_glance = self.rng.uniform(3, 7)
+        yaw = self.spring(self.gyaw, self.gaze[0], 3.5, 0.8, dt)
+        pitch = self.spring(self.gpitch, self.gaze[1], 3.5, 0.8, dt)
+        breath = math.sin(2 * math.pi * 0.22 * t)
+        kw["J"] += q * 0.02 * (1 + breath)
+        kw["part"] += q * 0.12 * max(0.0, breath)
+        if q > 0.8 and self.action is None:
+            self.next_action -= dt
+            if self.next_action <= 0:
+                choices = [a for a in IDLE_ACTIONS if a != self.last_action]
+                self.action = choices[min(len(choices) - 1, int(self.rng.uniform(0, len(choices))))]
+                self.last_action = self.action; self.action_t = 0.0
+                self.action_side = 0 if self.rng.uniform(0, 1) < 0.5 else 1
+        if self.action:
+            self.action_t += dt
+            u = min(1.0, max(0.0, self.action_t / IDLE_SECONDS[self.action]))
+            idle_apply(self.action, math.sin(math.pi * u) ** 2 * q, self.action_side, kw)
+            if self.action_t >= IDLE_SECONDS[self.action]: self.action = None; self.next_action = self.rng.uniform(2.5, 6.0)
+        head = (0.6 * nod + pitch, 0.6 * tilt + 2.0 * lean, 1.2 * self.wander(t, 0.05, 0.13, 4.0) + yaw)
         return kw, head, squash
 
 def from_voice(fr):
     J, W, T = fr["J"], fr["W"], fr.get("T", 0.0); n = max(0.0, -W)
-    return anat_targets(J=J, wide=max(0.0, W), pucker=n, funnel=n * min(1.0, J * 1.4), part=T * (1 - J), slide=1.0)
+    return anat_targets(J=J, wide=max(0.0, W), pucker=n * (1 - 0.5 * J), funnel=n * min(1.0, J * 1.4), part=T * (1 - J), slide=1.0)
 
 BOARD = {"0213": {}, "0090": {"J": 0.62, "part": 0.15, "funnel": 0.15}, "0033": {"J": 0.2, "wide": 0.45, "part": 0.35},
          "0068": {"J": 0.08, "pucker": 0.75, "funnel": 0.25}, "0285": {"J": 0.28, "part": 0.1}, "0177": {"J": 0.12, "funnel": 0.6, "pucker": 0.5}}
 # follow-through: each lip bone's spring (Hz, damping ratio); the teeth and jaw never spring
-TUNE = {**{f"d{i}": (5.0, 0.45) for i in range(1, NODES)}, **{f"u{i}": (7.0, 0.55) for i in range(1, NODES)},
-        **{f"od{i}": (4.5, 0.42) for i in range(1, NODES)}, **{f"ou{i}": (6.5, 0.5) for i in range(1, NODES)},
+TUNE = {**{f"d{i}": (5.0, 0.62) for i in range(1, NODES)}, **{f"u{i}": (7.0, 0.68) for i in range(1, NODES)},
+        **{f"od{i}": (4.5, 0.6) for i in range(1, NODES)}, **{f"ou{i}": (6.5, 0.65) for i in range(1, NODES)},
         "c.L": (11.0, 0.75), "c.R": (11.0, 0.75), "oc.L": (10.0, 0.7), "oc.R": (10.0, 0.7)}
 STILLS = {"wide": {"J": 1.05, "upper_up": (0.6, 0.7), "lower_down": (0.2, 0.2), "slide": 1.0}, "snarl": {"J": 0.55, "part": 0.3, "upper_up": (0.8, 0.9), "lower_down": (0.5, 0.5)}, "fv": {"fv": 1.0}, "rest": {}, "half": {"J": 0.35}, "ah": {"J": 1.0}, "ee": {"J": 0.3, "wide": 0.9},
           "oo": {"J": 0.75, "pucker": 1.0, "funnel": 0.3}, "teeth": {"J": 0.02, "part": 1.0}, "mbp": {"J": 0.3, "close": 1.0}}

@@ -106,4 +106,32 @@ struct MouthRigTests {
         #expect(moved)                                                   // it lagged on the way
         for b in rig.nodes.map(\.bone) { #expect(simd_length(t.bones[b] - goal.bones[b]) < 1e-3) }
     }
+
+    @Test func splitMixMatchesThePython() {
+        var r = SplitMix(seed: 7)
+        let got = (0..<3).map { _ in r.uniform(0, 1) }
+        for (g, want) in zip(got, [Float(0.38983), 0.016788, 0.900761]) { #expect(abs(g - want) < 1e-5) }
+    }
+
+    @Test func aQuietMouthStaysAliveButSmall() {
+        var perf = MouthPerformance()
+        var jaws: [Float] = [], yaws: [Float] = [], rolls: [Float] = []
+        for _ in 0..<(20 * 60) {
+            let o = perf.step(J: 0, W: 0, T: 0, dt: 1 / 60)
+            jaws.append(o.pose.J); yaws.append(o.head.z)
+            rolls.append(o.pose.rollUpper + o.pose.part + o.pose.pucker + o.pose.smile.x + o.pose.smile.y)
+        }
+        #expect(jaws.max()! > 0.1 && jaws.max()! < 0.3)                // breathes and clicks, never talks
+        #expect(yaws.max()! - yaws.min()! > 4)                           // it glances about
+        #expect(rolls.max()! > 0.6)                                      // and does something with its lips
+    }
+
+    @Test func talkingSilencesTheIdleActions() {
+        var perf = MouthPerformance()
+        for i in 0..<(4 * 60) {
+            let J = Float(0.5 + 0.4 * sin(Double(i) / 60 * 2 * .pi * 2))
+            let o = perf.step(J: J, W: 0, T: 0, dt: 1 / 60)
+            if i > 60 { #expect(o.pose.rollUpper < 0.05 && o.pose.pucker < 0.05) }
+        }
+    }
 }

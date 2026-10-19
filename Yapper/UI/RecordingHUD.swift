@@ -18,6 +18,8 @@ final class RecordingHUDModel: ObservableObject {
     let motion = PillMotion()
     /// What the mouth lip-syncs: the mic, read every 10 ms.
     var live: MouthLive?
+    /// The mouth's last word on a turn, shown for a moment before the pill closes.
+    @Published var reaction: MouthReaction?
 
     func push(level rms: Float) { motion.hear(db: 20 * log10(max(Double(rms), 1e-7))) }
 
@@ -97,8 +99,14 @@ final class RecordingHUDController {
         presenter.level(rms)
     }
 
-    /// The turn reported how it ended. The pill doesn't spell it out; it just closes.
-    func finish(_ outcome: TurnReport.Outcome) { presenter.close() }
+    /// The turn reported how it ended. The mouth grins when the words landed and grimaces when
+    /// nothing did, then the pill closes; the bars just close.
+    func finish(_ outcome: TurnReport.Outcome) {
+        switch outcome {
+        case .pasted, .copied: presenter.react(.done)
+        case .empty, .failed: presenter.react(.cancel)
+        }
+    }
 
     private func update(state: VoiceInputCoordinator.State, locked: Bool, priming: Bool) {
         guard enabled else { presenter.close(); return }
@@ -111,7 +119,11 @@ final class RecordingHUDController {
         switch state {
         case .listening(let mode): presenter.listen(locked: locked, handsFree: mode == .handsFree)
         case .transcribing: presenter.work()
-        case .idle: presenter.close()
+        case .idle:
+            // listening that ends without transcribing was given up on (a cancel, or hands-free
+            // hearing nothing); a hold too short to count just closes
+            if case .listening = presenter.model.phase, presenter.listenedFor > 1 { presenter.react(.cancel) }
+            else { presenter.close() }
         }
     }
 }
@@ -144,7 +156,15 @@ final class RecordingHUDPresenter {
         show()
     }
 
+    /// How long the pill has been listening this turn, in seconds.
+    var listenedFor: TimeInterval { listeningSince.map { Date().timeIntervalSince($0) } ?? 0 }
+    private var listeningSince: Date?
+    /// The reaction on screen, which closes the pill when it's done.
+    private var reacting: Task<Void, Never>?
+
     func listen(locked: Bool, handsFree: Bool) {
+        endReaction()
+        if case .listening = model.phase {} else { listeningSince = Date() }
         let opening = model.phase == .hidden
         if case .listening = model.phase {} else if case .transcribing = model.phase {} else { model.resetLevels() }
         show()
@@ -155,13 +175,36 @@ final class RecordingHUDPresenter {
 
     /// The bars ease down and pulse on their own clock; the pill itself doesn't change.
     func work() {
+        endReaction()
         show()
         model.phase = .transcribing
     }
 
     func close() {
+        guard reacting == nil else { return }       // a reaction is playing; it closes the pill itself
         guard model.phase != .hidden else { return }
+        listeningSince = nil
         withAnimation(Self.closing) { model.phase = .hidden }
+    }
+
+    /// The mouth sees the turn off with a grin or a grimace for about half a second, then the pill
+    /// closes. Without the mouth on show it just closes. A second reaction to the same turn is ignored.
+    func react(_ r: MouthReaction) {
+        guard model.phase != .hidden, model.style == .mouth else { close(); return }
+        guard reacting == nil else { return }
+        model.reaction = r
+        reacting = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(550))
+            guard let self, !Task.isCancelled else { return }
+            self.reacting = nil
+            self.close()
+        }
+    }
+
+    private func endReaction() {
+        reacting?.cancel()
+        reacting = nil
+        model.reaction = nil
     }
 
     private func show() {
@@ -222,7 +265,7 @@ struct RecordingHUDView: View {
             .padding(.bottom, RecordingHUDPresenter.pillInset)
             // The mouth sits on the pill, outside the pill's opening mask so it can spill past it.
             if model.style == .mouth, model.phase != .hidden {
-                PillMouth(phase: model.phase, live: model.live)
+                PillMouth(phase: model.phase, live: model.live, reaction: model.reaction)
                     .transition(.mouthPop)                       // scales from the pill's centre
                     .padding(.bottom, RecordingHUDPresenter.pillInset + RecordingPill.height / 2)
             }
@@ -237,6 +280,7 @@ struct RecordingHUDView: View {
 struct PillMouth: View {
     let phase: RecordingHUDModel.Phase
     let live: MouthLive?
+    var reaction: MouthReaction?
     var still: MouthPose?
 
     /// The lip line's height above the pill's centre, and where it sits in the mouth's view
@@ -254,6 +298,7 @@ struct PillMouth: View {
 
     private var mode: MouthMode {
         if let still { return .still(still) }
+        if let reaction { return .reacting(reaction) }
         return phase == .transcribing ? .thinking : .live
     }
 }
