@@ -10,8 +10,8 @@ import UniformTypeIdentifiers
 /// of taste, so this makes something to watch rather than something to assert.
 /// YAPPER_MOUTH_FILM=<output folder> (TEST_RUNNER_… through xcodebuild) writes PNGs to
 /// <folder>/frames and the jaw's opening per frame to <folder>/jaw.csv; YAPPER_MOUTH_FILM_AUDIO picks
-/// the speech (default site/audio/river-1.mp3) and YAPPER_MOUTH_FILM_FPS the frame rate (default
-/// 60). Join the frames with the audio using ffmpeg.
+/// the speech (default site/audio/river-1.mp3), YAPPER_MOUTH_FILM_FPS the frame rate (default 60)
+/// and YAPPER_MOUTH_SHAPES=1 turns on the viseme net. Join the frames with the audio using ffmpeg.
 struct MouthFilm {
     nonisolated static let env = ProcessInfo.processInfo.environment
     nonisolated static let outDir = env["YAPPER_MOUTH_FILM"]
@@ -29,6 +29,8 @@ struct MouthFilm {
         let renderer = try MouthRenderer(asset: asset)
         let model = MouthModel(asset: asset, springs: 0.5)
         let reader = MouthReader(sampleRate: MouthLive.rate)
+        // YAPPER_MOUTH_SHAPES=1: the viseme net picks the lips' shapes, as with mouth shapes on in the app
+        let visemes = Self.env["YAPPER_MOUTH_SHAPES"] == "1" ? MouthVisemes(model: try MouthVisemesTests.model()) : nil
         var timeline = MouthTimeline()
         var director = MouthDirector()
 
@@ -41,9 +43,10 @@ struct MouthFilm {
         for f in 0..<Int(total * fps) {
             let now = Double(f) / fps
             while fed + hop <= audio.count, Double(fed + hop) / MouthLive.rate + 0.002 <= now {
-                let made = reader.feed(Array(audio[fed..<(fed + hop)])).map { MouthDrive(J: $0.J, W: $0.W, T: $0.T) }
+                let chunk = Array(audio[fed..<(fed + hop)])
+                let made = MouthDrive.zip(reader.feed(chunk), visemes?.feed(chunk))
                 fed += hop
-                timeline.add(made, at: Double(fed) / MouthLive.rate + 0.002)
+                timeline.add(made, at: Double(fed) / MouthLive.rate + 0.002, shapeLag: visemes?.lookahead ?? 0)
             }
             let mode: MouthMode = now < talk ? .live : now < talk + 0.9 ? .thinking : .reacting(.done)
             let frame = director.frame(mode: mode, at: now) { timeline.drive(at: $0) }

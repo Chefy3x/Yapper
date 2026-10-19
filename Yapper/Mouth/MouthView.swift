@@ -169,6 +169,8 @@ struct MouthDirector {
     private var smoother = MouthDriveSmoother()
     /// The jaw goes pose to pose; width and teeth ease on a spring.
     private var jawMoves = MouthMoveFollower()
+    /// The lips act out the viseme net's shapes, when it runs.
+    private var shaper = MouthShaper()
     /// The last frame (pose, head turn, squash), and the mode it was made in.
     private struct Shown { var pose = MouthPose(), head = SIMD3<Float>.zero, squash: Float = 0 }
     private var shown = Shown()
@@ -189,12 +191,16 @@ struct MouthDirector {
         var head = SIMD3<Float>.zero, squash: Float = 0
         switch mode {
         case .live:
-            if shownMode != .live { smoother.reset(); jawMoves.reset() }
+            if shownMode != .live { smoother.reset(); jawMoves.reset(); shaper.reset() }
             let raw = drive(now)
             var d = smoother.step(raw, dt: dt)
             d.J = jawMoves.step(raw.J, dt: dt)
-            let acted = performance.step(J: d.J, W: d.W, T: d.T, dt: dt)
+            // with the viseme net running, its shapes set the lips; the reader's jaw still sets how open
+            let lips = raw.hasShape ? shaper.step(raw.shape, dt: dt) : nil
+            if lips == nil { shaper.reset() }
+            let acted = performance.step(J: d.J, W: lips?.W ?? d.W, T: d.T, dt: dt)
             pose = acted.pose; head = acted.head; squash = acted.squash
+            if let lips { MouthShaper.apply(close: lips.close, fv: lips.fv, part: lips.part, to: &pose) }
         case .thinking:
             pose = MouthStage.thinking(t)
             head = MouthStage.thinkingHead(t)

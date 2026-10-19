@@ -3,13 +3,28 @@ import AVFoundation
 import QuartzCore
 
 /// One moment of the mouth as the voice reader hears it: jaw J (0 shut … 1 a big "ah"), width W
-/// (negative is round) and teeth together T.
+/// (negative is round) and teeth together T, plus the shape the viseme net hears (all zero when it
+/// isn't running or hasn't caught up).
 struct MouthDrive: Sendable, Equatable {
     var J: Float = 0, W: Float = 0, T: Float = 0
+    var shape = MouthShapes()
     static let rest = MouthDrive()
 
     func mixed(with other: MouthDrive, _ k: Float) -> MouthDrive {
-        MouthDrive(J: J + (other.J - J) * k, W: W + (other.W - W) * k, T: T + (other.T - T) * k)
+        MouthDrive(J: J + (other.J - J) * k, W: W + (other.W - W) * k, T: T + (other.T - T) * k,
+                   shape: shape + (other.shape - shape) * k)
+    }
+
+    /// Whether the viseme net said anything about this moment.
+    var hasShape: Bool { shape.sum() > 0.5 }
+
+    /// The reader's frames with the viseme net's answers from the same samples. The net answers for
+    /// the hop `lookahead` hops back, so `shape` here belongs to an earlier drive: MouthTimeline puts
+    /// it back where it belongs (`add(_:at:shapeLag:)`).
+    static func zip(_ frames: [MouthFrame], _ shapes: [MouthShapes?]?) -> [MouthDrive] {
+        frames.enumerated().map { k, f in
+            MouthDrive(J: f.J, W: f.W, T: f.T, shape: (shapes?.indices.contains(k) ?? false ? shapes![k] : nil) ?? MouthShapes())
+        }
     }
 }
 
@@ -17,27 +32,40 @@ struct MouthDrive: Sendable, Equatable {
 protocol MouthVoiceReading: AnyObject {
     func feed(_ samples: UnsafeBufferPointer<Float>) -> [MouthDrive]
     func reset()
+    /// How many hops behind the drives their `shape` runs.
+    var shapeLag: Int { get }
+}
+
+extension MouthVoiceReading {
+    var shapeLag: Int { 0 }
 }
 
 /// The live reader (`MouthReader`), remembering what it learns about your voice and mic between
-/// turns so the mouth starts tuned.
+/// turns so the mouth starts tuned, and with mouth shapes on (`shapesKey`), the viseme net.
 final class MouthReaderVoice: MouthVoiceReading {
     static let statsKey = "mouthSpeakerStats"
+    /// Mouth shapes from the viseme net. Off until it has been judged on film.
+    static let shapesKey = "mouthShapes"
     private let reader: MouthReader
+    private let visemes: MouthVisemes?
 
-    init() {
+    init(shapes: Bool = UserDefaults.standard.bool(forKey: MouthReaderVoice.shapesKey)) {
         let saved = UserDefaults.standard.data(forKey: Self.statsKey).flatMap { try? JSONDecoder().decode(SpeakerStats.self, from: $0) }
         reader = MouthReader(sampleRate: MouthLive.rate, stats: saved)
+        visemes = shapes ? (try? MouthVisemeModel.bundled()).map(MouthVisemes.init(model:)) : nil
     }
 
+    var shapeLag: Int { visemes?.lookahead ?? 0 }
+
     func feed(_ samples: UnsafeBufferPointer<Float>) -> [MouthDrive] {
-        reader.feed(samples).map { MouthDrive(J: $0.J, W: $0.W, T: $0.T) }
+        MouthDrive.zip(reader.feed(samples), visemes?.feed(samples))
     }
 
     /// A new turn: keep what was learned (saved for next launch too), clear the moment-to-moment state.
     func reset() {
         if let data = try? JSONEncoder().encode(reader.stats) { UserDefaults.standard.set(data, forKey: Self.statsKey) }
         reader.reset()
+        visemes?.reset()
     }
 }
 
@@ -52,6 +80,8 @@ struct MouthTimeline: Sendable {
     static let playout: CFTimeInterval = 0.045
 
     private(set) var drives: [(t: CFTimeInterval, d: MouthDrive)] = []
+    /// The viseme net's shapes, stamped with their drive's time. They arrive a few hops after it.
+    private(set) var shapes: [(t: CFTimeInterval, s: MouthShapes)] = []
     /// Seconds of audio the reader has turned into drives.
     private var heard: Double = 0
     /// Host time minus audio time: the earliest any reading has arrived, creeping up slowly so it
@@ -59,10 +89,11 @@ struct MouthTimeline: Sendable {
     private var offset: Double?
     private var lastAdd: CFTimeInterval = 0
 
-    mutating func reset() { drives = []; heard = 0; offset = nil }
+    mutating func reset() { drives = []; shapes = []; heard = 0; offset = nil }
 
-    /// Readings just made, the last of them ending about `now`.
-    mutating func add(_ made: [MouthDrive], at now: CFTimeInterval) {
+    /// Readings just made, the last of them ending about `now`. Their shapes belong `shapeLag` hops
+    /// further back.
+    mutating func add(_ made: [MouthDrive], at now: CFTimeInterval, shapeLag: Int = 0) {
         guard !made.isEmpty else { return }
         heard += Double(made.count) * Self.hop
         let seen = now - heard
@@ -72,19 +103,44 @@ struct MouthTimeline: Sendable {
         for (k, d) in made.enumerated() {
             var t = end - Double(made.count - 1 - k) * Self.hop
             if let last = drives.last { t = max(t, last.t + 0.5 * Self.hop) }   // an earlier arrival never runs time back
-            drives.append((t, d))
+            var plain = d
+            plain.shape = MouthShapes()
+            drives.append((t, plain))
+        }
+        for (k, d) in made.enumerated() where d.hasShape {
+            let i = drives.count - made.count + k - shapeLag
+            if i >= 0 { shapes.append((drives[i].t, d.shape)) }
         }
         if drives.count > 200 { drives.removeFirst(drives.count - 200) }
+        if shapes.count > 200 { shapes.removeFirst(shapes.count - 200) }
     }
 
     /// Where the mouth should be at host time `now`: the readings, a little behind, blended.
     func drive(at now: CFTimeInterval) -> MouthDrive {
         let t = now - Self.playout
         guard let last = drives.last else { return .rest }
-        if t >= last.t { return now - last.t > 0.3 ? .rest : last.d }
-        guard let i = drives.lastIndex(where: { $0.t <= t }) else { return drives[0].d }
-        let a = drives[i], b = drives[i + 1]
-        return a.d.mixed(with: b.d, Float((t - a.t) / max(1e-6, b.t - a.t)))
+        var d: MouthDrive
+        if t >= last.t {
+            if now - last.t > 0.3 { return .rest }
+            d = last.d
+        } else if let i = drives.lastIndex(where: { $0.t <= t }) {
+            let a = drives[i], b = drives[i + 1]
+            d = a.d.mixed(with: b.d, Float((t - a.t) / max(1e-6, b.t - a.t)))
+        } else {
+            d = drives[0].d
+        }
+        d.shape = shape(at: t)
+        return d
+    }
+
+    /// The shape at audio-stamped time `t`, blended; past the newest one, the newest held (the net
+    /// runs 40 ms behind and a late buffer can leave it a hop short of the playout).
+    private func shape(at t: CFTimeInterval) -> MouthShapes {
+        guard let last = shapes.last else { return MouthShapes() }
+        if t >= last.t { return last.s }
+        guard let i = shapes.lastIndex(where: { $0.t <= t }) else { return shapes[0].s }
+        let a = shapes[i], b = shapes[i + 1]
+        return a.s + (b.s - a.s) * Float((t - a.t) / max(1e-6, b.t - a.t))
     }
 }
 
@@ -123,6 +179,10 @@ struct MouthMoveFollower: Sendable {
     private var p: Float?, v: Float = 0
     private var move: (p0: Float, v0: Float, to: Float, d: Float, u: Float)?
     private var off: Float = 0
+
+    init(threshold: Float = 0.10, shortest: Float = 0.05, perUnit: Float = 0.08, longest: Float = 0.11) {
+        self.threshold = threshold; self.shortest = shortest; self.perUnit = perUnit; self.longest = longest
+    }
 
     mutating func reset() { p = nil; v = 0; move = nil; off = 0 }
 
@@ -249,7 +309,7 @@ final class MouthLive: @unchecked Sendable {
         let made = reader.feed(UnsafeBufferPointer(start: out.floatChannelData![0], count: Int(out.frameLength)))
         guard !made.isEmpty else { return }
         drivesLock.lock()
-        timeline.add(made, at: now)
+        timeline.add(made, at: now, shapeLag: reader.shapeLag)
         drivesLock.unlock()
     }
 
