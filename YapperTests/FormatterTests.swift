@@ -103,9 +103,11 @@ struct FormatGuardTests {
 }
 
 struct FormatPlanTests {
-    @Test func correctionsAndListsGetTheFullBudget() {
+    @Test func correctionsGetTheFullBudget() {
         #expect(FormatEngine.plan("Let's meet at 3, no wait, 4 tomorrow.", cleanup: true) == FormatEngine.budget)
-        #expect(FormatEngine.plan("I need three things for the trip today.", cleanup: false) == FormatEngine.budget)
+        #expect(FormatEngine.plan("I need three things for the trip today.", cleanup: false) == nil)   // rules do lists
+        let long = Array(repeating: "we should ship it", count: 20).joined(separator: " ") + ", no wait, tomorrow"
+        #expect(FormatEngine.plan(long, cleanup: false) == nil)
     }
 
     @Test func fillerAloneGetsLittleAndOnlyWhenShort() {

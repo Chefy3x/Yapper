@@ -287,3 +287,12 @@ struct LearnedVocabularyTests {
         #expect(again.rules == 0)
     }
 }
+
+struct ParakeetSignalTests {
+    @Test func quietSpeechCountsAsSignal() {
+        let quiet = (0..<16_000).map { Float(sin(Double($0) / 7)) * 0.015 }   // a soft sentence on a quiet mic
+        #expect(ParakeetTranscriber.hasSignal(quiet))
+        let dead = [Float](repeating: 0.0001, count: 16_000)
+        #expect(!ParakeetTranscriber.hasSignal(dead))
+    }
+}

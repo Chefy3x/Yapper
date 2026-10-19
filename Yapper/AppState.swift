@@ -120,6 +120,9 @@ final class AppState: ObservableObject {
     // MARK: - Media pause
 
     private var mediaGate = MediaResumeGate()
+    /// How long a pause sent at key-down takes to silence the other app: the audio the mic
+    /// takes in before then is dropped from the dictation.
+    static let mediaPauseLag: TimeInterval = 0.15
     private var mediaResumeTask: Task<Void, Never>?
 
     /// Re-decide when paused media comes back. Publishers fire before their property updates,
@@ -618,10 +621,24 @@ final class AppState: ObservableObject {
                 return
             }
             self.pressEndedLockedDictation = false
-            // Other media playing counts too: the early mic would transcribe the video.
-            self.voiceInput.keyPressed(playbackActive: self.tts.isPlaying || self.media.isOtherMediaPlaying)
+            // A video or song playing: pause it now and open the mic now, instead of waiting
+            // out the 0.45 s tap-or-hold decision with the mic shut, which cost the first words.
+            // A tap reads aloud, which pauses media anyway; anything else gets it back below.
+            // Yapper's own reading still keeps the early mic off: it would hear itself.
+            var trim: TimeInterval = 0
+            if self.media.isOtherMediaPlaying, self.settings.pauseMediaWhileTalking {
+                self.media.pauseIfPlaying()
+                trim = Self.mediaPauseLag
+            }
+            self.voiceInput.keyPressed(playbackActive: self.tts.isPlaying || (trim == 0 && self.media.isOtherMediaPlaying),
+                                       trimLead: trim)
         }
-        hotkeys.onKeyAbandoned = { [weak self] in self?.voiceInput.keyAbandoned() }
+        hotkeys.onKeyAbandoned = { [weak self] in
+            guard let self else { return }
+            self.voiceInput.keyAbandoned()
+            // Not a hold after all: media paused at key-down comes back once nobody is talking.
+            self.reconsiderMediaResume()
+        }
         hotkeys.onLockRequested = { [weak self] in self?.voiceInput.lock() }
         hotkeys.canLockMic = { [weak self] in
             guard let self else { return false }

@@ -112,6 +112,8 @@ final class VoiceInputCoordinator: ObservableObject {
     private var priming = false
     private var primeWatchdog: Task<Void, Never>?
     private var tailTask: Task<Void, Never>?
+    /// Samples to drop from the front of this turn (see `keyPressed(playbackActive:trimLead:)`).
+    private var leadTrim = 0
     /// This turn's screen words, read while the user talks so they cost the turn nothing.
     private var screenWordsTask: Task<ScreenReading, Never>?
     /// Where this turn's text goes, read when the turn started.
@@ -231,7 +233,11 @@ final class VoiceInputCoordinator: ObservableObject {
     /// opens now, silently, and the press decides later. Skipped whenever opening it could be
     /// heard or felt: something is playing (the mic would hear Yapper's own voice), the input
     /// is a Bluetooth headset (it would drop into call quality), or Voice In isn't ready.
-    func keyPressed(playbackActive: Bool) {
+    ///
+    /// `trimLead` drops the first stretch of that audio from the turn. When other media was
+    /// playing, the caller pauses it at the same moment, and the mic hears its last fraction
+    /// of a second before the pause lands; that shouldn't be transcribed as the user's words.
+    func keyPressed(playbackActive: Bool, trimLead: TimeInterval = 0) {
         guard settings.voiceInputEnabled, state == .idle, !priming, !playbackActive else { return }
         refreshMicrophonePermission()
         guard microphoneStatus == .granted, transcriber != nil, modelStatus.isReady else { return }
@@ -242,6 +248,7 @@ final class VoiceInputCoordinator: ObservableObject {
             return   // the hold path opens the mic itself, with its fallback and its error message
         }
         priming = true
+        leadTrim = Int(trimLead * AudioCapture.targetSampleRate)
         listeningSince = Date()
         captureOpenedAt = listeningSince
         resetSilentWatch()
@@ -377,6 +384,7 @@ final class VoiceInputCoordinator: ObservableObject {
     }
 
     private func startListening(_ mode: Mode) {
+        leadTrim = 0
         do {
             try capture.start(deviceUID: settings.inputDeviceUID)
         } catch {
@@ -533,11 +541,18 @@ final class VoiceInputCoordinator: ObservableObject {
     private func finishTurn(transcribe: Bool) {
         let heldFor = listeningSince.map { Date().timeIntervalSince($0) } ?? 0
         var samples = stopCapture(discard: !transcribe)
-        let cue = cueAt.flatMap { at in captureOpenedAt.map { at.timeIntervalSince($0) } }
+        var cue = cueAt.flatMap { at in captureOpenedAt.map { at.timeIntervalSince($0) } }
         cueAt = nil
+        if leadTrim > 0 {
+            let dropped = min(leadTrim, samples.count / 2)
+            samples = Array(samples.dropFirst(dropped))
+            leadTrim = 0
+            // The start sound moves with the audio it sits in.
+            cue = cue.map { $0 - Double(dropped) / AudioCapture.targetSampleRate }
+        }
         guard transcribe else { return }
-        // The start sound played into an open mic. A few notches over its half second take it
-        // back out: well under a millisecond, and the speech around it is left as it was.
+        // The start sound played into an open mic. A steep high-pass and a notch on its note take
+        // it back out in about a millisecond; speech above them is left as it was.
         if let cue { StartCue.remove(from: &samples, cueOffset: cue, sampleRate: AudioCapture.targetSampleRate) }
         let seconds = Double(samples.count) / AudioCapture.targetSampleRate
         guard seconds >= minUtterance, heldFor >= minUtterance else {
