@@ -148,9 +148,10 @@ final class HotkeyManager {
 
         case .leftMouseDown, .rightMouseDown, .otherMouseDown:
             // A click while the key is held (⌥-click, ⌥-drag, …) is aimed at the focused app —
-            // releasing right after must NOT count as a tap, and an open mic closes without
-            // transcribing.
-            if gesture.isDown { notifyAbandoned() }
+            // releasing right after must NOT count as a tap, and a hold can't start from it.
+            // Once the hold has begun, a click leaves the mic open: the user is clicking into
+            // the field they're dictating to.
+            if gesture.isDown, !gesture.holding { notifyAbandoned() }
             dispatch(gesture.handle(.mouseDown))
             return Unmanaged.passUnretained(event)
 

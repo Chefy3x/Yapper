@@ -30,11 +30,21 @@ struct ModifierGestureTests {
         #expect(g.handle(.commandUp, at: at(0.7)) == .none)
     }
 
-    @Test func clickDuringHoldCancels() {
+    @Test func clickDuringHoldKeepsListening() {
         var g = ModifierGesture()
         _ = g.handle(.commandDown, at: at(0))
         _ = g.handle(.holdTimerFired, at: at(0.5))
-        #expect(g.handle(.mouseDown, at: at(0.6)) == .holdCancelled)
+        #expect(g.handle(.mouseDown, at: at(0.6)) == .none)
+        #expect(g.handle(.mouseDown, at: at(0.8)) == .none)
+        #expect(g.handle(.commandUp, at: at(1.2)) == .holdEnded)
+    }
+
+    @Test func clickBeforeHoldFiresBlocksHold() {
+        var g = ModifierGesture()
+        _ = g.handle(.commandDown, at: at(0))
+        #expect(g.handle(.mouseDown, at: at(0.1)) == .none)       // ⌥-click / ⌥-drag in an app
+        #expect(g.handle(.holdTimerFired, at: at(0.5)) == .none)
+        #expect(g.handle(.commandUp, at: at(0.6)) == .none)
     }
 
     @Test func comboBeforeHoldFiresNeitherTapNorHold() {

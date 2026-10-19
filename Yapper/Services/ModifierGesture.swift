@@ -7,7 +7,9 @@ import Foundation
 ///   • press + release under `tapThreshold`, nothing else touched  → `.tap`
 ///   • held past `holdThreshold` with nothing else touched         → `.holdBegan` (Voice In)
 ///     … then release                                               → `.holdEnded`
-///     … or any key / mouse button while holding                   → `.holdCancelled`
+///     … or any key while holding                                   → `.holdCancelled`
+///     … a click while holding is ignored: the mic stays open, so the user can click into a
+///       field mid-dictation
 ///   • any key / click while down (before the hold fires)          → consumed, no tap on release
 struct ModifierGesture {
     enum Event { case commandDown, commandUp, otherKeyDown, mouseDown, holdTimerFired }
@@ -36,6 +38,9 @@ struct ModifierGesture {
                   now.timeIntervalSince(downAt) >= Self.holdThreshold - 0.01 else { return .none }
             holding = true
             return .holdBegan
+
+        case .mouseDown where holding:
+            return .none
 
         case .otherKeyDown, .mouseDown:
             guard isDown else { return .none }
