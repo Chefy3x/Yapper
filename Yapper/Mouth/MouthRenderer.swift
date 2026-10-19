@@ -47,7 +47,7 @@ final class MouthModel {
 
 /// Draws a `MouthModel` with Metal: skins the lips and hidden skin on the GPU, then draws cel-shaded
 /// surfaces, holdout skin that leaves the pixel clear, and the ink outline as a pushed-out back-face
-/// shell. Draws into whatever pass it's given (an MTKView's drawable, or an offscreen texture).
+/// shell. Draws into whatever pass it's given (an on-screen drawable, or an offscreen texture).
 final class MouthRenderer {
     static let colorFormat = MTLPixelFormat.bgra8Unorm_srgb
     static let depthFormat = MTLPixelFormat.depth32Float

@@ -1,5 +1,6 @@
 import SwiftUI
-import MetalKit
+import Metal
+import QuartzCore
 
 /// What the mouth is doing on screen.
 enum MouthMode: Equatable {
@@ -38,7 +39,7 @@ final class MouthStage {
     static let viewSize = CGSize(width: 160, height: 100)
 
     /// The thinking loop at `t` seconds.
-    static func thinking(_ t: Double) -> MouthPose {
+    nonisolated static func thinking(_ t: Double) -> MouthPose {
         let side = Float(sin(2 * Double.pi * 0.42 * t))
         let purse = Float(sin(2 * Double.pi * 0.23 * t + 1))
         var pose = MouthPose()
@@ -62,62 +63,142 @@ struct MouthView: NSViewRepresentable {
 
     func updateNSView(_ view: NSView, context: Context) {
         guard let view = view as? MouthMetalView else { return }
-        view.live = live
-        view.mode = mode
+        view.frames.set(mode: mode, live: live)
     }
 }
 
-final class MouthMetalView: MTKView, MTKViewDelegate {
-    var live: MouthLive?
-    var mode: MouthMode = .live {
-        didSet {
-            guard mode != oldValue else { return }
-            if case .still = mode { isPaused = true; enableSetNeedsDisplay = true; needsDisplay = true }
-            else { enableSetNeedsDisplay = false; isPaused = false }
-        }
-    }
-    private let renderer: MouthRenderer
-    private let model: MouthModel
-    private var performance = MouthPerformance()
-    private let rest: SIMD3<Float>
-    private var last: CFTimeInterval?
-    private let born = CACurrentMediaTime()
+/// Hosts the mouth's Metal layer. The frames themselves are drawn on `MouthRenderThread`, never
+/// on main: main carries the Yapper key's event tap and every step from release to paste, and
+/// drawing there (as an MTKView does) blocked it for up to ~13 ms a frame waiting on a drawable.
+final class MouthMetalView: NSView {
+    let frames: MouthFrames
+    private let metalLayer = CAMetalLayer()
 
     init(asset: MouthAsset, renderer: MouthRenderer) {
-        self.renderer = renderer
-        model = MouthModel(asset: asset, springs: 0.7)
-        rest = asset.view.rotationDegrees
-        super.init(frame: CGRect(origin: .zero, size: MouthStage.viewSize), device: renderer.device)
-        colorPixelFormat = MouthRenderer.colorFormat
-        depthStencilPixelFormat = MouthRenderer.depthFormat
-        sampleCount = renderer.sampleCount
-        clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
-        preferredFramesPerSecond = 60
-        framebufferOnly = true
-        layer?.isOpaque = false
+        frames = MouthFrames(asset: asset, renderer: renderer, layer: metalLayer)
+        super.init(frame: CGRect(origin: .zero, size: MouthStage.viewSize))
+        metalLayer.device = renderer.device
+        metalLayer.pixelFormat = MouthRenderer.colorFormat
+        metalLayer.framebufferOnly = true
+        metalLayer.isOpaque = false
+        wantsLayer = true
         // the mouth sits on the pill: a soft shadow under it, as in the mockups
-        layer?.shadowColor = NSColor.black.cgColor
-        layer?.shadowOpacity = 0.3
-        layer?.shadowRadius = 3
-        layer?.shadowOffset = CGSize(width: 0, height: -2)
-        delegate = self
+        metalLayer.shadowColor = NSColor.black.cgColor
+        metalLayer.shadowOpacity = 0.3
+        metalLayer.shadowRadius = 3
+        metalLayer.shadowOffset = CGSize(width: 0, height: -2)
+        fitDrawable()
     }
 
     @available(*, unavailable) required init(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
+    deinit { frames.setRunning(false) }
+
+    override func makeBackingLayer() -> CALayer { metalLayer }
+
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
-    func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        fitDrawable()
+        frames.setRunning(window != nil)
+    }
 
-    func draw(in view: MTKView) {
-        let began = CACurrentMediaTime()
-        defer {
-            // this runs on the main thread, which also carries the Yapper key's event tap
-            let ms = (CACurrentMediaTime() - began) * 1000
-            if ms > 12 { Log.app.notice("Loud Mouth frame took \(String(format: "%.1f", ms), privacy: .public) ms") }
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        fitDrawable()
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        fitDrawable()
+    }
+
+    private func fitDrawable() {
+        let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
+        let size = CGSize(width: max(1, (bounds.width * scale).rounded()), height: max(1, (bounds.height * scale).rounded()))
+        metalLayer.contentsScale = scale
+        guard metalLayer.drawableSize != size else { return }
+        metalLayer.drawableSize = size
+        frames.refresh()
+    }
+}
+
+/// Draws one mouth into its layer on `MouthRenderThread`: live and thinking frames on a
+/// CAMetalDisplayLink, which hands over a drawable that's ready, and a still pose once each time it
+/// changes. `set`, `setRunning` and `refresh` may be called from anywhere; the rest runs on that
+/// thread.
+final class MouthFrames: NSObject, CAMetalDisplayLinkDelegate, @unchecked Sendable {
+    private let renderer: MouthRenderer
+    private let model: MouthModel
+    private let layer: CAMetalLayer
+    private let rest: SIMD3<Float>
+    private let born = CACurrentMediaTime()
+
+    // written by the view, read by the render thread
+    private let lock = NSLock()
+    private var mode: MouthMode = .live
+    private var live: MouthLive?
+    private var running = false
+
+    // the render thread's own
+    private var link: CAMetalDisplayLink?
+    private var performance = MouthPerformance()
+    private var last: CFTimeInterval?
+    private var msaa: MTLTexture?
+    private var depth: MTLTexture?
+
+    init(asset: MouthAsset, renderer: MouthRenderer, layer: CAMetalLayer) {
+        self.renderer = renderer
+        self.layer = layer
+        model = MouthModel(asset: asset, springs: 0.7)
+        rest = asset.view.rotationDegrees
+    }
+
+    func set(mode: MouthMode, live: MouthLive?) {
+        lock.lock()
+        let changed = mode != self.mode
+        self.mode = mode
+        self.live = live
+        lock.unlock()
+        if changed { refresh() }
+    }
+
+    func setRunning(_ on: Bool) {
+        lock.lock(); running = on; lock.unlock()
+        refresh()
+    }
+
+    /// Re-reads the state on the render thread: starts or stops the display link, redraws a still.
+    func refresh() { MouthRenderThread.shared.run { self.sync() } }
+
+    private func sync() {
+        lock.lock(); let mode = self.mode, running = self.running; lock.unlock()
+        let still: Bool
+        if case .still = mode { still = true } else { still = false }
+        if running && !still {
+            guard link == nil else { return }
+            let l = CAMetalDisplayLink(metalLayer: layer)
+            l.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 60, preferred: 60)
+            l.delegate = self
+            l.add(to: .current, forMode: .default)
+            link = l
+        } else {
+            link?.invalidate()
+            link = nil
+            last = nil
+            if running, still, let drawable = layer.nextDrawable() { render(drawable) }
         }
-        guard let pass = currentRenderPassDescriptor, let drawable = currentDrawable,
-              let commands = renderer.queue.makeCommandBuffer() else { return }
+    }
+
+    func metalDisplayLink(_ link: CAMetalDisplayLink, needsUpdate update: CAMetalDisplayLink.Update) {
+        render(update.drawable)
+    }
+
+    private func render(_ drawable: CAMetalDrawable) {
+        lock.lock(); let mode = self.mode, live = self.live; lock.unlock()
+        let target = drawable.texture
+        guard let pass = pass(into: target), let commands = renderer.queue.makeCommandBuffer() else { return }
         let now = CACurrentMediaTime()
         let t = now - born
         var dt = last.map { Float(min(0.1, now - $0)) } ?? 0
@@ -138,9 +219,68 @@ final class MouthMetalView: MTKView, MTKViewDelegate {
             pose = p; dt = 0
         }
         model.pose(pose, dt: dt)
-        guard renderer.encode(model, framing: framing, size: drawableSize,
+        guard renderer.encode(model, framing: framing, size: CGSize(width: target.width, height: target.height),
                               pass: pass, into: commands) else { return }   // GPU behind: skip this frame
         commands.present(drawable)
         commands.commit()
+    }
+
+    /// A pass that draws multisampled into `target`, remaking the MSAA and depth targets when its
+    /// size changes. Earlier frames still in flight are fine: one queue runs them in order.
+    private func pass(into target: MTLTexture) -> MTLRenderPassDescriptor? {
+        let samples = renderer.sampleCount
+        if depth?.width != target.width || depth?.height != target.height {
+            func texture(_ format: MTLPixelFormat) -> MTLTexture? {
+                let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: format, width: target.width,
+                                                                 height: target.height, mipmapped: false)
+                d.textureType = samples > 1 ? .type2DMultisample : .type2D
+                d.sampleCount = samples
+                d.usage = .renderTarget
+                d.storageMode = .private
+                return renderer.device.makeTexture(descriptor: d)
+            }
+            msaa = samples > 1 ? texture(MouthRenderer.colorFormat) : nil
+            depth = texture(MouthRenderer.depthFormat)
+        }
+        guard let depth, samples == 1 || msaa != nil else { return nil }
+        let pass = MTLRenderPassDescriptor()
+        let color = pass.colorAttachments[0]!
+        color.texture = msaa ?? target
+        color.resolveTexture = msaa == nil ? nil : target
+        color.loadAction = .clear
+        color.clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
+        color.storeAction = msaa == nil ? .store : .multisampleResolve
+        pass.depthAttachment.texture = depth
+        pass.depthAttachment.loadAction = .clear
+        pass.depthAttachment.clearDepth = 1
+        pass.depthAttachment.storeAction = .dontCare
+        return pass
+    }
+}
+
+/// The one thread every on-screen mouth draws on, so the shared renderer is only ever driven from
+/// one place, and never from main.
+final class MouthRenderThread: @unchecked Sendable {
+    static let shared = MouthRenderThread()
+    private var loop: CFRunLoop?
+
+    private init() {
+        let ready = DispatchSemaphore(value: 0)
+        let thread = Thread { [unowned self] in
+            loop = CFRunLoopGetCurrent()
+            RunLoop.current.add(Port(), forMode: .default)     // keeps the loop alive while idle
+            ready.signal()
+            RunLoop.current.run()
+        }
+        thread.name = "app.yapper.mouth.render"
+        thread.qualityOfService = .userInteractive
+        thread.start()
+        ready.wait()
+    }
+
+    func run(_ work: @escaping @Sendable () -> Void) {
+        guard let loop else { return }
+        CFRunLoopPerformBlock(loop, CFRunLoopMode.defaultMode.rawValue, work)
+        CFRunLoopWakeUp(loop)
     }
 }
