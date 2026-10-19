@@ -6,7 +6,7 @@ import Combine
 struct Dictation: Identifiable, Codable, Equatable, Sendable {
     enum Outcome: String, Codable, Sendable {
         case pasted     // typed into the app
-        case copied     // the paste didn't land; the words were left on the clipboard
+        case copied     // the paste didn't land (older builds left the words on the clipboard)
         case empty      // nothing but silence or filler
         case failed     // the speech model threw
         case retried    // empty or failed at the time, transcribed again later; never pasted

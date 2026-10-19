@@ -5,7 +5,7 @@ import Combine
 struct TurnReport: Sendable {
     enum Outcome: Sendable, Equatable {
         case pasted
-        case copied             // the paste didn't land; the words are on the clipboard
+        case copied             // the paste didn't land; the words wait for Paste last transcript
         case empty              // nothing worth typing
         case failed(String)
     }
@@ -490,6 +490,14 @@ final class VoiceInputCoordinator: ObservableObject {
 
     /// Yapper key + V: type the last transcript again. The way back when a paste missed, landed
     /// in the wrong field, or got cleared.
+    /// What to say when a dictation's paste went nowhere: how to paste it again.
+    private var notPastedHint: String {
+        let shortcut = settings.customShortcuts[.repasteLast]?.parts.joined()
+            ?? (settings.yapperKey == .rightCommand ? nil : "\(settings.yapperKey.keycap) + V")
+        guard let shortcut else { return "Nothing took the paste. Paste it again from Settings → Dictations" }
+        return "Nothing took the paste. Click where it goes and press \(shortcut)"
+    }
+
     func repasteLast() {
         guard state == .idle, !priming else { return }
         guard let text = vocabulary.lastTranscript?.delivered, !text.isEmpty else {
@@ -691,9 +699,9 @@ final class VoiceInputCoordinator: ObservableObject {
                     Task { @MainActor [weak self] in self?.onPasteLanded?() }
                 })
             } catch PasteDelivery.DeliveryError.notPasted {
-                // The words survived on the clipboard; say so instead of "failed".
+                // The words are kept for Paste last transcript; say how to get them instead of "failed".
                 vocabulary.record(original: heard, delivered: text)
-                onEvent?(PasteDelivery.DeliveryError.notPasted.errorDescription ?? "")
+                onEvent?(notPastedHint)
                 await finish(.copied)
                 return
             }

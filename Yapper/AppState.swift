@@ -269,6 +269,10 @@ final class AppState: ObservableObject {
             guard let self else { return false }
             return self.tts.active != nil || self.tts.queueCount > 0
         }
+        hotkeys.shortcuts = settings.customShortcuts
+        settings.$customShortcuts
+            .sink { [weak self] in self?.hotkeys.shortcuts = $0 }
+            .store(in: &voiceInputCancellables)
         settings.$yapperKey
             .removeDuplicates()
             .sink { [weak self] key in
@@ -659,7 +663,7 @@ final class AppState: ObservableObject {
             return self.voiceInput.state == .listening(.pushToTalk)
         }
         hotkeys.onRepasteLast = { [weak self] in
-            Log.hotkey.info("Yapper key+V -> Re-paste last transcript")
+            Log.hotkey.info("Paste last transcript")
             self?.voiceInput.repasteLast()
         }
         hotkeys.onPushToTalkEnded = { [weak self] in self?.voiceInput.endPushToTalk() }

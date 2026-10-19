@@ -57,7 +57,9 @@ extension TextDelivering {
 /// The transcript goes on the pasteboard as a promise, not as data, so Yapper learns whether the
 /// focused app actually read it. A fixed restore timer alone guesses: in a slow app it puts the
 /// old clipboard back before the paste lands and the user gets yesterday's clipboard instead of
-/// what they said, and when nothing is focused the words are simply gone.
+/// what they said. When nothing takes the paste at all, the clipboard is still put back (an image
+/// or a video copied earlier must survive a missed dictation); the words wait for Paste last
+/// transcript instead.
 struct PasteDelivery: TextDelivering {
     enum DeliveryError: LocalizedError {
         case noFrontmostApp, eventSourceUnavailable, notPasted
@@ -65,7 +67,7 @@ struct PasteDelivery: TextDelivering {
             switch self {
             case .noFrontmostApp: "No app is focused to type into"
             case .eventSourceUnavailable: "Couldn't post the paste keystroke"
-            case .notPasted: "Nothing took the paste. It's on your clipboard: press ⌘V"
+            case .notPasted: "Nothing took the paste"
             }
         }
     }
@@ -201,14 +203,10 @@ struct PasteDelivery: TextDelivering {
             let readAt = promise.reads.first { $0 >= postedAt } ?? (readsBeforePaste > 0 ? postedAt : nil)
             return DeliveryReceipt(field: field, valueAfter: field?.value, readAt: readAt)
         }
-        // Nobody read it. Leave the words where the user can still get them, as plain data,
-        // since the promise dies with this call. Unless something else has claimed the
-        // clipboard meanwhile: that copy is the user's and wins.
-        if pb.changeCount == ourChangeCount {
-            pb.clearContents()
-            pb.setString(text, forType: .string)
-        }
-        Log.voice.notice("Paste not read; transcript left on the clipboard")
+        // Nobody read it. The clipboard is the user's: put back what was there (an image, a
+        // video, anything) rather than leave the words on it. Paste last transcript recovers them.
+        restoreIfUnchanged(pb, prior: prior, ourChangeCount: ourChangeCount)
+        Log.voice.notice("Paste not read; clipboard put back")
         throw DeliveryError.notPasted
     }
 

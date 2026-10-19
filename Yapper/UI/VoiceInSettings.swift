@@ -714,7 +714,7 @@ private struct DictationRow: View {
                 Text("\(entry.wordCount) word\(entry.wordCount == 1 ? "" : "s")").font(skin.body(10.5)).foregroundStyle(Brand.faint)
             }
             switch entry.outcome {
-            case .copied: TagChip(text: "On clipboard")
+            case .copied: TagChip(text: "Not pasted")
             case .empty: TagChip(text: "Empty")
             case .failed: TagChip(text: "Failed", tone: .warning)
             case .retried: TagChip(text: "Transcribed again")

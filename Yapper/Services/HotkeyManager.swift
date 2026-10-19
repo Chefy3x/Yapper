@@ -17,20 +17,14 @@ import CoreGraphics
 /// text field and stealing it would be a daily paper cut. Anything else pressed while the key
 /// is held passes through unmodified, so it still works as a normal modifier.
 ///
+/// Any of chords 3, 4, 5, 6 and 7 can be replaced by a shortcut recorded in Settings → Hotkeys
+/// (`shortcuts`); that action then stops answering to its chord, which goes back to the app.
+///
 /// Requires Accessibility permission. Without it, install() succeeds-but-does-nothing because the
 /// tap will be disabled by the system.
 @MainActor
 final class HotkeyManager {
-    // Carbon virtual key codes
-    private enum KeyCode {
-        static let s: Int64 = 1
-        static let d: Int64 = 2
-        static let v: Int64 = 9
-        static let space: Int64 = 49
-        static let returnKey: Int64 = 36
-        static let keypadEnter: Int64 = 76
-        static let rightArrow: Int64 = 124
-    }
+    private typealias KeyCode = KeyShortcut.Code
 
     var onReadLatestOrToggle: (() -> Void)?
     /// Hold the Yapper key past the tap window: the mic opens. Release: transcribe. Any other key
@@ -54,6 +48,11 @@ final class HotkeyManager {
     /// Answers "would a skip do anything right now?" — playing or queued. Decides whether
     /// Key + → is Yapper's or the app's.
     var skipIsMeaningful: () -> Bool = { false }
+
+    /// Shortcuts recorded in Settings, replacing those actions' chords. Set by AppState.
+    var shortcuts: [HotkeyAction: KeyShortcut] = [:]
+    /// True while Settings is recording a shortcut: every key goes to the recorder untouched.
+    var isRecordingShortcut = false
 
     /// Which modifier is the Yapper key. Set from Settings by AppState; takes effect immediately.
     var key: YapperKey = .default {
@@ -156,6 +155,19 @@ final class HotkeyManager {
             return Unmanaged.passUnretained(event)
 
         case .keyDown:
+            // Settings is recording a shortcut: let the key reach it, but don't let a held
+            // Yapper key turn it into a chord or count its release as a tap.
+            if isRecordingShortcut {
+                if gesture.isDown { notifyAbandoned(); dispatch(gesture.handle(.otherKeyDown)) }
+                return Unmanaged.passUnretained(event)
+            }
+            // A recorded shortcut wins over everything, held Yapper key or not.
+            if let action = shortcuts.first(where: { $0.value.matches(keyCode: keyCode, flags: flags) })?.key,
+               action != .skipNext || skipIsMeaningful() {
+                if gesture.isDown { notifyAbandoned(); dispatch(gesture.handle(.otherKeyDown)) }
+                DispatchQueue.main.async { [weak self] in self?.perform(action) }
+                return nil
+            }
             // If the Yapper key is held, watch for our chords. Otherwise pass through.
             guard gesture.isDown else {
                 return Unmanaged.passUnretained(event)
@@ -172,29 +184,29 @@ final class HotkeyManager {
             dispatch(gesture.handle(.otherKeyDown))
 
             // Key + Enter -> Conversation Mode toggle (swallowed)
-            if keyCode == KeyCode.returnKey || keyCode == KeyCode.keypadEnter {
+            if keyCode == KeyCode.returnKey || keyCode == KeyCode.keypadEnter, chordIsLive(.toggleConversation) {
                 DispatchQueue.main.async { [weak self] in self?.onToggleConversationMode?() }
                 return nil
             }
             // Key + S -> Read Selection (swallowed)
-            if keyCode == KeyCode.s {
+            if keyCode == KeyCode.s, chordIsLive(.readSelection) {
                 DispatchQueue.main.async { [weak self] in self?.onReadSelection?() }
                 return nil
             }
             // Key + D -> AX tree dump (debug, swallowed)
-            if keyCode == KeyCode.d {
+            if keyCode == KeyCode.d, chordIsLive(.dumpAXTree) {
                 DispatchQueue.main.async { [weak self] in self?.onDumpAXTree?() }
                 return nil
             }
             // Key + V -> paste the last transcript again (swallowed). With Right ⌘ as the Yapper
             // key that chord is the system's own paste, so it stays the app's.
-            if keyCode == KeyCode.v, key != .rightCommand {
+            if keyCode == KeyCode.v, key != .rightCommand, chordIsLive(.repasteLast) {
                 DispatchQueue.main.async { [weak self] in self?.onRepasteLast?() }
                 return nil
             }
             // Key + → -> Skip to next queued response — but only when there is something to
             // skip. Idle, it stays the app's (⌥→ = word jump).
-            if keyCode == KeyCode.rightArrow, skipIsMeaningful() {
+            if keyCode == KeyCode.rightArrow, chordIsLive(.skipNext), skipIsMeaningful() {
                 DispatchQueue.main.async { [weak self] in self?.onSkipNext?() }
                 return nil
             }
@@ -203,6 +215,19 @@ final class HotkeyManager {
 
         default:
             return Unmanaged.passUnretained(event)
+        }
+    }
+
+    /// An action's Yapper-key chord works until a recorded shortcut replaces it.
+    private func chordIsLive(_ action: HotkeyAction) -> Bool { shortcuts[action] == nil }
+
+    private func perform(_ action: HotkeyAction) {
+        switch action {
+        case .readSelection:      onReadSelection?()
+        case .repasteLast:        onRepasteLast?()
+        case .toggleConversation: onToggleConversationMode?()
+        case .skipNext:           onSkipNext?()
+        case .dumpAXTree:         onDumpAXTree?()
         }
     }
 
