@@ -181,6 +181,7 @@ final class AppState: ObservableObject {
         voiceInput.expandSnippets = { [weak self] text in self?.snippets.expand(text) ?? text }
         recordingHUD = RecordingHUDController(state: self)
         voiceInput.onLevel = { [weak self] in self?.recordingHUD?.level($0) }
+        if settings.dictationSounds { _ = sounds }   // render the sounds now, not on the first hold
         voiceInput.playStartCue = { [weak self] in
             guard let self, self.settings.dictationSounds else { return nil }
             return self.sounds.playStart()

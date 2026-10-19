@@ -1,38 +1,213 @@
 import AVFoundation
 
-/// The start sound: two short sine notes, rising. Synthesised here rather than shipped as a file,
-/// so Yapper knows its exact frequencies and can notch it back out of a recording it played
-/// into. The mic is open by the time a hold is recognised (it opens at key-down so the first
-/// word isn't lost), so the sound always lands in the audio.
+/// Voice In's three sounds, synthesised here rather than shipped as files, so Yapper knows
+/// exactly what it played and where its energy sits.
+///
+/// - start: a soft low thud, then one rounded C4, into a short shimmering hall.
+/// - done: two rounded notes rising, C4 then G4, in the same hall.
+/// - failed: the thud on its own.
+///
+/// Shaped by ear against the references the user picked: Superwhisper Classic's thud and the
+/// polish of Apple's Rebound, whose quality is short, clean notes into a quiet, wide, slowly
+/// moving hall roughly 32 dB under them.
+enum DictationSound: CaseIterable, Sendable {
+    case start, done, failed
+
+    /// Peak level, linear. The start leads; the others sit a little under it.
+    var peak: Float { self == .start ? 0.32 : 0.27 }
+
+    func render(sampleRate r: Double = SoundSynth.sampleRate) -> SoundSynth.Stereo {
+        let c4 = 261.63, g4 = 392.0
+        let events: [SoundSynth.Event]
+        let wetDB: Double
+        switch self {
+        case .start:
+            events = [.init(start: 0, samples: SoundSynth.thud(sampleRate: r), gain: 0.55),
+                      .init(start: 0.11, samples: SoundSynth.roundedNote(c4, sampleRate: r), gain: 0.7)]
+            wetDB = -32
+        case .done:
+            events = [.init(start: 0, samples: SoundSynth.roundedNote(c4, sampleRate: r), gain: 0.6),
+                      .init(start: 0.08, samples: SoundSynth.roundedNote(g4, sampleRate: r), gain: 0.6)]
+            wetDB = -34
+        case .failed:
+            events = [.init(start: 0, samples: SoundSynth.thud(sampleRate: r), gain: 0.55)]
+            wetDB = -30
+        }
+        return SoundSynth.finish(SoundSynth.mix(events, wetDB: wetDB, sampleRate: r), peak: peak, sampleRate: r)
+    }
+}
+
+/// The pieces the sounds are made of.
+enum SoundSynth {
+    static let sampleRate = 44_100.0
+
+    struct Event { let start: Double; let samples: [Float]; let gain: Float }
+
+    struct Stereo: Equatable {
+        var left: [Float]
+        var right: [Float]
+        var count: Int { left.count }
+    }
+
+    /// Raised-cosine fade-in over `attack` seconds.
+    static func fadeIn(_ t: Double, _ attack: Double) -> Double {
+        t < attack ? 0.5 - 0.5 * cos(.pi * t / attack) : 1
+    }
+
+    /// A soft low thud: the pitch drops from 200 Hz to 82 Hz in a few milliseconds the way a
+    /// drum's does, holds briefly, then dies fast; a little saturation lets small speakers hear it.
+    static func thud(sampleRate r: Double) -> [Float] {
+        let drive = 1.3, norm = tanh(drive)
+        var phase = 0.0
+        return (0..<Int(0.2 * r)).map { i in
+            let t = Double(i) / r
+            phase += 2 * .pi * (82 + (200 - 82) * exp(-t / 0.004)) / r
+            let env = fadeIn(t, 0.010) * (t < 0.035 ? 1 : exp(-(t - 0.035) / 0.009))
+            return Float(tanh(drive * sin(phase) * env) / norm)
+        }
+    }
+
+    /// A pure note that swells in over 10 ms and rings away, no pluck at the front.
+    static func roundedNote(_ f: Double, sampleRate r: Double) -> [Float] {
+        (0..<Int(0.35 * r)).map { i in
+            let t = Double(i) / r
+            return Float(sin(2 * .pi * f * t) * fadeIn(t, 0.010) * exp(-t / 0.035))
+        }
+    }
+
+    /// One-pole low-pass, the gentle kind: for keeping the hall's input dark and clean.
+    static func lowpass(_ x: [Float], cutoff: Double, sampleRate r: Double) -> [Float] {
+        let a = Float(exp(-2 * .pi * cutoff / r))
+        var s: Float = 0
+        return x.map { v in s = (1 - a) * v + a * s; return s }
+    }
+
+    static func highpass(_ x: [Float], cutoff: Double, sampleRate r: Double) -> [Float] {
+        zip(x, lowpass(x, cutoff: cutoff, sampleRate: r)).map { $0 - $1 }
+    }
+
+    /// The hall: eight delay lines feeding back through a Householder mix, each line's length
+    /// drifting slowly (the shimmer), the feedback damped above 5.5 kHz, read out by two
+    /// different taps so the tail is wide. `rt` is the time it takes to fall 60 dB.
+    static func hall(_ mono: [Float], rt: Double = 1.5, predelay: Double = 0.022, modulation: Double = 6,
+                     damping: Double = 5_500, sampleRate r: Double) -> Stereo {
+        let lengths: [Double] = [1031, 1327, 1523, 1801, 2053, 2389, 2711, 3089]
+        let n = lengths.count, maxLength = Int(lengths.max()!) + 64
+        let gains = lengths.map { pow(10, -3 * $0 / r / rt) }
+        let rates = (0..<n).map { 0.31 + (0.83 - 0.31) * Double($0) / Double(n - 1) }
+        let phases = (0..<n).map { 2 * Double.pi * Double($0) / Double(n) }
+        let tapL: [Double] = [1, -1, 1, -1, 1, 1, -1, -1], tapR: [Double] = [1, 1, -1, -1, 1, -1, 1, -1]
+        let scale = 1 / Double(n).squareRoot()
+        let a = exp(-2 * .pi * damping / r)
+        let pre = Int(predelay * r)
+        let total = mono.count + Int(rt * 1.1 * r) + pre
+
+        var buffers = [[Double]](repeating: [Double](repeating: 0, count: maxLength), count: n)
+        var damped = [Double](repeating: 0, count: n)
+        var y = [Double](repeating: 0, count: n)
+        var write = 0
+        var out = Stereo(left: [Float](repeating: 0, count: total), right: [Float](repeating: 0, count: total))
+        for i in 0..<total {
+            let input = i >= pre && i - pre < mono.count ? Double(mono[i - pre]) : 0
+            var sum = 0.0
+            for k in 0..<n {
+                let delay = lengths[k] + modulation * sin(2 * .pi * rates[k] * Double(i) / r + phases[k])
+                var read = Double(write) - delay
+                read -= Double(maxLength) * (read / Double(maxLength)).rounded(.down)
+                let i0 = Int(read), frac = read - Double(i0)
+                let v = buffers[k][i0] * (1 - frac) + buffers[k][(i0 + 1) % maxLength] * frac
+                damped[k] = (1 - a) * v + a * damped[k]
+                y[k] = damped[k] * gains[k]
+                sum += y[k]
+            }
+            var l = 0.0, rr = 0.0
+            for k in 0..<n {
+                buffers[k][write] = y[k] - 2 / Double(n) * sum + scale * input
+                l += tapL[k] * y[k]; rr += tapR[k] * y[k]
+            }
+            out.left[i] = Float(l * scale); out.right[i] = Float(rr * scale)
+            write = (write + 1) % maxLength
+        }
+        return out
+    }
+
+    /// Lays the parts out dry in the centre, and sends them (darkened, with the rumble taken off)
+    /// into the hall. The tail is placed `wetDB` under the dry sound: its level 0.2–0.5 s in,
+    /// against the first 50 ms. The whole is cut at 1.6 s with a 0.4 s fade.
+    static func mix(_ events: [Event], wetDB: Double, rt: Double = 1.5, sampleRate r: Double) -> Stereo {
+        let length = events.map { Int($0.start * r) + $0.samples.count }.max() ?? 0
+        var dry = [Float](repeating: 0, count: length)
+        for e in events {
+            let first = Int(e.start * r)
+            for (i, s) in e.samples.enumerated() { dry[first + i] += s * e.gain }
+        }
+        let send = highpass(lowpass(dry, cutoff: 6_000, sampleRate: r), cutoff: 220, sampleRate: r)
+        let wet = hall(send, rt: rt, sampleRate: r)
+        func meanSquare(_ x: ArraySlice<Float>) -> Double {
+            x.isEmpty ? 0 : x.reduce(0) { $0 + Double($1 * $1) } / Double(x.count)
+        }
+        let ref = meanSquare(dry.prefix(Int(0.05 * r))).squareRoot() + 1e-12
+        let window = Int(0.2 * r)..<min(wet.count, Int(0.5 * r))
+        let tail = ((meanSquare(wet.left[window]) + meanSquare(wet.right[window])) / 2).squareRoot() + 1e-12
+        let g = Float(ref / tail * pow(10, wetDB / 20))
+        var out = Stereo(left: wet.left.map { $0 * g }, right: wet.right.map { $0 * g })
+        for i in 0..<dry.count { out.left[i] += dry[i]; out.right[i] += dry[i] }
+
+        let cut = Int(1.6 * r)
+        if cut < out.count {
+            out.left.removeLast(out.left.count - cut); out.right.removeLast(out.right.count - cut)
+            let fade = Int(0.4 * r)
+            for j in 0..<fade {
+                let w = Float(fade - 1 - j) / Float(fade - 1)
+                out.left[cut - fade + j] *= w; out.right[cut - fade + j] *= w
+            }
+        }
+        return out
+    }
+
+    /// Trims the silent end, scales to `peak`, and fades the last 50 ms.
+    static func finish(_ s: Stereo, peak: Float, sampleRate r: Double) -> Stereo {
+        let loudest = zip(s.left, s.right).map { max(abs($0), abs($1)) }
+        guard let last = loudest.lastIndex(where: { $0 > 3e-5 }), let top = loudest.max(), top > 0 else { return s }
+        let g = peak / top
+        var out = Stereo(left: s.left[...last].map { $0 * g }, right: s.right[...last].map { $0 * g })
+        let fade = min(Int(0.05 * r), out.count)
+        for j in 0..<fade {
+            let w = Float(fade - 1 - j) / Float(max(1, fade - 1))
+            out.left[out.count - fade + j] *= w; out.right[out.count - fade + j] *= w
+        }
+        return out
+    }
+}
+
+/// The start sound plays into an open mic (it opens at key-down so the first word isn't lost),
+/// so it always lands in the audio. This takes it back out.
 enum StartCue {
-    struct Note: Sendable { let frequency: Double; let start: Double; let length: Double }
+    /// When the dry part of the start sound ends: the thud, then the C4 starting at 0.11 s and
+    /// ringing out. The hall goes on under it, about 32 dB down.
+    static let duration = 0.45
+    /// The C4. It's a pure tone, so there's no overtone to chase; a notch an octave up would only
+    /// cost the voice.
+    static let notchFrequencies = [261.63]
 
-    /// E6 then B6. High enough to sit above the body of speech, low enough to stay pleasant.
-    /// Long enough and soft-edged enough that each note's energy stays in a narrow band.
-    static let notes: [Note] = [Note(frequency: 1318.51, start: 0, length: 0.12),
-                                Note(frequency: 1975.53, start: 0.08, length: 0.16)]
-    static var duration: Double { notes.map { $0.start + $0.length }.max() ?? 0 }
+    /// The thud lives under 200 Hz, so a steep high-pass takes it; the note gets notched.
+    static func filters(sampleRate: Double) -> [Biquad] {
+        Array(repeating: Biquad.highpass(frequency: 230, q: 0.7071, sampleRate: sampleRate), count: 3)
+            + notchFrequencies.flatMap { f in
+                Array(repeating: Biquad.notch(frequency: f, q: 4, sampleRate: sampleRate), count: 2)
+            }
+    }
 
-    /// Every frequency the cue puts into a room: the notes and the second harmonic a small
-    /// speaker adds to them.
-    static var notchFrequencies: [Double] { notes.flatMap { [$0.frequency, $0.frequency * 2] } }
-
-    /// Takes the cue out of a recording that heard it. `cueOffset` is when the cue started,
-    /// in seconds from the first sample. The window runs from a little before (output latency
-    /// is never negative, but the clocks are only roughly aligned) to well after (the room rings).
-    /// Each notch runs twice: about 35 dB off the cue, while a voice keeps 96% of its energy.
+    /// Takes the start sound out of a recording that heard it. `cueOffset` is when it started,
+    /// in seconds from the first sample. The window runs from a little before (the clocks are only
+    /// roughly aligned) to well after (the hall rings on). Outside it, not one sample changes.
     static func remove(from samples: inout [Float], cueOffset: TimeInterval, sampleRate: Double) {
-        let lead = 0.15, tail = 0.45
+        let lead = 0.15, tail = 0.55
         let start = max(0, Int((cueOffset - lead) * sampleRate))
         let end = min(samples.count, Int((cueOffset + duration + tail) * sampleRate))
         guard end - start > 32 else { return }
         var segment = Array(samples[start..<end])
-        for f in notchFrequencies where f < sampleRate / 2 - 200 {
-            for _ in 0..<2 {
-                var notch = Biquad.notch(frequency: f, q: 8, sampleRate: sampleRate)
-                notch.process(&segment)
-            }
-        }
+        for var stage in filters(sampleRate: sampleRate) { stage.process(&segment) }
         // Fade between the original and the filtered audio at both edges, so the filters
         // starting and stopping never click.
         let fade = min(Int(0.01 * sampleRate), segment.count / 2)
@@ -45,26 +220,6 @@ enum StartCue {
             samples[start + i] = original + (segment[i] - original) * w
         }
     }
-
-    /// The cue as samples: each note with a 20 ms raised-cosine attack and an exponential decay,
-    /// so its energy stays in a narrow band the notches can reach.
-    static func render(notes: [Note] = notes, sampleRate: Double, gain: Float = 0.5) -> [Float] {
-        let total = Int(((notes.map { $0.start + $0.length }.max() ?? 0) + 0.02) * sampleRate)
-        var out = [Float](repeating: 0, count: total)
-        for note in notes {
-            let first = Int(note.start * sampleRate)
-            let count = Int(note.length * sampleRate)
-            let attack = Int(0.02 * sampleRate)
-            for i in 0..<count where first + i < total {
-                let t = Double(i) / sampleRate
-                let env = (i < attack ? 0.5 - 0.5 * cos(Double.pi * Double(i) / Double(attack)) : 1)
-                    * exp(-t / (note.length * 0.5))
-                    * (i > count - attack ? Double(count - i) / Double(attack) : 1)
-                out[first + i] += Float(sin(2 * .pi * note.frequency * t) * env) * gain
-            }
-        }
-        return out
-    }
 }
 
 /// One RBJ-cookbook biquad section, direct form I.
@@ -74,6 +229,14 @@ struct Biquad {
 
     init(b0: Float, b1: Float, b2: Float, a1: Float, a2: Float) {
         self.b0 = b0; self.b1 = b1; self.b2 = b2; self.a1 = a1; self.a2 = a2
+    }
+
+    static func highpass(frequency: Double, q: Double, sampleRate: Double) -> Biquad {
+        let w0 = 2 * Double.pi * frequency / sampleRate
+        let alpha = sin(w0) / (2 * q), c = cos(w0)
+        let a0 = 1 + alpha
+        return Biquad(b0: Float((1 + c) / 2 / a0), b1: Float(-(1 + c) / a0), b2: Float((1 + c) / 2 / a0),
+                      a1: Float(-2 * c / a0), a2: Float((1 - alpha) / a0))
     }
 
     static func notch(frequency: Double, q: Double, sampleRate: Double) -> Biquad {
@@ -94,59 +257,53 @@ struct Biquad {
     }
 }
 
-/// Plays the start and done sounds. Both are rendered once, at launch, into ready players, so
-/// starting one costs the turn nothing.
+/// Plays the three sounds. They're rendered once, off the main thread, as soon as Yapper starts,
+/// into ready players, so playing one costs the turn nothing.
 @MainActor
 final class DictationSounds {
-    private let start: AVAudioPlayer?
-    private let done: AVAudioPlayer?
-    private let failed: AVAudioPlayer?
+    private var players: [DictationSound: AVAudioPlayer] = [:]
 
     init() {
-        let rate = 44_100.0
-        start = Self.player(StartCue.render(sampleRate: rate, gain: 0.32), rate: rate)
-        // Done: the same two notes falling, softer and shorter. The mic is closed by then.
-        done = Self.player(StartCue.render(notes: [.init(frequency: 1975.53, start: 0, length: 0.06),
-                                                   .init(frequency: 1318.51, start: 0.045, length: 0.09)],
-                                           sampleRate: rate, gain: 0.2), rate: rate)
-        failed = Self.player(StartCue.render(notes: [.init(frequency: 660, start: 0, length: 0.09),
-                                                     .init(frequency: 622.25, start: 0.08, length: 0.12)],
-                                             sampleRate: rate, gain: 0.22), rate: rate)
+        Task { [weak self] in
+            let rendered = await Task.detached(priority: .utility) {
+                DictationSound.allCases.map { ($0, Self.wav($0.render(), sampleRate: SoundSynth.sampleRate)) }
+            }.value
+            for (sound, data) in rendered {
+                let player = try? AVAudioPlayer(data: data)
+                player?.prepareToPlay()
+                self?.players[sound] = player
+            }
+        }
     }
 
-    /// Returns when the sound started, for `StartCue.remove`.
+    /// Returns when the sound started, for `StartCue.remove`. Nil if it couldn't play (or the
+    /// sounds are still being rendered in the first moment after launch).
     func playStart() -> Date? {
-        guard let start else { return nil }
+        guard let start = players[.start] else { return nil }
         start.currentTime = 0
         return start.play() ? Date() : nil
     }
 
-    func playDone() {
-        done?.currentTime = 0
-        done?.play()
+    func playDone() { play(.done) }
+    func playFailed() { play(.failed) }
+
+    private func play(_ sound: DictationSound) {
+        guard let player = players[sound] else { return }
+        player.currentTime = 0
+        player.play()
     }
 
-    func playFailed() {
-        failed?.currentTime = 0
-        failed?.play()
-    }
-
-    private static func player(_ samples: [Float], rate: Double) -> AVAudioPlayer? {
-        let player = try? AVAudioPlayer(data: wav(samples, sampleRate: rate))
-        player?.prepareToPlay()
-        return player
-    }
-
-    /// 16-bit mono PCM WAV in memory.
-    nonisolated static func wav(_ samples: [Float], sampleRate: Double) -> Data {
+    /// 16-bit stereo PCM WAV in memory.
+    nonisolated static func wav(_ sound: SoundSynth.Stereo, sampleRate: Double) -> Data {
         var data = Data()
         func put<T: FixedWidthInteger>(_ v: T) { withUnsafeBytes(of: v.littleEndian) { data.append(contentsOf: $0) } }
-        let bytes = UInt32(samples.count * 2)
+        func sample(_ s: Float) -> Int16 { Int16(max(-1, min(1, s)) * Float(Int16.max)) }
+        let bytes = UInt32(sound.count * 4)
         data.append(contentsOf: Array("RIFF".utf8)); put(UInt32(36) + bytes)
-        data.append(contentsOf: Array("WAVEfmt ".utf8)); put(UInt32(16)); put(UInt16(1)); put(UInt16(1))
-        put(UInt32(sampleRate)); put(UInt32(sampleRate) * 2); put(UInt16(2)); put(UInt16(16))
+        data.append(contentsOf: Array("WAVEfmt ".utf8)); put(UInt32(16)); put(UInt16(1)); put(UInt16(2))
+        put(UInt32(sampleRate)); put(UInt32(sampleRate) * 4); put(UInt16(4)); put(UInt16(16))
         data.append(contentsOf: Array("data".utf8)); put(bytes)
-        for s in samples { put(Int16(max(-1, min(1, s)) * Float(Int16.max))) }
+        for i in 0..<sound.count { put(sample(sound.left[i])); put(sample(sound.right[i])) }
         return data
     }
 }

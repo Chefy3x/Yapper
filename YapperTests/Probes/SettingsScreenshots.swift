@@ -45,6 +45,16 @@ struct SettingsScreenshots {
         try pillImage.write(to: out.appendingPathComponent("hud-pills.png"))
     }
 
+    /// The three sounds, as the app renders them, for comparing against the listening page.
+    @Test(.enabled(if: outDir != nil)) func renderSounds() throws {
+        let out = URL(fileURLWithPath: Self.outDir!, isDirectory: true)
+        try FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
+        for (sound, name) in [(DictationSound.start, "start"), (.done, "done"), (.failed, "failed")] {
+            try DictationSounds.wav(sound.render(), sampleRate: SoundSynth.sampleRate)
+                .write(to: out.appendingPathComponent("sound-\(name).wav"))
+        }
+    }
+
     static let levels: [CGFloat] = [0.05, 0.1, 0.3, 0.55, 0.4, 0.7, 0.9, 0.6, 0.35,
                                     0.5, 0.8, 0.65, 0.3, 0.45, 0.75, 0.5, 0.25, 0.15]
 
