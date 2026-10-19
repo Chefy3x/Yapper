@@ -342,7 +342,7 @@ private struct SectionHeader: View {
                 Text(counter)
                     .font(Brand.label(10))
                     .tracking(1)
-                    .foregroundStyle(Brand.lime)
+                    .foregroundStyle(Brand.blueOnDark)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 4)
                     .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(Brand.lcd))
@@ -431,13 +431,13 @@ struct SectionLabel: View {
 
 // MARK: - Yapper logo glyph
 
-/// The app icon in miniature: the megaphone mark in ink on a lime tile.
+/// The app icon in miniature: the megaphone mark in white on a blue tile.
 private struct YapperGlyph: View {
     var size: CGFloat = 40
 
     var body: some View {
         RoundedRectangle(cornerRadius: size * 0.24, style: .continuous)
-            .fill(Brand.lime)
+            .fill(Brand.blue)
             .overlay(
                 Image("MenuBarMark", bundle: Bundle(for: AppState.self))
                     .renderingMode(.template)
@@ -835,7 +835,7 @@ private struct HotkeysPanel: View {
                         ? "Right ⌘ + V is the system's paste, so add a shortcut for this one."
                         : "Type what you last said again, when a paste missed.")
                     row(.toggleConversation, subtitle: "Read new assistant replies as they arrive.")
-                    row(.skipNext, subtitle: "Next queued reply. Idle, the chord stays the app's.")
+                    row(.skipNext, subtitle: "Next queued reply. Only while something is playing; otherwise ⌥→ stays the app's.")
                     row(.dumpAXTree, subtitle: "Save the focused app's accessibility tree, for debugging.", last: true)
                 }
             }
@@ -1167,8 +1167,6 @@ private struct ShortcutCap: View {
             .contextMenu {
                 if let remove { Button("Remove \(label)", role: .destructive, action: remove) }
             }
-            // The hover button is invisible to VoiceOver until hovered; this keeps removal reachable.
-            .accessibilityAction(named: Text("Remove")) { remove?() }
     }
 }
 
@@ -1334,8 +1332,8 @@ private struct ConversationPanel: View {
                 HStack(alignment: .center, spacing: 16) {
                     Image(systemName: "bubble.left.and.bubble.right.fill")
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Brand.limeDeep)
-                        .iconTile(Brand.limeSoft, size: 34)
+                        .foregroundStyle(Brand.blueDeep)
+                        .iconTile(Brand.blueSoft, size: 34)
                     RowLabel("Conversation Mode on at launch",
                              subtitle: "Yapper starts ready to auto-read new assistant messages.")
                     Spacer()
@@ -1475,8 +1473,8 @@ struct VoiceInSection: View {
                 HStack(alignment: .center, spacing: 16) {
                     Image(systemName: "mic.fill")
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Brand.limeDeep)
-                        .iconTile(Brand.limeSoft, size: 34)
+                        .foregroundStyle(Brand.blueDeep)
+                        .iconTile(Brand.blueSoft, size: 34)
                     RowLabel("Voice in",
                              subtitle: "Hold \(settings.yapperKey.keycap) to talk. Transcribed on this Mac, typed into the focused app.")
                     Spacer()
@@ -1987,7 +1985,7 @@ private struct RetentionSlider: View {
                         .fill(Brand.ink.opacity(0.08))
                         .frame(height: 6)
                     Capsule()
-                        .fill(Brand.lime)
+                        .fill(Brand.blue)
                         .frame(width: max(6, proxy.size.width * pct), height: 6)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -2052,7 +2050,7 @@ private struct AboutPanel: View {
         .frame(maxWidth: .infinity)
         .background(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(LinearGradient(colors: [Brand.limeSoft.opacity(0.7), Brand.surface],
+                .fill(LinearGradient(colors: [Brand.sunken, Brand.surface],
                                      startPoint: .top, endPoint: .center))
                 .shadow(color: Brand.ink.opacity(0.05), radius: 1, y: 1)
         )
@@ -2085,7 +2083,7 @@ private struct InfoPill: View {
 
 // MARK: - Buttons
 
-/// The site's primary button: a lime capsule with ink type.
+/// The site's primary button: an ink capsule with white type, so the blue stays rare.
 struct PrimaryButton: View {
     let title: String
     let systemImage: String?
@@ -2114,10 +2112,10 @@ struct PrimaryButton: View {
             .padding(.vertical, 8)
             .background(
                 Capsule(style: .continuous)
-                    .fill(hovering && isEnabled ? Brand.limeHover : Brand.lime)
-                    .shadow(color: Color(hex: 0x3C500A).opacity(0.22), radius: 1, y: 1)
+                    .fill(hovering && isEnabled ? Brand.inkHover : Brand.ink)
+                    .shadow(color: Brand.ink.opacity(0.22), radius: 1, y: 1)
             )
-            .overlay(Capsule(style: .continuous).strokeBorder(.white.opacity(0.35), lineWidth: 0.5).padding(0.5))
+            .overlay(Capsule(style: .continuous).strokeBorder(.white.opacity(0.12), lineWidth: 0.5).padding(0.5))
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }

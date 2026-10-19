@@ -40,14 +40,14 @@ struct TagChip: View {
 
     private var foreground: Color {
         switch tone {
-        case .accent: Brand.limeDeep
+        case .accent: Brand.blueDeep
         case .warning: Brand.red
         case .plain: Brand.muted
         }
     }
     private var background: Color {
         switch tone {
-        case .accent: Brand.limeSoft
+        case .accent: Brand.blueSoft
         case .warning: Brand.red.opacity(0.1)
         case .plain: Brand.sunken
         }
@@ -67,7 +67,7 @@ struct RowIconButton: View {
         Button(role: role, action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 10.5, weight: .semibold))
-                .foregroundStyle(active ? Brand.limeDeep : (hovering ? Brand.ink : Brand.muted))
+                .foregroundStyle(active ? Brand.blueDeep : (hovering ? Brand.ink : Brand.muted))
                 .frame(width: 26, height: 26)
                 .background(Circle().fill(hovering ? Brand.ink.opacity(0.08) : Brand.sunken))
         }
@@ -1057,7 +1057,7 @@ struct DictionaryPanel: View {
                 Text("Import from Wispr Flow").font(skin.body(13, .semibold))
                 Text(importNote ?? "Brings in the words and corrections Wispr Flow has learned, marked as imported.")
                     .font(skin.body(11))
-                    .foregroundStyle(importNote == nil ? Brand.muted : Brand.limeDeep)
+                    .foregroundStyle(importNote == nil ? Brand.muted : Brand.blueDeep)
             }
             Spacer()
             Button("Import", action: importWispr).controlSize(.small)
@@ -1101,7 +1101,7 @@ struct DictionaryPanel: View {
                     Text(last.at, style: .relative).font(skin.body(11)).foregroundStyle(Brand.faint)
                     + Text(" ago").font(skin.body(11)).foregroundStyle(Brand.faint)
                     Spacer()
-                    if let learnedNote { Text(learnedNote).font(skin.body(11)).foregroundStyle(Brand.limeDeep) }
+                    if let learnedNote { Text(learnedNote).font(skin.body(11)).foregroundStyle(Brand.blueDeep) }
                     Button("Save correction") {
                         let learned = vocab.learn(corrected: correction)
                         learnedNote = learned.isEmpty ? "No word changes to learn"
@@ -1282,7 +1282,7 @@ struct SnippetsPanel: View {
         .padding(14)
         .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Brand.ink.opacity(0.05)))
         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .strokeBorder(Brand.limeDeep.opacity(0.35), lineWidth: 1))
+            .strokeBorder(Brand.blueDeep.opacity(0.35), lineWidth: 1))
     }
 }
 

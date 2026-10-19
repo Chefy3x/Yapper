@@ -48,11 +48,12 @@
   --tape:#DDC98B;
   --tape-soft:#F4EDD8;
   --tape-ink:#7A6320;
-  --green:#BAD951;        /* sampled from the skull sticker on deck.webp — primary buttons, ink text */
-  --green-hover:#B0D13F;
-  --green-soft:#EBF3C6;   /* chips — tint of the sticker */
-  --green-deep:#6F8D14;   /* text accents */
-  --lime:#BAD951;         /* hero badge tag */
+  --blue:#315CF5;         /* Yapper blue — sparing: the logo, badge tags, small accents (white type on it) */
+  --btn:#141412;          /* primary buttons are ink, so the blue stays rare */
+  --btn-hover:#2A2A27;
+  --blue-soft:#E5EBFE;    /* selection, chips */
+  --blue-deep:#2447C9;    /* text accents and focus rings on light */
+  --blue-lcd:#7D97FF;     /* accent type and waves on the dark LCD chips */
   --red:#C74537;
   --led:#3E9E5B;
   --sans:'DM Sans',-apple-system,BlinkMacSystemFont,'SF Pro Text',system-ui,'Segoe UI',Roboto,sans-serif;
@@ -63,7 +64,7 @@
   --r-lg:20px;
   --shadow-sm:0 1px 2px rgba(20,20,18,.05),0 1px 4px rgba(20,20,18,.04);
   --shadow-md:0 12px 32px -12px rgba(20,20,18,.18),0 2px 6px rgba(20,20,18,.05);
-  --shadow-green:0 1px 2px rgba(60,80,10,.22),inset 0 1px 0 rgba(255,255,255,.35);
+  --shadow-btn:0 1px 2px rgba(20,20,18,.22),inset 0 1px 0 rgba(255,255,255,.12);
 }
 *,*::before,*::after{box-sizing:border-box}
 html{scroll-behavior:smooth;overflow-x:clip}
@@ -82,7 +83,7 @@ body{
 }
 a{color:inherit;text-decoration:none}
 img{max-width:100%;display:block}
-::selection{background:var(--green-soft);color:var(--ink)}
+::selection{background:var(--blue-soft);color:var(--ink)}
 .wrap{max-width:1120px;margin:0 auto;padding:0 24px}
 .wrap--narrow{max-width:880px;margin-left:auto;margin-right:auto}
 
@@ -106,7 +107,7 @@ p{margin:0}
   color:var(--muted);margin-bottom:18px;
 }
 .eyebrow .ctr{
-  font:600 11px/1 var(--mono);letter-spacing:.1em;color:var(--green);
+  font:600 11px/1 var(--mono);letter-spacing:.1em;color:var(--blue-lcd);
   background:#1B1A17;border-radius:5px;padding:5px 7px 4px;
   box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 1px 2px rgba(20,20,18,.18);
 }
@@ -120,8 +121,8 @@ p{margin:0}
   transition:background .15s ease,border-color .15s ease,box-shadow .15s ease,transform .15s ease;
 }
 .btn svg{width:16px;height:16px;flex:none}
-.btn--primary{background:var(--green);color:#16200A;box-shadow:var(--shadow-green)}
-.btn--primary:hover{background:var(--green-hover);transform:translateY(-1px);box-shadow:0 8px 18px -8px rgba(90,120,20,.5),var(--shadow-green)}
+.btn--primary{background:var(--btn);color:#fff;box-shadow:var(--shadow-btn)}
+.btn--primary:hover{background:var(--btn-hover);transform:translateY(-1px);box-shadow:0 8px 18px -8px rgba(20,20,18,.45),var(--shadow-btn)}
 .btn--secondary{background:var(--surface);color:var(--ink);border-color:var(--line-2);box-shadow:var(--shadow-sm)}
 .btn--secondary:hover{border-color:rgba(20,20,18,.28);transform:translateY(-1px)}
 .btn--sm{height:38px;padding:0 16px;font-size:14px}
@@ -146,7 +147,7 @@ p{margin:0}
 }
 .badge .tag{
   font:600 11.5px/1 var(--sans);letter-spacing:.01em;
-  color:#1F2E08;background:var(--lime);
+  color:#fff;background:var(--blue);
   border-radius:999px;padding:5px 9px;
 }
 a.badge{transition:border-color .15s ease,box-shadow .15s ease}
@@ -165,7 +166,7 @@ kbd{
   font:600 10.5px/1 var(--sans);letter-spacing:.06em;text-transform:uppercase;
   color:var(--muted);border:1px solid var(--line-2);border-radius:999px;padding:4px 7px 3px;
 }
-.new{color:#1F2E08;background:var(--lime);border-color:transparent}
+.new{color:#fff;background:var(--blue);border-color:transparent}
 
 /* hand-written margin notes — the same marker + arrow as the deck's "press play" note */
 .note{
@@ -220,7 +221,7 @@ kbd{
 /* ---------- the deck stage ---------- */
 .stage{
   position:relative;margin:56px auto 0;max-width:1000px;
-  background:linear-gradient(180deg,#F3EBD3 0%,#EAE0C2 100%);
+  background:linear-gradient(180deg,#EFEEEA 0%,#E3E1DB 100%);
   border:1px solid var(--line);border-radius:28px;
   padding:64px 24px 36px;
   box-shadow:var(--shadow-md);
@@ -289,7 +290,7 @@ kbd{
   -webkit-tap-highlight-color:transparent;
 }
 .hot:focus{outline:none}
-.hot:focus-visible{outline:2px solid var(--green-deep);outline-offset:4px}
+.hot:focus-visible{outline:2px solid var(--blue-deep);outline-offset:4px}
 .hot[data-i="0"]{left:30.90%}
 .hot[data-i="1"]{left:41.00%}
 .hot[data-i="2"]{left:51.00%}
@@ -313,14 +314,14 @@ kbd{
 .deck:hover .speed-mark,.speed-mark:focus-visible{opacity:1;pointer-events:auto}
 .speed-mark.off1x{opacity:1;pointer-events:auto;color:rgba(221,201,139,.92)}
 .speed-mark:focus{outline:none}
-.speed-mark:focus-visible{outline:2px solid var(--green-deep);outline-offset:3px}
+.speed-mark:focus-visible{outline:2px solid var(--blue-deep);outline-offset:3px}
 @media (hover:none){.speed-mark{opacity:1;pointer-events:auto}}
 
 /* tape counter / status */
 .counter{
   margin:26px auto 0;display:inline-flex;align-items:center;gap:12px;
   font:600 11.5px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;
-  color:var(--green);
+  color:var(--blue-lcd);
   background:#1B1A17;border:1px solid rgba(0,0,0,.4);border-radius:8px;
   padding:11px 16px;
   box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 1px 2px rgba(20,20,18,.2);
@@ -347,7 +348,7 @@ kbd{
   font:600 12.5px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);
   padding:16px 0;
 }
-.marquee b{color:var(--lime);padding:0 18px;font-weight:600}
+.marquee b{color:var(--blue);padding:0 18px;font-weight:600}
 @keyframes slide{to{transform:translateX(-50%)}}
 
 /* =========================================================
@@ -375,7 +376,7 @@ kbd{
 .film-snd:hover{background:rgba(20,20,18,.82)}
 .film-snd svg{width:15px;height:15px;flex:none}
 .film-snd:focus{outline:none}
-.film-snd:focus-visible{outline:2px solid var(--green);outline-offset:3px}
+.film-snd:focus-visible{outline:2px solid var(--blue);outline-offset:3px}
 
 /* --- big three --- */
 .trio-zone{position:relative}
@@ -399,12 +400,12 @@ kbd{
 .vi-list p{padding-left:18px;border-left:2px solid var(--line-2);color:var(--ink-2);font-size:15px;line-height:1.6}
 .vi-list b{display:block;font-weight:600;color:var(--ink);margin-bottom:4px;letter-spacing:-.01em}
 .vi-demo{
-  background:linear-gradient(180deg,#F3EBD3 0%,#EAE0C2 100%);
+  background:linear-gradient(180deg,#EFEEEA 0%,#E3E1DB 100%);
   border:1px solid var(--line);border-radius:24px;padding:28px;box-shadow:var(--shadow-md);
 }
 .lcd{
   background:#1B1A17;border:1px solid rgba(0,0,0,.4);border-radius:12px;padding:14px 16px 12px;
-  font:600 11.5px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--green);
+  font:600 11.5px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--blue-lcd);
   box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 1px 2px rgba(20,20,18,.2);
 }
 .lcd-top{display:flex;align-items:center;gap:10px;white-space:nowrap}
@@ -412,10 +413,10 @@ kbd{
 .lcd.listening .led{background:var(--red);box-shadow:0 0 8px var(--red);animation:blink 1.1s steps(2,start) infinite}
 .lcd.done .led{background:var(--led);box-shadow:0 0 8px var(--led)}
 .lcd-state{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
-.lcd-app{color:rgba(186,217,81,.5)}
+.lcd-app{color:rgba(125,151,255,.5)}
 .wave{display:flex;align-items:center;gap:3px;height:36px;margin-top:12px}
-.wave i{flex:1;height:3px;border-radius:2px;background:rgba(186,217,81,.28)}
-.lcd.listening .wave i{background:var(--green);animation:wv .7s ease-in-out infinite alternate}
+.wave i{flex:1;height:3px;border-radius:2px;background:rgba(125,151,255,.28)}
+.lcd.listening .wave i{background:var(--blue-lcd);animation:wv .7s ease-in-out infinite alternate}
 @keyframes wv{from{height:4px}to{height:var(--h,24px)}}
 .composer{
   margin-top:14px;background:var(--surface);border:1px solid var(--line-2);border-radius:16px;
@@ -433,7 +434,7 @@ kbd{
 .shell{margin:0;display:flex;flex-direction:column}
 .shell-stage{
   flex:1;display:grid;place-items:center;min-height:300px;padding:40px 28px;
-  background:linear-gradient(180deg,#F3EBD3 0%,#EAE0C2 100%);
+  background:linear-gradient(180deg,#EFEEEA 0%,#E3E1DB 100%);
   border:1px solid var(--line);border-radius:20px;
 }
 .shell-stage img{max-width:100%;height:auto}
@@ -445,7 +446,7 @@ kbd{
 /* --- setup --- */
 .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
 .step{padding:26px 26px 24px}
-.step .n{display:block;margin-bottom:14px;font:italic 400 44px/1 var(--serif);color:var(--green-deep)}
+.step .n{display:block;margin-bottom:14px;font:italic 400 44px/1 var(--serif);color:var(--blue-deep)}
 .step h3{margin-bottom:8px}
 .step p{color:var(--ink-2);font-size:15px;line-height:1.6}
 .step p b{font-weight:600;color:var(--ink)}
@@ -463,7 +464,7 @@ kbd{
   padding:14px 0;border-bottom:1px solid var(--line);
 }
 .track:last-of-type{border-bottom:0}
-.track .no{font:600 12px/1.4 var(--mono);color:var(--green-deep)}
+.track .no{font:600 12px/1.4 var(--mono);color:var(--blue-deep)}
 .track .t{font-weight:600;font-size:15px;letter-spacing:-.01em;color:var(--ink)}
 .track .d{display:block;color:var(--muted);font-size:14px;margin-top:2px}
 .track .spec{font:500 12px/1.5 var(--mono);color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums;text-align:right}
@@ -507,7 +508,7 @@ kbd{
 .faq summary::after{content:"+";flex:none;font:400 26px/1 var(--sans);color:var(--muted);transition:transform .2s ease}
 .faq details[open] summary::after{transform:rotate(45deg)}
 .faq summary:focus{outline:none}
-.faq summary:focus-visible{outline:2px solid var(--green-deep);outline-offset:4px;border-radius:4px}
+.faq summary:focus-visible{outline:2px solid var(--blue-deep);outline-offset:4px;border-radius:4px}
 .faq details p{padding:0 0 22px;max-width:64ch;color:var(--ink-2);font-size:15.5px;line-height:1.65}
 .faq details p b{font-weight:600;color:var(--ink)}
 
@@ -586,7 +587,7 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
 <nav class="nav">
   <div class="wrap nav-inner">
     <a class="brand" href="#top" aria-label="Yapper">
-      <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDI0IDEwMjQiIHdpZHRoPSIxMDI0IiBoZWlnaHQ9IjEwMjQiPgo8cmVjdCB3aWR0aD0iMTAyNCIgaGVpZ2h0PSIxMDI0IiByeD0iMTkwIiBmaWxsPSIjQkFEOTUxIi8+CjxnIHRyYW5zZm9ybT0idHJhbnNsYXRlKDE1My42MCwyMTAuOTkpIHNjYWxlKDAuNzYwMTMpIHRyYW5zbGF0ZSgtNTI2LC0xNTgzKSI+CjxnIHRyYW5zZm9ybT0idHJhbnNsYXRlKDAuMDAwMDAwLDQwMDAuMDAwMDAwKSBzY2FsZSgwLjEwMDAwMCwtMC4xMDAwMDApIiBmaWxsPSIjMTQxNDEyIiBzdHJva2U9Im5vbmUiPgo8cGF0aCBkPSJNMTI1NDQgMjQxNDYgYy01NyAtMjkgLTY4IC00MyAtMTQ4IC0xNzkgLTMxIC01NCAtMTE3IC0xODkgLTE5MAotMzAwIC0yMTYgLTMyOSAtMzQ5IC01MzQgLTQzMSAtNjY3IC00MyAtNjkgLTEzNCAtMjEwIC0yMDMgLTMxNCAtNjkgLTEwNQotMTI5IC0yMDUgLTEzNCAtMjI0IC0xMiAtNDQgLTIgLTEyMSAyMiAtMTYwIDM0IC01NiAxMzIgLTkwIDIwMSAtNzIgbDM4IDExCjQzIDUxIGMxMTkgMTQyIDE4NCAyMTcgMjE3IDI1MyA4MCA4NyA0MDkgNDY0IDY0MSA3MzUgMTM0IDE1NyAyNzIgMzE1IDMwNwozNTIgNzYgODAgOTYgMTIyIDk2IDIwNSBsMCA2MiAtMjQgNDAgYy0yNyA0MyAtMTc3IDE4NCAtMjI0IDIwOCAtMTYgOSAtNTkgMTgKLTk1IDIwIGwtNjUgNSAtNTEgLTI2eiIvPgo8cGF0aCBkPSJNOTc5MSAyMzYxMCBjLTEwMyAtNDggLTE4MSAtMTQ4IC0xOTYgLTI1MyBsLTcgLTQyIDE1IC00MiAxNSAtNDMKLTY3IC04NiBjLTQxMyAtNTM4IC03NzkgLTk0MiAtMTU2MSAtMTcyMiAtNDYyIC00NjEgLTkzMiAtODc3IC0xNjU0IC0xNDYyCi0xNzQgLTE0MiAtMTg4IC0xNTIgLTI4NiAtMTkwIC0yMzQgLTkyIC00ODYgLTIwMiAtNTMwIC0yMzAgLTE4MCAtMTE2IC0yODcKLTM2MyAtMjUwIC01ODAgMTIgLTY5IDM1IC0xMzQgOTMgLTI2MCA0MiAtOTIgNjIgLTE0MCAxMTcgLTI3MCAxMDkgLTI2MSAxMzQKLTMyMSAyMjIgLTUyMCAxMjkgLTI5NiAxNDMgLTMyMiAyMTEgLTM5MCA5MiAtOTIgMjEyIC0xNDMgMzcyIC0xNTcgOTQgLTggMTQ4CjYgMjk5IDcyIDcwIDMxIDEzNiA1NSAxNDcgNTMgbDIxIC0zIDI0IC02MCBjMTQgLTMzIDQ1IC0xMjEgNzAgLTE5NSA4NCAtMjUxCjE5NSAtNDQwIDM0OSAtNTk2IDE4MiAtMTg1IDQ5MiAtMzQyIDc0MCAtMzc1IGw5MCAtMTIgMTMwIDYgMTMwIDYgODUgMjIgYzE1MwozOSA2NTYgMjYzIDc5NSAzNTUgMTA2IDcwIDI2MiAyMjEgMzM0IDMyNCAxMDIgMTQ2IDE5MyAzNjAgMjI3IDUzNiAxOSAxMDAgMTgKMzI1IC0yIDQzOCAtOCA0OSAtMTIgOTIgLTcgOTcgMTggMTggMzQwIDMwIDc3MyAzMCBsNDU1IDAgMjY1IC0xNSBjMzg0IC0yMwo3MDQgLTU1IDczMiAtNzIgNSAtMyAyNyAtMzQgNDkgLTY5IGw0MCAtNjQgNTcgLTI4IDU3IC0yOCA3NSAwIDc1IDAgNDAgMjIKYzkyIDQ5IDE1MyAxNDAgMTYyIDI0MiA2IDY1IC0zIDk4IC01NCAyMTEgLTE5IDQxIC01NyAxMjYgLTg1IDE5MCAtNjggMTU2Ci0yMDIgNDU2IC0yNTAgNTU5IC0yMSA0NiAtNTYgMTI1IC03OCAxNzUgLTIxIDUwIC02MCAxMzYgLTg1IDE5MSAtMjYgNTUgLTk4CjIxOSAtMTYyIDM2NCAtNjMgMTQ1IC0xMzIgMzAwIC0xNTIgMzQ1IC0yMSA0NCAtNjIgMTM1IC05MSAyMDEgLTI5IDY2IC02NAoxNDUgLTc3IDE3NSAtNzEgMTU3IC0xOTkgNDQ0IC0yMjggNTEwIC0xOCA0MSAtNTEgMTE2IC03NSAxNjUgLTIzIDUwIC02MCAxMzIKLTgxIDE4MyAtMjIgNTAgLTU1IDEyNyAtNzUgMTcwIC0yMCA0MiAtNTMgMTE4IC03NCAxNjggLTIyIDUwIC01OCAxMzEgLTgxCjE4MCAtMjIgNDkgLTU0IDEyMSAtNjkgMTU5IC0xNSAzOSAtNDEgOTkgLTU4IDEzNSAtNzQgMTYxIC0yMzkgNTQyIC0zMzcgNzgwCi0xODMgNDQyIC0yNTMgNTkxIC0yOTggNjM4IC0xOCAxOSAtNTAgNDMgLTcyIDU0IGwtNDAgMjEgLTcwIDQgLTcwIDQgLTQ0IC0yMXoKbS02NDQgLTU2MzIgYzE5IC0yNSAzNSAtMTQ0IDM1IC0yNjMgbDAgLTEyMSAtMjEgLTgzIGMtMTIgLTQ2IC00MCAtMTIwIC02MwotMTY1IGwtNDMgLTgxIC04NSAtODYgLTg1IC04NiAtNzcgLTM3IGMtNzUgLTM2IC0zODkgLTE2NyAtNDk4IC0yMDggbC01NSAtMjEKLTkyIC01IGMtMTY1IC05IC0zMTEgMzQgLTQ2OSAxMzYgLTEyNSA4MiAtMjEwIDE4MiAtMjc4IDMyNyAtNDQgOTMgLTEzNyAzMzYKLTE0MyAzNzEgbC01IDMxIDExOCAzMSBjMTMyIDM0IDMyMSA3NCA0NTkgOTYgNTAgOCAxMjggMjIgMTc1IDMwIDIzNyA0MiA0NjUKNzcgNjUwIDEwMSAzNzIgNDYgNDYyIDUyIDQ3NyAzM3oiLz4KPHBhdGggZD0iTTE0MjMwIDIyNTUzIGMtMjYgLTEwIC00OTcgLTI4MiAtNzAxIC00MDQgLTEwOCAtNjUgLTI1NCAtMTQ5IC0zMjUKLTE4NyAtNzEgLTM4IC0yMTAgLTExNyAtMzA5IC0xNzcgLTk5IC01OSAtMjMyIC0xMzYgLTI5NSAtMTcwIC0yMTEgLTExNCAtMzc1Ci0yMDcgLTM5NCAtMjI0IC0zMSAtMjYgLTU2IC05MiAtNTYgLTE0OSAwIC04NCAzOCAtMTM4IDExOSAtMTY3IDYzIC0yMiA4MwotMTkgMTY5IDIzIDk5IDUwIDI0MSAxMDggNDE1IDE3MiA3NiAyOCAyMDIgNzggMjgwIDExMSA3OCAzNCAyMTYgOTAgMzA3IDEyNgo5MSAzNSAyMzUgOTUgMzIwIDEzMiAyNDYgMTA5IDM2MyAxNTkgNTQ1IDIzMiBsMTY5IDY5IDM4IDM3IGMyMSAyMSA0OCA1NyA2MAo4MSBsMjEgNDQgMCA1MiAxIDUxIC01NyAxMzAgLTU2IDEzMCAtNDAgMzYgYy01NSA1MCAtMTUzIDc0IC0yMTEgNTJ6Ii8+CjxwYXRoIGQ9Ik0xNDI1MCAyMDI4NCBjLTg1IC03IC0yNjEgLTIwIC0zOTAgLTI5IC01ODcgLTM5IC02NzUgLTQ1IC04MzUgLTU1Ci05MyAtNiAtMjE4IC0xNSAtMjc3IC0yMCBsLTEwNyAtOCAtMzUgLTIxIGMtMTkgLTEyIC00NSAtMzggLTU3IC01NyBsLTIxIC0zNQo0IC02NCA0IC02NCAzMSAtMzggYzE2IC0yMSA0MyAtNDUgNTkgLTU1IGwyOSAtMTYgMjMwIC0yNiBjNTk1IC02NiA5NTAgLTEwNwoxMjU1IC0xNDYgNDEgLTUgMTMwIC0xNSAxOTcgLTIxIGwxMjMgLTEyIDQ2IDE4IGM2NCAyNCAxMTcgNzUgMTQ0IDEzOCBsMjMgNTIKOCAxMjAgOSAxMjAgLTE1IDUxIGMtOCAyNyAtMjggNjkgLTQ0IDkxIGwtMjkgNDAgLTUzIDI3IC01MyAyNiAtNDUgLTEgYy0yNgotMSAtMTE2IC04IC0yMDEgLTE1eiIvPgo8L2c+CjwvZz4KPC9zdmc+Cg==" alt="" width="26" height="26">
+      <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDI0IDEwMjQiIHdpZHRoPSIxMDI0IiBoZWlnaHQ9IjEwMjQiPgo8cmVjdCB3aWR0aD0iMTAyNCIgaGVpZ2h0PSIxMDI0IiByeD0iMTkwIiBmaWxsPSIjMzE1Q0Y1Ii8+CjxnIHRyYW5zZm9ybT0idHJhbnNsYXRlKDE1My42MCwyMTAuOTkpIHNjYWxlKDAuNzYwMTMpIHRyYW5zbGF0ZSgtNTI2LC0xNTgzKSI+CjxnIHRyYW5zZm9ybT0idHJhbnNsYXRlKDAuMDAwMDAwLDQwMDAuMDAwMDAwKSBzY2FsZSgwLjEwMDAwMCwtMC4xMDAwMDApIiBmaWxsPSIjRkZGRkZGIiBzdHJva2U9Im5vbmUiPgo8cGF0aCBkPSJNMTI1NDQgMjQxNDYgYy01NyAtMjkgLTY4IC00MyAtMTQ4IC0xNzkgLTMxIC01NCAtMTE3IC0xODkgLTE5MAotMzAwIC0yMTYgLTMyOSAtMzQ5IC01MzQgLTQzMSAtNjY3IC00MyAtNjkgLTEzNCAtMjEwIC0yMDMgLTMxNCAtNjkgLTEwNQotMTI5IC0yMDUgLTEzNCAtMjI0IC0xMiAtNDQgLTIgLTEyMSAyMiAtMTYwIDM0IC01NiAxMzIgLTkwIDIwMSAtNzIgbDM4IDExCjQzIDUxIGMxMTkgMTQyIDE4NCAyMTcgMjE3IDI1MyA4MCA4NyA0MDkgNDY0IDY0MSA3MzUgMTM0IDE1NyAyNzIgMzE1IDMwNwozNTIgNzYgODAgOTYgMTIyIDk2IDIwNSBsMCA2MiAtMjQgNDAgYy0yNyA0MyAtMTc3IDE4NCAtMjI0IDIwOCAtMTYgOSAtNTkgMTgKLTk1IDIwIGwtNjUgNSAtNTEgLTI2eiIvPgo8cGF0aCBkPSJNOTc5MSAyMzYxMCBjLTEwMyAtNDggLTE4MSAtMTQ4IC0xOTYgLTI1MyBsLTcgLTQyIDE1IC00MiAxNSAtNDMKLTY3IC04NiBjLTQxMyAtNTM4IC03NzkgLTk0MiAtMTU2MSAtMTcyMiAtNDYyIC00NjEgLTkzMiAtODc3IC0xNjU0IC0xNDYyCi0xNzQgLTE0MiAtMTg4IC0xNTIgLTI4NiAtMTkwIC0yMzQgLTkyIC00ODYgLTIwMiAtNTMwIC0yMzAgLTE4MCAtMTE2IC0yODcKLTM2MyAtMjUwIC01ODAgMTIgLTY5IDM1IC0xMzQgOTMgLTI2MCA0MiAtOTIgNjIgLTE0MCAxMTcgLTI3MCAxMDkgLTI2MSAxMzQKLTMyMSAyMjIgLTUyMCAxMjkgLTI5NiAxNDMgLTMyMiAyMTEgLTM5MCA5MiAtOTIgMjEyIC0xNDMgMzcyIC0xNTcgOTQgLTggMTQ4CjYgMjk5IDcyIDcwIDMxIDEzNiA1NSAxNDcgNTMgbDIxIC0zIDI0IC02MCBjMTQgLTMzIDQ1IC0xMjEgNzAgLTE5NSA4NCAtMjUxCjE5NSAtNDQwIDM0OSAtNTk2IDE4MiAtMTg1IDQ5MiAtMzQyIDc0MCAtMzc1IGw5MCAtMTIgMTMwIDYgMTMwIDYgODUgMjIgYzE1MwozOSA2NTYgMjYzIDc5NSAzNTUgMTA2IDcwIDI2MiAyMjEgMzM0IDMyNCAxMDIgMTQ2IDE5MyAzNjAgMjI3IDUzNiAxOSAxMDAgMTgKMzI1IC0yIDQzOCAtOCA0OSAtMTIgOTIgLTcgOTcgMTggMTggMzQwIDMwIDc3MyAzMCBsNDU1IDAgMjY1IC0xNSBjMzg0IC0yMwo3MDQgLTU1IDczMiAtNzIgNSAtMyAyNyAtMzQgNDkgLTY5IGw0MCAtNjQgNTcgLTI4IDU3IC0yOCA3NSAwIDc1IDAgNDAgMjIKYzkyIDQ5IDE1MyAxNDAgMTYyIDI0MiA2IDY1IC0zIDk4IC01NCAyMTEgLTE5IDQxIC01NyAxMjYgLTg1IDE5MCAtNjggMTU2Ci0yMDIgNDU2IC0yNTAgNTU5IC0yMSA0NiAtNTYgMTI1IC03OCAxNzUgLTIxIDUwIC02MCAxMzYgLTg1IDE5MSAtMjYgNTUgLTk4CjIxOSAtMTYyIDM2NCAtNjMgMTQ1IC0xMzIgMzAwIC0xNTIgMzQ1IC0yMSA0NCAtNjIgMTM1IC05MSAyMDEgLTI5IDY2IC02NAoxNDUgLTc3IDE3NSAtNzEgMTU3IC0xOTkgNDQ0IC0yMjggNTEwIC0xOCA0MSAtNTEgMTE2IC03NSAxNjUgLTIzIDUwIC02MCAxMzIKLTgxIDE4MyAtMjIgNTAgLTU1IDEyNyAtNzUgMTcwIC0yMCA0MiAtNTMgMTE4IC03NCAxNjggLTIyIDUwIC01OCAxMzEgLTgxCjE4MCAtMjIgNDkgLTU0IDEyMSAtNjkgMTU5IC0xNSAzOSAtNDEgOTkgLTU4IDEzNSAtNzQgMTYxIC0yMzkgNTQyIC0zMzcgNzgwCi0xODMgNDQyIC0yNTMgNTkxIC0yOTggNjM4IC0xOCAxOSAtNTAgNDMgLTcyIDU0IGwtNDAgMjEgLTcwIDQgLTcwIDQgLTQ0IC0yMXoKbS02NDQgLTU2MzIgYzE5IC0yNSAzNSAtMTQ0IDM1IC0yNjMgbDAgLTEyMSAtMjEgLTgzIGMtMTIgLTQ2IC00MCAtMTIwIC02MwotMTY1IGwtNDMgLTgxIC04NSAtODYgLTg1IC04NiAtNzcgLTM3IGMtNzUgLTM2IC0zODkgLTE2NyAtNDk4IC0yMDggbC01NSAtMjEKLTkyIC01IGMtMTY1IC05IC0zMTEgMzQgLTQ2OSAxMzYgLTEyNSA4MiAtMjEwIDE4MiAtMjc4IDMyNyAtNDQgOTMgLTEzNyAzMzYKLTE0MyAzNzEgbC01IDMxIDExOCAzMSBjMTMyIDM0IDMyMSA3NCA0NTkgOTYgNTAgOCAxMjggMjIgMTc1IDMwIDIzNyA0MiA0NjUKNzcgNjUwIDEwMSAzNzIgNDYgNDYyIDUyIDQ3NyAzM3oiLz4KPHBhdGggZD0iTTE0MjMwIDIyNTUzIGMtMjYgLTEwIC00OTcgLTI4MiAtNzAxIC00MDQgLTEwOCAtNjUgLTI1NCAtMTQ5IC0zMjUKLTE4NyAtNzEgLTM4IC0yMTAgLTExNyAtMzA5IC0xNzcgLTk5IC01OSAtMjMyIC0xMzYgLTI5NSAtMTcwIC0yMTEgLTExNCAtMzc1Ci0yMDcgLTM5NCAtMjI0IC0zMSAtMjYgLTU2IC05MiAtNTYgLTE0OSAwIC04NCAzOCAtMTM4IDExOSAtMTY3IDYzIC0yMiA4MwotMTkgMTY5IDIzIDk5IDUwIDI0MSAxMDggNDE1IDE3MiA3NiAyOCAyMDIgNzggMjgwIDExMSA3OCAzNCAyMTYgOTAgMzA3IDEyNgo5MSAzNSAyMzUgOTUgMzIwIDEzMiAyNDYgMTA5IDM2MyAxNTkgNTQ1IDIzMiBsMTY5IDY5IDM4IDM3IGMyMSAyMSA0OCA1NyA2MAo4MSBsMjEgNDQgMCA1MiAxIDUxIC01NyAxMzAgLTU2IDEzMCAtNDAgMzYgYy01NSA1MCAtMTUzIDc0IC0yMTEgNTJ6Ii8+CjxwYXRoIGQ9Ik0xNDI1MCAyMDI4NCBjLTg1IC03IC0yNjEgLTIwIC0zOTAgLTI5IC01ODcgLTM5IC02NzUgLTQ1IC04MzUgLTU1Ci05MyAtNiAtMjE4IC0xNSAtMjc3IC0yMCBsLTEwNyAtOCAtMzUgLTIxIGMtMTkgLTEyIC00NSAtMzggLTU3IC01NyBsLTIxIC0zNQo0IC02NCA0IC02NCAzMSAtMzggYzE2IC0yMSA0MyAtNDUgNTkgLTU1IGwyOSAtMTYgMjMwIC0yNiBjNTk1IC02NiA5NTAgLTEwNwoxMjU1IC0xNDYgNDEgLTUgMTMwIC0xNSAxOTcgLTIxIGwxMjMgLTEyIDQ2IDE4IGM2NCAyNCAxMTcgNzUgMTQ0IDEzOCBsMjMgNTIKOCAxMjAgOSAxMjAgLTE1IDUxIGMtOCAyNyAtMjggNjkgLTQ0IDkxIGwtMjkgNDAgLTUzIDI3IC01MyAyNiAtNDUgLTEgYy0yNgotMSAtMTE2IC04IC0yMDEgLTE1eiIvPgo8L2c+CjwvZz4KPC9zdmc+Cg==" alt="" width="26" height="26">
       Yapper
     </a>
     <div class="nav-links">

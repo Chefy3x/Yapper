@@ -4,7 +4,7 @@ import AppKit
 // MARK: - Brand (standard skin)
 
 /// The Settings look, taken from the website (site/index.html :root): a warm paper ground,
-/// white cards, ink type, New York for headlines, and lime as the one bright accent.
+/// white cards, ink type, New York for headlines, and electric blue as the one bright accent.
 enum Brand {
     static let canvas    = Color(hex: 0xF7F6F2)   // window ground
     static let rail      = Color(hex: 0xF1EFE9)   // sidebar, a step darker than the ground
@@ -16,10 +16,11 @@ enum Brand {
     static let line      = Color(hex: 0x141412).opacity(0.08)
     static let lineStrong = Color(hex: 0x141412).opacity(0.14)
 
-    static let lime      = Color(hex: 0xBAD951)   // primary buttons, the logo tile
-    static let limeHover = Color(hex: 0xB0D13F)
-    static let limeSoft  = Color(hex: 0xEBF3C6)   // selected rows, chips
-    static let limeDeep  = Color(hex: 0x6F8D14)   // accent text and icons on white
+    static let inkHover  = Color(hex: 0x2A2A27)   // primary buttons are ink, hover lifts a step
+    static let blue      = Color(hex: 0x315CF5)   // sparing: the logo tile, small marks (white on it)
+    static let blueSoft  = Color(hex: 0xE5EBFE)   // selected rows, chips
+    static let blueDeep  = Color(hex: 0x2447C9)   // accent text and icons on white
+    static let blueOnDark = Color(hex: 0x7D97FF)  // accent type on the dark LCD chip
     static let red       = Color(hex: 0xC74537)   // REC and destructive only
     static let led       = Color(hex: 0x3E9E5B)   // "all good"
     static let lcd       = Color(hex: 0x1B1A17)   // the dark counter chip behind eyebrow numbers
@@ -36,7 +37,7 @@ enum Brand {
 
     /// Stable, deterministic accent colors for voice avatars (standard skin).
     static let avatarPalette: [Color] = [
-        Color(hex: 0xBAD951), Color(hex: 0xE9C46A), Color(hex: 0xF0A58F),
+        Color(hex: 0x8FA6F7), Color(hex: 0xE9C46A), Color(hex: 0xF0A58F),
         Color(hex: 0x9CC5E8), Color(hex: 0xC7B3E6), Color(hex: 0xA9D8C1),
     ]
 }
@@ -177,10 +178,10 @@ enum Tape {
 enum SettingsSkin {
     case standard, tape
 
-    var accent: Color      { self == .tape ? Tape.yellow : Brand.limeDeep }
-    var accentDeep: Color  { self == .tape ? Tape.yellowLo : Brand.limeDeep }
-    var accentSoft: Color  { self == .tape ? Tape.yellow.opacity(0.13) : Brand.limeSoft }
-    /// Switches, sliders and progress: ink on the light skin, so lime stays rare.
+    var accent: Color      { self == .tape ? Tape.yellow : Brand.blueDeep }
+    var accentDeep: Color  { self == .tape ? Tape.yellowLo : Brand.blueDeep }
+    var accentSoft: Color  { self == .tape ? Tape.yellow.opacity(0.13) : Brand.blueSoft }
+    /// Switches, sliders and progress: ink on the light skin, so the blue stays rare.
     var controlTint: Color { self == .tape ? Tape.recRed : Brand.ink }
     /// Conversation Mode controls — the REC latch is red in tape mode.
     var liveTint: Color    { self == .tape ? Tape.recRed : Brand.ink }
@@ -191,7 +192,7 @@ enum SettingsSkin {
     var iconTint: Color      { self == .tape ? Tape.cream.opacity(0.82) : Brand.ink.opacity(0.72) }
     var iconChipBG: Color    { self == .tape ? Color.white.opacity(0.05) : Brand.sunken }
     /// Selection highlight fill — the accent lives in the border, so a selection reads without flooding the row.
-    var selectionFill: Color { self == .tape ? Color.white.opacity(0.05) : Brand.limeSoft.opacity(0.55) }
+    var selectionFill: Color { self == .tape ? Color.white.opacity(0.05) : Brand.blueSoft.opacity(0.55) }
 
     /// Display voice for panel titles and big numbers.
     func display(_ size: CGFloat, standardWeight: Font.Weight = .bold) -> Font {
