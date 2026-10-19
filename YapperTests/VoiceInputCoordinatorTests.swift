@@ -103,6 +103,17 @@ struct VoiceInputCoordinatorTests {
         #expect(rig.transcriber.lastSampleCount == 24_000)
     }
 
+    @Test func keyDownWithMediaPausedTrimsTheLead() async {
+        let rig = makeRig()
+        await settle()
+        rig.coordinator.keyPressed(playbackActive: false, trimLead: 0.25)
+        rig.coordinator.beginPushToTalk()
+        await settle(0.4)
+        rig.coordinator.endPushToTalk()
+        await waitUntil(rig.transcriber.calls == 1)
+        #expect(rig.transcriber.lastSampleCount == 16_000 - 4_000)
+    }
+
     @Test func aLockedDictationOutlivesTheKeyAndEndsOnTheNextPress() async {
         let rig = makeRig()
         await settle()

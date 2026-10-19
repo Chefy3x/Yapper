@@ -60,12 +60,23 @@ actor ParakeetTranscriber: Transcribing {
         }
     }
 
+    /// Loudest 20 ms frame above this: something reached the mic. A muted or disconnected
+    /// input sits around 0.0001; a quiet room around 0.001–0.002; soft speech on a quiet mic
+    /// starts near 0.005.
+    static let signalFloor: Float = 0.003
+
+    static func hasSignal(_ samples: [Float]) -> Bool {
+        (TranscriptFilter.frameLevels(samples).max() ?? 0) > signalFloor
+    }
+
     func transcribe(samples: [Float], prompt: String?) async throws -> String {
         try await prepare()
         guard let manager else { throw WhisperTranscriber.TranscriberError.notLoaded }
         let started = Date()
-        // Same gate as Whisper: a recording with nobody talking types nothing.
-        guard TranscriptFilter.hasSpeech(samples) else { return "" }
+        // Only a recording with no signal at all is skipped. Whisper's speech gate isn't used:
+        // Parakeet doesn't invent words from silence the way Whisper does, and on a quiet mic
+        // that gate threw away short sentences ("I like number one.") that were plainly there.
+        guard Self.hasSignal(samples) else { return "" }
         var state = TdtDecoderState.make(decoderLayers: Self.version.decoderLayers)
         let result = try await manager.transcribe(samples, decoderState: &state)
         // Times first ("at four thirty" → 4:30), which the general conversion gets wrong; then

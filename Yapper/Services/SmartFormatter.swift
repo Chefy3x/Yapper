@@ -80,10 +80,18 @@ enum FormatEngine {
     /// only has to name the words to cut, which is fast at any length.
     static let fillerViaModel = false
 
-    /// What sends a dictation to the model, and so how long it may take.
+    /// A "no wait, I mean" correction is applied by the model only in dictations up to this long.
+    /// Past it the reply can't be written in time, and on the user's history the two slowest
+    /// turns (2.6 s and 3.5 s) were exactly that: long dictations that timed out and changed nothing.
+    static let correctionMaxWords = 60
+
+    /// What sends a dictation to the model, and so how long it may take. Lists aren't on it:
+    /// the rules lay them out reliably, and the model only ever saw the ones they couldn't
+    /// ("a few things…" with no first or second), which it then failed to finish in time.
     static func plan(_ text: String, cleanup: Bool) -> TimeInterval? {
-        guard text.split(whereSeparator: \.isWhitespace).count >= 4 else { return nil }
-        if FormatCues.hasCorrection(text) || FormatCues.hasList(text) { return budget }
+        let words = text.split(whereSeparator: \.isWhitespace).count
+        guard words >= 4 else { return nil }
+        if FormatCues.hasCorrection(text) { return words <= correctionMaxWords ? budget : nil }
         guard fillerViaModel, cleanup, FormatCues.hasFiller(text),
               text.split(whereSeparator: \.isWhitespace).count <= fillerMaxWords else { return nil }
         return fillerBudget
