@@ -1955,11 +1955,16 @@ private struct AboutPanel: View {
             }
             .padding(.top, 6)
 
-            Text("Free and open source. Speech is transcribed on this Mac.")
-                .font(.system(size: 12))
-                .foregroundStyle(Brand.muted)
-                .padding(.top, 4)
-                .padding(.bottom, 34)
+            VStack(spacing: 4) {
+                Text("Free and open source. Speech is transcribed on this Mac.")
+                Text("Mouth shapes learned from LibriTTS (Zen et al.), CC BY 4.0.")
+                    .font(.system(size: 10.5))
+            }
+            .font(.system(size: 12))
+            .foregroundStyle(Brand.muted)
+            .multilineTextAlignment(.center)
+            .padding(.top, 4)
+            .padding(.bottom, 34)
         }
         .frame(maxWidth: .infinity)
         .background(

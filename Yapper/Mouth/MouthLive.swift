@@ -41,15 +41,14 @@ extension MouthVoiceReading {
 }
 
 /// The live reader (`MouthReader`), remembering what it learns about your voice and mic between
-/// turns so the mouth starts tuned, and with mouth shapes on (`shapesKey`), the viseme net.
+/// turns so the mouth starts tuned, and the viseme net for the lips' shapes (without its weights,
+/// the reader alone drives the mouth).
 final class MouthReaderVoice: MouthVoiceReading {
     static let statsKey = "mouthSpeakerStats"
-    /// Mouth shapes from the viseme net. Off until it has been judged on film.
-    static let shapesKey = "mouthShapes"
     private let reader: MouthReader
     private let visemes: MouthVisemes?
 
-    init(shapes: Bool = UserDefaults.standard.bool(forKey: MouthReaderVoice.shapesKey)) {
+    init(shapes: Bool = true) {
         let saved = UserDefaults.standard.data(forKey: Self.statsKey).flatMap { try? JSONDecoder().decode(SpeakerStats.self, from: $0) }
         reader = MouthReader(sampleRate: MouthLive.rate, stats: saved)
         visemes = shapes ? (try? MouthVisemeModel.bundled()).map(MouthVisemes.init(model:)) : nil

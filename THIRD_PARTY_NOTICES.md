@@ -1,6 +1,6 @@
 # Third-party notices
 
-Yapper is built on these projects and models. Models are downloaded on first use, never bundled.
+Yapper is built on these projects and models. Speech and formatting models are downloaded on first use, never bundled.
 
 | Component | Use in Yapper | License |
 |---|---|---|
@@ -11,5 +11,8 @@ Yapper is built on these projects and models. Models are downloaded on first use
 | [Qwen3.5 2B](https://huggingface.co/Qwen/Qwen3.5-2B) | On-device formatting model | Apache-2.0 |
 | [Sparkle](https://github.com/sparkle-project/Sparkle) | App updates | MIT |
 | [mediaremote-adapter](https://github.com/ungive/mediaremote-adapter) | Pausing other apps' media | BSD-3-Clause |
+| [LibriTTS](https://www.openslr.org/60/) with [Montreal Forced Aligner alignments](https://huggingface.co/datasets/cdminix/libritts-aligned) | Training data for the Loud Mouth's mouth-shape model (bundled weights only, no audio) | CC-BY-4.0 |
 
 Parakeet TDT is by NVIDIA, licensed under [Creative Commons Attribution 4.0](https://creativecommons.org/licenses/by/4.0/); Yapper uses FluidAudio's Core ML conversion unmodified.
+
+The Loud Mouth's mouth-shape model (`Yapper/Resources/visemes.bin`) was trained by Yapper on LibriTTS by Heiga Zen et al. (Google), derived from LibriSpeech and LibriVox, licensed under [Creative Commons Attribution 4.0](https://creativecommons.org/licenses/by/4.0/), with phone alignments from cdminix/libritts-aligned (CC BY 4.0). No audio from the corpus ships with Yapper.

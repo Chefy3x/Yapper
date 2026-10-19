@@ -11,7 +11,7 @@ import UniformTypeIdentifiers
 /// YAPPER_MOUTH_FILM=<output folder> (TEST_RUNNER_… through xcodebuild) writes PNGs to
 /// <folder>/frames and the jaw's opening per frame to <folder>/jaw.csv; YAPPER_MOUTH_FILM_AUDIO picks
 /// the speech (default site/audio/river-1.mp3), YAPPER_MOUTH_FILM_FPS the frame rate (default 60)
-/// and YAPPER_MOUTH_SHAPES=1 turns on the viseme net. Join the frames with the audio using ffmpeg.
+/// and YAPPER_MOUTH_SHAPES=0 leaves out the viseme net. Join the frames with the audio using ffmpeg.
 struct MouthFilm {
     nonisolated static let env = ProcessInfo.processInfo.environment
     nonisolated static let outDir = env["YAPPER_MOUTH_FILM"]
@@ -29,8 +29,8 @@ struct MouthFilm {
         let renderer = try MouthRenderer(asset: asset)
         let model = MouthModel(asset: asset, springs: 0.5)
         let reader = MouthReader(sampleRate: MouthLive.rate)
-        // YAPPER_MOUTH_SHAPES=1: the viseme net picks the lips' shapes, as with mouth shapes on in the app
-        let visemes = Self.env["YAPPER_MOUTH_SHAPES"] == "1" ? MouthVisemes(model: try MouthVisemesTests.model()) : nil
+        // the viseme net picks the lips' shapes, as in the app; YAPPER_MOUTH_SHAPES=0 films the reader alone
+        let visemes = Self.env["YAPPER_MOUTH_SHAPES"] == "0" ? nil : MouthVisemes(model: try MouthVisemesTests.model())
         var timeline = MouthTimeline()
         var director = MouthDirector()
 
