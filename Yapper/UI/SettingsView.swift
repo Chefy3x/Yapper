@@ -613,58 +613,57 @@ private struct CornerPicker: View {
 private struct VoicesPanel: View {
     @EnvironmentObject private var state: AppState
     @EnvironmentObject private var settings: SettingsStore
+    @Environment(\.settingsSkin) private var skin
     @State private var newVoiceName: String = ""
     @State private var newVoiceID: String = ""
 
-    private var allVoices: [VoicePreset] {
-        VoicePreset.presets + settings.customVoices
+    private var groups: [(title: String, voices: [VoicePreset])] {
+        let all = VoicePreset.presets + settings.customVoices
+        return [
+            ("ElevenLabs", all.filter { $0.provider == .elevenLabs }),
+            ("OpenAI", all.filter { $0.provider == .openAI }),
+            ("Built into macOS", all.filter { $0.provider == .macOSNative }),
+        ].filter { !$0.voices.isEmpty }
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            VStack(alignment: .leading, spacing: 8) {
-                SectionLabel(text: "Available")
-                VStack(spacing: 8) {
-                    ForEach(allVoices) { voice in
-                        VoiceCard(
-                            voice: voice,
-                            isActive: state.activeVoice.id == voice.id,
-                            onSelect: { state.activeVoice = voice },
-                            onPreview: { state.tts.preview(voice) },
-                            onDelete: voice.isCustom ? {
-                                settings.customVoices.removeAll { $0.id == voice.id }
-                            } : nil
-                        )
+        VStack(alignment: .leading, spacing: 28) {
+            ForEach(groups, id: \.title) { group in
+                VStack(alignment: .leading, spacing: 0) {
+                    SectionLabel(text: group.title)
+                    ListCard {
+                        ForEach(Array(group.voices.enumerated()), id: \.element.id) { idx, voice in
+                            VoiceRow(voice: voice,
+                                     isActive: state.activeVoice.id == voice.id,
+                                     last: idx == group.voices.count - 1,
+                                     onSelect: { state.activeVoice = voice },
+                                     onPreview: { state.tts.preview(voice) },
+                                     onDelete: voice.isCustom ? {
+                                         settings.customVoices.removeAll { $0.id == voice.id }
+                                     } : nil)
+                        }
                     }
                 }
             }
 
-            VStack(alignment: .leading, spacing: 8) {
-                SectionLabel(text: "Add a custom ElevenLabs voice")
+            VStack(alignment: .leading, spacing: 0) {
+                SectionLabel(text: "Add an ElevenLabs voice")
                 Card {
-                    VStack(alignment: .leading, spacing: 14) {
-                        FieldRow(label: "Display name") {
-                            TextField("e.g. Hannah", text: $newVoiceName)
-                                .textFieldStyle(.plain)
-                                .font(.system(size: 13))
-                        }
-                        Rectangle().fill(Brand.line).frame(height: 1)
-                        FieldRow(label: "Voice ID") {
-                            TextField("e.g. 21m00Tcm4TlvDq8ikWAM", text: $newVoiceID)
-                                .textFieldStyle(.plain)
-                                .font(.system(size: 13, design: .monospaced))
-                        }
-
-                        HStack {
-                            Spacer()
-                            PrimaryButton(title: "Add voice", systemImage: "plus") {
-                                addVoice()
-                            }
+                    HStack(spacing: 10) {
+                        TextField("Name", text: $newVoiceName)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 150)
+                        TextField("Voice ID, e.g. 21m00Tcm4TlvDq8ikWAM", text: $newVoiceID)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 12, design: .monospaced))
+                            .onSubmit(addVoice)
+                        Button("Add", action: addVoice)
                             .disabled(!canAdd)
-                            .opacity(canAdd ? 1 : 0.45)
-                        }
-                        .padding(.top, 2)
                     }
+                    Text("In ElevenLabs, open Voices, then the voice's ⋯ menu → Copy voice ID.")
+                        .font(skin.body(11))
+                        .foregroundStyle(Brand.muted)
+                        .padding(.top, 10)
                 }
             }
         }
@@ -692,105 +691,70 @@ private struct VoicesPanel: View {
     }
 }
 
-private struct FieldRow<Content: View>: View {
-    let label: String
-    @Environment(\.settingsSkin) private var skin
-    @ViewBuilder var content: () -> Content
-    var body: some View {
-        HStack(alignment: .center, spacing: 14) {
-            Text(label)
-                .font(skin.body(11, .semibold))
-                .tracking(0.4)
-                .foregroundStyle(Brand.muted)
-                .frame(width: 100, alignment: .leading)
-            content()
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-}
-
-private struct VoiceCard: View {
+/// One voice in a provider's list: click the row to use it, ▶ to hear it.
+private struct VoiceRow: View {
     let voice: VoicePreset
     let isActive: Bool
+    let last: Bool
     let onSelect: () -> Void
     let onPreview: () -> Void
     let onDelete: (() -> Void)?
     @State private var hovering = false
     @Environment(\.settingsSkin) private var skin
 
-    private var initial: String {
-        String(voice.displayName.prefix(1)).uppercased()
-    }
-
-    private var accent: Color {
-        skin.avatarColor(for: voice.id)
-    }
-
-    private var providerLabel: String {
-        let base: String
-        switch voice.provider {
-        case .elevenLabs:  base = "ElevenLabs"
-        case .openAI:      base = "OpenAI"
-        case .macOSNative: base = "macOS"
-        }
-        return voice.isCustom ? base + " · Custom" : base
-    }
-
     var body: some View {
-        HStack(spacing: 14) {
-            // Avatar
-            ZStack {
-                Circle().fill(accent)
-                Text(initial)
-                    .font(Brand.display(19))
-                    .foregroundStyle(Brand.ink)
-            }
-            .frame(width: 38, height: 38)
-            .overlay(Circle().strokeBorder(Brand.ink.opacity(0.08), lineWidth: 1))
-
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 8) {
-                    Text(voice.displayName)
-                        .font(skin.body(14, .semibold))
-                    if isActive { TagChip(text: "In use", tone: .accent) }
-                }
-                Text(providerLabel)
+        HStack(spacing: 12) {
+            Image(systemName: isActive ? "checkmark.circle.fill" : "circle")
+                .font(.system(size: 15, weight: isActive ? .semibold : .regular))
+                .foregroundStyle(isActive ? skin.controlTint : Brand.lineStrong)
+                .frame(width: 18)
+            Text(voice.displayName)
+                .font(skin.body(13, isActive ? .semibold : .medium))
+                .foregroundStyle(Brand.ink)
+            if voice.isCustom { TagChip(text: "Custom") }
+            if isActive {
+                Text("In use")
                     .font(skin.body(11))
                     .foregroundStyle(Brand.muted)
             }
-
-            Spacer()
-
-            PlayDisc(action: onPreview, help: "Preview")
-
+            Spacer(minLength: 8)
+            RowIconButton(symbol: "play.fill", help: "Preview \(voice.displayName)", action: onPreview)
             if let onDelete {
-                Button(action: onDelete) {
-                    Image(systemName: "trash")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Brand.muted)
-                        .frame(width: 28, height: 28)
-                        .background(Circle().fill(Brand.sunken))
-                }
-                .buttonStyle(.plain)
-                .help("Remove")
+                RowIconButton(symbol: "trash", help: "Remove \(voice.displayName)", role: .destructive, action: onDelete)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(
-            RoundedRectangle(cornerRadius: Brand.cardRadius, style: .continuous)
-                .fill(isActive ? Brand.surface : (hovering ? Brand.surface : Brand.surface.opacity(0.6)))
-                .shadow(color: Brand.ink.opacity(isActive || hovering ? 0.05 : 0), radius: 3, y: 1)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: Brand.cardRadius, style: .continuous)
-                .strokeBorder(isActive ? Brand.ink : Brand.line, lineWidth: isActive ? 1.5 : 1)
-        )
+        .listRowChrome(last: last, hovering: hovering)
         .contentShape(Rectangle())
         .onTapGesture(perform: onSelect)
         .onHover { hovering = $0 }
-        .animation(.easeOut(duration: 0.12), value: isActive)
-        .animation(.easeOut(duration: 0.12), value: hovering)
+        .accessibilityAddTraits(isActive ? [.isButton, .isSelected] : .isButton)
+    }
+}
+
+// MARK: Lists
+
+/// A card holding rows split by hairlines; rows draw their own via `listRowChrome`.
+private struct ListCard<Content: View>: View {
+    @ViewBuilder var content: Content
+    var body: some View {
+        Card(padding: 0) {
+            VStack(spacing: 0) { content }
+                .clipShape(RoundedRectangle(cornerRadius: Brand.cardRadius, style: .continuous))
+        }
+    }
+}
+
+private extension View {
+    /// Padding, a hover wash and the hairline under every row but the last.
+    func listRowChrome(last: Bool, hovering: Bool = false) -> some View {
+        self
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(hovering ? Brand.sunken.opacity(0.55) : Color.clear)
+            .overlay(alignment: .bottom) {
+                if !last { Rectangle().fill(Brand.line).frame(height: 1).padding(.leading, 16) }
+            }
     }
 }
 
@@ -835,7 +799,7 @@ private struct HotkeysPanel: View {
                         ? "Right ⌘ + V is the system's paste, so add a shortcut for this one."
                         : "Type what you last said again, when a paste missed.")
                     row(.toggleConversation, subtitle: "Read new assistant replies as they arrive.")
-                    row(.skipNext, subtitle: "Next queued reply. Only while something is playing; otherwise ⌥→ stays the app's.")
+                    row(.skipNext, subtitle: "Next queued reply. Idle, the chord stays the app's.")
                     row(.dumpAXTree, subtitle: "Save the focused app's accessibility tree, for debugging.", last: true)
                 }
             }
@@ -1167,6 +1131,8 @@ private struct ShortcutCap: View {
             .contextMenu {
                 if let remove { Button("Remove \(label)", role: .destructive, action: remove) }
             }
+            // The hover button is invisible to VoiceOver until hovered; this keeps removal reachable.
+            .accessibilityAction(named: Text("Remove")) { remove?() }
     }
 }
 
@@ -1325,18 +1291,22 @@ private struct ModelOption: View {
 private struct ConversationPanel: View {
     @EnvironmentObject private var settings: SettingsStore
     @Environment(\.settingsSkin) private var skin
+    @State private var showUninstalled = false
+
+    private var installed: [ConvWatchApp] { Self.catalog.filter(\.isInstalled) }
+    private var uninstalled: [ConvWatchApp] { Self.catalog.filter { !$0.isInstalled } }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        VStack(alignment: .leading, spacing: 28) {
             Card {
-                HStack(alignment: .center, spacing: 16) {
+                HStack(alignment: .center, spacing: 14) {
                     Image(systemName: "bubble.left.and.bubble.right.fill")
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Brand.blueDeep)
-                        .iconTile(Brand.blueSoft, size: 34)
-                    RowLabel("Conversation Mode on at launch",
-                             subtitle: "Yapper starts ready to auto-read new assistant messages.")
-                    Spacer()
+                        .foregroundStyle(skin.iconTint)
+                        .iconTile(skin.iconChipBG, size: 34)
+                    RowLabel("On when Yapper starts",
+                             subtitle: "Otherwise turn it on with \(settings.yapperKey.keycap) + Return whenever you want replies read.")
+                    Spacer(minLength: 16)
                     // Conversation Mode is the REC latch — it reads red in tape mode.
                     Toggle("", isOn: $settings.conversationDefaultOn)
                         .labelsHidden()
@@ -1345,48 +1315,54 @@ private struct ConversationPanel: View {
                 }
             }
 
-            // Watched-apps allowlist
-            Card {
-                VStack(alignment: .leading, spacing: 0) {
-                    HStack(spacing: 14) {
-                        Image(systemName: "app.badge.checkmark")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(skin.iconTint)
-                            .iconTile(skin.iconChipBG, size: 34)
-                        RowLabel("Watched apps",
-                                 subtitle: "Auto-read new responses from these, even when they're in the background.")
-                        Spacer()
+            VStack(alignment: .leading, spacing: 0) {
+                SectionLabel(text: "Watched apps")
+                ListCard {
+                    ForEach(Array(installed.enumerated()), id: \.element.id) { idx, app in
+                        WatchedAppRow(app: app, last: idx == installed.count - 1 && uninstalled.isEmpty)
                     }
-                    .padding(.bottom, 4)
-
-                    ForEach(Array(ConversationPanel.catalog.enumerated()), id: \.element.id) { idx, app in
-                        if idx > 0 { RowDivider() }
-                        WatchedAppRow(app: app)
+                    if !uninstalled.isEmpty {
+                        Button {
+                            withAnimation(.easeOut(duration: 0.15)) { showUninstalled.toggle() }
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .rotationEffect(.degrees(showUninstalled ? 90 : 0))
+                                Text("Not installed: \(uninstalled.map(\.name).joined(separator: ", "))")
+                                    .lineLimit(1)
+                                Spacer()
+                            }
+                            .font(skin.body(11.5))
+                            .foregroundStyle(Brand.muted)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .listRowChrome(last: !showUninstalled)
+                        if showUninstalled {
+                            ForEach(Array(uninstalled.enumerated()), id: \.element.id) { idx, app in
+                                WatchedAppRow(app: app, last: idx == uninstalled.count - 1)
+                            }
+                        }
                     }
                 }
+                Text("Yapper reads each new reply from these as it finishes, even in the background. Browsers count only while their active tab is an AI site.")
+                    .font(skin.body(11.5))
+                    .foregroundStyle(Brand.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 10)
+                    .padding(.horizontal, 2)
             }
 
-            // Explainer card — in tape skin this is the pane's one paper moment.
-            VStack(alignment: .leading, spacing: 10) {
-                Text("HOW IT WORKS")
-                    .font(Brand.label(10.5))
-                    .tracking(1.4)
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: "info.circle")
+                    .foregroundStyle(Brand.faint)
+                Text("\(settings.yapperKey.keycap) + → skips to the next reply. With hands-free on (Voice In → Setup) the mic opens after each reply so you can answer; Yapper never presses Return.")
+                    .font(skin.body(11.5))
                     .foregroundStyle(Brand.muted)
-                Text("While on, Yapper watches the apps you've checked and speaks each new assistant response as it finishes — even when that app isn't focused. Browsers are read only when their active tab is an AI site. Toggle anytime with \(settings.yapperKey.keycap) + Return; skip ahead with \(settings.yapperKey.keycap) + →.\n\nVoice in closes the loop: hold \(settings.yapperKey.keycap) and talk, release, and the words land in whatever is focused. Speech is transcribed on this Mac — nothing leaves the machine. With hands-free on, the mic opens by itself after each reply finishes reading and closes when you pause. Yapper never presses Return; sending is always yours.")
-                    .font(skin.body(12))
-                    .foregroundStyle(AnyShapeStyle(Brand.muted))
-                    .lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(20)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: Brand.cardRadius, style: .continuous)
-                    .fill(Brand.sunken)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: Brand.cardRadius, style: .continuous)
-                    .strokeBorder(Brand.line, lineWidth: 1)
-            )
+            .padding(.horizontal, 2)
         }
     }
 
@@ -1395,6 +1371,9 @@ private struct ConversationPanel: View {
         let name: String
         let strategy: String  // shown as the row subtitle when installed
         let isBrowser: Bool
+
+        var appURL: URL? { NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) }
+        var isInstalled: Bool { appURL != nil }
     }
 
     static let catalog: [ConvWatchApp] = [
@@ -1415,10 +1394,8 @@ private struct WatchedAppRow: View {
     @EnvironmentObject private var settings: SettingsStore
     @Environment(\.settingsSkin) private var skin
     let app: ConversationPanel.ConvWatchApp
+    let last: Bool
 
-    private var isInstalled: Bool {
-        NSWorkspace.shared.urlForApplication(withBundleIdentifier: app.id) != nil
-    }
     private var binding: Binding<Bool> {
         Binding(
             get: { settings.conversationAllowlist.contains(app.id) },
@@ -1436,23 +1413,35 @@ private struct WatchedAppRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: app.isBrowser ? "globe" : "app.fill")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(isInstalled ? skin.iconTint : Color.secondary)
-                .frame(width: 22)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(app.name).font(skin.body(13, .semibold))
-                Text(isInstalled ? app.strategy : "Not installed")
+            Group {
+                if let url = app.appURL {
+                    Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
+                        .resizable()
+                        .interpolation(.high)
+                } else {
+                    Image(systemName: app.isBrowser ? "globe" : "app")
+                        .font(.system(size: 14))
+                        .foregroundStyle(Brand.faint)
+                }
+            }
+            .frame(width: 24, height: 24)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(app.name)
+                    .font(skin.body(13, .medium))
+                    .foregroundStyle(app.isInstalled ? Brand.ink : Brand.muted)
+                Text(app.isInstalled ? app.strategy : "Not installed")
                     .font(skin.body(11))
                     .foregroundStyle(Brand.muted)
             }
             Spacer()
-            Toggle("", isOn: binding)
-                .labelsHidden()
-                .toggleStyle(.ink)
-                .tint(skin.controlTint)
-                .disabled(!isInstalled)
+            if app.isInstalled {
+                Toggle("", isOn: binding)
+                    .labelsHidden()
+                    .toggleStyle(.ink)
+                    .tint(skin.controlTint)
+            }
         }
+        .listRowChrome(last: last)
     }
 }
 
@@ -1753,51 +1742,24 @@ private struct HistoryPanel: View {
     @State private var confirmingClear = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Card {
-                VStack(alignment: .leading, spacing: 18) {
-                    HStack(spacing: 14) {
-                        Image(systemName: "clock.fill")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(skin.iconTint)
-                            .iconTile(skin.iconChipBG, size: 34)
-                        RowLabel("Retention window",
-                                 subtitle: "How long Yapper keeps spoken items in history.")
-                        Spacer()
-                    }
-
-                    RetentionSlider(hours: $settings.historyRetentionHours)
-                }
-            }
-
+        VStack(alignment: .leading, spacing: 28) {
             Card {
                 HStack(spacing: 14) {
-                    Image(systemName: "trash.fill")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(skin.destructive)
-                        .iconTile(skin.destructive.opacity(0.1), size: 34)
-                    RowLabel("Clear history",
-                             subtitle: "Permanently delete all spoken items right now.")
-                    Spacer()
-                    Button(role: .destructive) {
-                        confirmingClear = true
-                    } label: {
-                        Text("Clear")
-                            .font(skin.body(12, .semibold))
-                            .tracking(0)
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 15)
-                            .padding(.vertical, 7)
-                            .background(Capsule(style: .continuous).fill(Brand.red))
-                    }
-                    .buttonStyle(.plain)
-                    .confirmationDialog("Clear all history?",
-                                        isPresented: $confirmingClear) {
-                        Button("Clear history", role: .destructive) {
-                            state.history.clearAll()
+                    RowLabel("Keep spoken items for",
+                             subtitle: "Older ones are deleted for good. Nothing here leaves this Mac.")
+                    Spacer(minLength: 16)
+                    RetentionPicker(hours: $settings.historyRetentionHours)
+                }
+                RowDivider()
+                HStack(spacing: 14) {
+                    RowLabel("Clear history", subtitle: "Delete everything Yapper has read aloud.")
+                    Spacer(minLength: 16)
+                    Button("Clear…", role: .destructive) { confirmingClear = true }
+                        .disabled(state.history.entries.isEmpty)
+                        .confirmationDialog("Clear all history?", isPresented: $confirmingClear) {
+                            Button("Clear history", role: .destructive) { state.history.clearAll() }
+                            Button("Cancel", role: .cancel) { }
                         }
-                        Button("Cancel", role: .cancel) { }
-                    }
                 }
             }
 
@@ -1818,26 +1780,24 @@ private struct HistoryBrowser: View {
     @Environment(\.settingsSkin) private var skin
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                Text("RECENT")
-                    .font(skin.body(10, .semibold))
-                    .tracking(1.6)
-                    .foregroundStyle(Brand.muted)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline) {
+                SectionLabel(text: "Recent")
                 Spacer()
                 if !history.entries.isEmpty {
                     Text("\(history.entries.count) item\(history.entries.count == 1 ? "" : "s")")
-                        .font(skin.body(11, .medium))
+                        .font(skin.body(11))
                         .foregroundStyle(Brand.faint)
+                        .padding(.bottom, 10)
                 }
             }
-
-            if history.entries.isEmpty {
-                emptyState
-            } else {
-                VStack(spacing: 8) {
-                    ForEach(history.entries) { entry in
+            ListCard {
+                if history.entries.isEmpty {
+                    emptyState
+                } else {
+                    ForEach(Array(history.entries.enumerated()), id: \.element.id) { idx, entry in
                         HistoryRow(entry: entry,
+                                   last: idx == history.entries.count - 1,
                                    onReplay: { onReplay(entry) },
                                    onDelete: { onDelete(entry) })
                     }
@@ -1847,90 +1807,49 @@ private struct HistoryBrowser: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "clock.badge.questionmark")
-                .font(.system(size: 26))
-                .foregroundStyle(Brand.faint)
+        VStack(spacing: 6) {
             Text("Nothing read yet")
-                .font(.system(size: 13, weight: .semibold))
+                .font(skin.body(13, .semibold))
                 .foregroundStyle(Brand.muted)
-            Text("Items you read with a tap of the Yapper key, or key + S, show up here for quick replay.")
-                .font(.system(size: 11))
+            Text("What Yapper reads aloud shows up here, to play again.")
+                .font(skin.body(11.5))
                 .foregroundStyle(Brand.faint)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 320)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 36)
-        .background(
-            RoundedRectangle(cornerRadius: Brand.cardRadius, style: .continuous)
-                .fill(Brand.surface.opacity(0.6))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: Brand.cardRadius, style: .continuous)
-                .strokeBorder(Brand.lineStrong, style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
-        )
+        .padding(.vertical, 32)
     }
 }
 
 private struct HistoryRow: View {
     let entry: HistoryEntry
+    let last: Bool
     let onReplay: () -> Void
     let onDelete: () -> Void
     @State private var hovering = false
     @Environment(\.settingsSkin) private var skin
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: entry.origin.symbol)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(skin.iconTint)
-                .iconTile(skin.iconChipBG, size: 32)
-
+        HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(entry.preview)
-                    .font(skin.body(13))
+                    .font(skin.body(12.5))
                     .lineLimit(2)
                     .foregroundStyle(Brand.ink)
-                HStack(spacing: 6) {
-                    Text(entry.sourceApp)
-                        .font(skin.body(11, .medium))
-                        .foregroundStyle(Brand.muted)
-                    Text("·").foregroundStyle(Brand.faint)
-                    Text(relativeTime(entry.createdAt))
-                        .font(skin.body(11))
-                        .foregroundStyle(Brand.faint)
+                HStack(spacing: 5) {
+                    Image(systemName: entry.origin.symbol)
+                        .font(.system(size: 9, weight: .semibold))
+                    Text("\(entry.sourceApp) · \(relativeTime(entry.createdAt))")
                 }
+                .font(skin.body(11))
+                .foregroundStyle(Brand.faint)
             }
-
             Spacer(minLength: 8)
-
-            PlayDisc(action: onReplay, help: "Replay")
-
-            Button(action: onDelete) {
-                Image(systemName: "trash")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Brand.muted)
-                    .frame(width: 28, height: 28)
-                    .background(Circle().fill(Brand.sunken))
-            }
-            .buttonStyle(.plain)
-            .help("Remove")
-            .opacity(hovering ? 1 : 0.55)
+            RowIconButton(symbol: "trash", help: "Remove", role: .destructive, action: onDelete)
+                .opacity(hovering ? 1 : 0)
+            RowIconButton(symbol: "play.fill", help: "Play again", action: onReplay)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Brand.surface)
-                .shadow(color: Brand.ink.opacity(hovering ? 0.06 : 0.03), radius: hovering ? 4 : 1, y: 1)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(Brand.line, lineWidth: 1)
-        )
+        .listRowChrome(last: last, hovering: hovering)
         .onHover { hovering = $0 }
-        .animation(.easeOut(duration: 0.12), value: hovering)
     }
 
     private func relativeTime(_ date: Date) -> String {
@@ -1944,61 +1863,31 @@ private struct HistoryRow: View {
     }
 }
 
-private struct RetentionSlider: View {
+/// The retention window as a menu of sensible stops; an odd value from an older build is kept
+/// as its own entry rather than shown blank.
+private struct RetentionPicker: View {
     @Binding var hours: Int
-    @Environment(\.settingsSkin) private var skin
 
-    private var formatted: String {
-        if hours < 24 {
-            return "\(hours) hour\(hours == 1 ? "" : "s")"
-        } else {
-            let days = Double(hours) / 24.0
-            let rounded = (days * 10).rounded() / 10
-            if rounded == rounded.rounded() {
-                let n = Int(rounded)
-                return "\(n) day\(n == 1 ? "" : "s")"
-            } else {
-                return String(format: "%.1f days", rounded)
-            }
-        }
+    private static let stops = [1, 6, 12, 24, 72, 168]
+
+    private var options: [Int] {
+        Self.stops.contains(hours) ? Self.stops : (Self.stops + [hours]).sorted()
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(formatted)
-                    .font(Brand.display(34))
-                    .monospacedDigit()
-                    .foregroundStyle(Brand.ink)
-                    .contentTransition(.numericText())
-                    .animation(.easeOut(duration: 0.15), value: hours)
-                Spacer()
-                Stepper("", value: $hours, in: 1...168)
-                    .labelsHidden()
-            }
-
-            // Visual track
-            GeometryReader { proxy in
-                let pct = CGFloat(max(1, hours) - 1) / CGFloat(167)
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(Brand.ink.opacity(0.08))
-                        .frame(height: 6)
-                    Capsule()
-                        .fill(Brand.blue)
-                        .frame(width: max(6, proxy.size.width * pct), height: 6)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .frame(height: 6)
-
-            HStack {
-                Text("1 hr").font(skin.body(10, .medium)).foregroundStyle(Brand.faint)
-                Spacer()
-                Text("7 days")
-                    .font(skin.body(10, .medium)).foregroundStyle(Brand.faint)
-            }
+        Picker("", selection: $hours) {
+            ForEach(options, id: \.self) { Text(Self.label($0)).tag($0) }
         }
+        .labelsHidden()
+        .frame(width: 130)
+    }
+
+    static func label(_ h: Int) -> String {
+        if h % 24 == 0 {
+            let d = h / 24
+            return d == 7 ? "1 week" : "\(d) day\(d == 1 ? "" : "s")"
+        }
+        return "\(h) hour\(h == 1 ? "" : "s")"
     }
 }
 
