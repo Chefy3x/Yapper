@@ -184,7 +184,6 @@ private struct PillPreviewCard: View {
                     stage("Talking", .listening(locked: false, handsFree: false))
                     stage("Locked", .listening(locked: true, handsFree: false))
                     stage("Working", .transcribing)
-                    stage("Typed", .done(.pasted))
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)

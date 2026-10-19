@@ -36,13 +36,23 @@ struct SettingsScreenshots {
             RecordingPill(phase: .listening(locked: false, handsFree: false), levels: Self.levels)
             RecordingPill(phase: .listening(locked: true, handsFree: false), levels: Self.levels)
             RecordingPill(phase: .transcribing, levels: Self.levels)
-            RecordingPill(phase: .done(.pasted), levels: Self.levels)
             RecordingPill(phase: .done(.empty), levels: Self.levels)
         }
         .padding(40)
         .background(Brand.canvas)
         let pillImage = try await render(pills, size: NSSize(width: 820, height: 120), dark: false)
         try pillImage.write(to: out.appendingPathComponent("hud-pills.png"))
+        // The pill opening out of its dot, frame by frame.
+        let opening = HStack(spacing: 18) {
+            ForEach([0.1, 0.3, 0.5, 0.7, 1.0], id: \.self) { t in
+                RecordingPill(phase: .listening(locked: false, handsFree: false), levels: Self.levels)
+                    .modifier(PillOpen(open: t))
+            }
+        }
+        .padding(40)
+        .background(Brand.canvas)
+        let openingImage = try await render(opening, size: NSSize(width: 980, height: 120), dark: false)
+        try openingImage.write(to: out.appendingPathComponent("hud-opening.png"))
     }
 
     /// The three sounds, as the app renders them, for comparing against the listening page.

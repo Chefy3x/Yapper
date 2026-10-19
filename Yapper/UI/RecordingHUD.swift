@@ -33,8 +33,9 @@ final class RecordingHUDModel: ObservableObject {
     }
 }
 
-/// A small pill at the bottom of the screen while Voice In runs: live mic level while you talk,
-/// a sweep while the words are worked out, a tick when they land. Never takes focus or clicks,
+/// A small pill at the bottom of the screen while Voice In runs: it opens out of a dot into the
+/// live waveform while you talk, the bars settle into a slow ripple while the words are worked
+/// out, and it closes back into the dot when they land. Never takes focus or clicks,
 /// so it can't steal the paste or swallow a click aimed at what's underneath.
 @MainActor
 final class RecordingHUDController {
@@ -63,14 +64,15 @@ final class RecordingHUDController {
         model.push(level: rms)
     }
 
-    /// The turn reported how it ended; the pill says so for a moment, then goes.
+    /// The turn reported how it ended. Words that landed need no word from the pill: it just
+    /// closes. Anything else says so for a moment, then goes.
     func finish(_ outcome: TurnReport.Outcome) {
         guard enabled, panel?.isVisible == true || model.phase != .hidden else { return }
+        if outcome == .pasted { hide(); return }
         hideTask?.cancel()
         withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) { model.phase = .done(outcome) }
-        let linger: Double = outcome == .pasted ? 0.7 : 1.6
         hideTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(linger))
+            try? await Task.sleep(for: .seconds(1.6))
             guard !Task.isCancelled else { return }
             self?.hide()
         }
@@ -83,7 +85,7 @@ final class RecordingHUDController {
             hideTask?.cancel()
             if case .listening = model.phase {} else { model.resetLevels() }
             show()
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
+            withAnimation(.spring(response: 0.42, dampingFraction: 0.74)) {
                 model.phase = .listening(locked: locked, handsFree: mode == .handsFree)
             }
         case .transcribing:
@@ -109,9 +111,9 @@ final class RecordingHUDController {
         hideTask?.cancel()
         hideTask = nil
         guard model.phase != .hidden else { return }
-        withAnimation(.easeIn(duration: 0.18)) { model.phase = .hidden }
+        withAnimation(.timingCurve(0.5, 0, 0.8, 0.4, duration: 0.26)) { model.phase = .hidden }
         hideTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(0.22))
+            try? await Task.sleep(for: .seconds(0.32))
             guard let self, !Task.isCancelled, self.model.phase == .hidden else { return }
             self.panel?.orderOut(nil)
         }
@@ -146,26 +148,43 @@ final class RecordingHUDController {
 
 // MARK: - View
 
-/// The pill itself: an ink capsule that reads on any wallpaper, white marks, the REC red dot
-/// while the mic is open and a lime tick when the words land.
+/// The pill itself: an ink capsule that reads on any wallpaper with white bars. It opens out of
+/// a dot and closes back into one.
 struct RecordingHUDView: View {
     @ObservedObject var model: RecordingHUDModel
 
     var body: some View {
         ZStack(alignment: .bottom) {
             Color.clear
-            if model.phase != .hidden {
-                pill
-                    .padding(.bottom, 14)
-                    .transition(.asymmetric(insertion: .scale(scale: 0.6, anchor: .bottom).combined(with: .opacity),
-                                            removal: .scale(scale: 0.85, anchor: .bottom).combined(with: .opacity)))
+            // The shadow sits outside the opening mask, so it follows the pill as it grows.
+            ZStack {
+                if model.phase != .hidden {
+                    RecordingPill(phase: model.phase, levels: model.levels, shadow: false)
+                        .transition(.pillOpen)
+                }
             }
+            .shadow(color: .black.opacity(0.28), radius: 10, y: 4)
+            .padding(.bottom, 14)
         }
         .frame(width: RecordingHUDController.panelSize.width, height: RecordingHUDController.panelSize.height)
     }
+}
 
-    private var pill: some View {
-        RecordingPill(phase: model.phase, levels: model.levels)
+/// Reveals the pill from a dot at its centre outwards, rather than zooming the whole thing, so
+/// the bars inside never squash. `open` runs from 0 (a dot) to 1.
+struct PillOpen: ViewModifier {
+    let open: CGFloat
+    func body(content: Content) -> some View {
+        content
+            .mask { Capsule(style: .continuous).scaleEffect(x: 0.16 + 0.84 * open, y: 0.85 + 0.15 * open) }
+            .scaleEffect(0.82 + 0.18 * open, anchor: .bottom)
+            .opacity(Double(min(1, open * 1.6)))
+    }
+}
+
+private extension AnyTransition {
+    static var pillOpen: AnyTransition {
+        .modifier(active: PillOpen(open: 0), identity: PillOpen(open: 1))
     }
 }
 
@@ -173,111 +192,104 @@ struct RecordingHUDView: View {
 struct RecordingPill: View {
     let phase: RecordingHUDModel.Phase
     let levels: [CGFloat]
+    var shadow = true
 
     var body: some View {
         HStack(spacing: 9) { content }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, 13)
             .frame(height: 32)
             .background(Capsule(style: .continuous).fill(Brand.ink.opacity(0.94)))
             .overlay(Capsule(style: .continuous).strokeBorder(.white.opacity(0.12), lineWidth: 1))
-            .shadow(color: .black.opacity(0.28), radius: 10, y: 4)
+            .shadow(color: .black.opacity(shadow ? 0.28 : 0), radius: 10, y: 4)
             .environment(\.colorScheme, .dark)
     }
 
+    /// One waveform across talking and working, so its bars carry over instead of being swapped.
     @ViewBuilder
     private var content: some View {
         switch phase {
         case .hidden:
             EmptyView()
-        case .listening(let locked, let handsFree):
-            RecDot()
-            LevelBars(levels: levels)
+        case .listening, .transcribing, .done(.pasted):
+            Waveform(levels: levels, working: phase != .listening(locked: locked, handsFree: handsFree))
             if locked {
                 Image(systemName: "lock.fill")
                     .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(.white.opacity(0.85))
+                    .transition(.opacity.combined(with: .scale(scale: 0.6)))
             } else if handsFree {
                 Image(systemName: "ear")
                     .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(.white.opacity(0.6))
             }
-        case .transcribing:
-            TranscribingSweep()
         case .done(let outcome):
             DoneMark(outcome: outcome)
         }
     }
-}
 
-private struct RecDot: View {
-    @State private var dim = false
-    var body: some View {
-        Circle()
-            .fill(Brand.red)
-            .frame(width: 7, height: 7)
-            .opacity(dim ? 0.45 : 1)
-            .onAppear {
-                withAnimation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true)) { dim = true }
-            }
+    private var locked: Bool {
+        if case .listening(let locked, _) = phase { return locked }
+        return false
+    }
+    private var handsFree: Bool {
+        if case .listening(_, let handsFree) = phase { return handsFree }
+        return false
     }
 }
 
-/// The last couple of seconds of mic level, newest on the right, mirrored about the centre line.
-private struct LevelBars: View {
+/// The mic level as bars, newest on the right, mirrored about the centre line. While the words
+/// are worked out the same bars ease down into a slow ripple running left to right, so the pill
+/// keeps its shape from talking to typing.
+private struct Waveform: View {
     let levels: [CGFloat]
+    let working: Bool
+    @State private var workingSince: Date?
+
+    private static let settle: TimeInterval = 0.35
+
     var body: some View {
-        HStack(alignment: .center, spacing: 2.5) {
-            ForEach(Array(levels.enumerated()), id: \.offset) { i, level in
-                Capsule()
-                    .fill(.white.opacity(0.4 + 0.6 * Double(i) / Double(max(1, levels.count - 1))))
-                    .frame(width: 2.5, height: 3 + level * 15)
+        TimelineView(.animation(paused: !working)) { timeline in
+            let t = timeline.date.timeIntervalSinceReferenceDate
+            let blend = blend(at: timeline.date)
+            HStack(alignment: .center, spacing: 2.5) {
+                ForEach(Array(levels.enumerated()), id: \.offset) { i, level in
+                    let ripple = pow(max(0, sin(t * 2 * .pi * 0.9 - Double(i) * 0.42)), 2)
+                    let fade = 0.4 + 0.6 * Double(i) / Double(max(1, levels.count - 1))
+                    Capsule()
+                        .fill(.white.opacity(mix(fade, 0.45 + 0.5 * ripple, blend)))
+                        .frame(width: 2.5, height: mix(3 + level * 15, 3 + 5 * ripple, blend))
+                }
             }
         }
         .frame(height: 18)
-        .animation(.easeOut(duration: 0.12), value: levels)
+        .animation(working ? nil : .easeOut(duration: 0.12), value: levels)
+        .onChange(of: working) { _, now in workingSince = now ? Date() : nil }
     }
-}
 
-/// Five dots taking turns: the words are being worked out.
-private struct TranscribingSweep: View {
-    var body: some View {
-        TimelineView(.animation) { timeline in
-            let t = timeline.date.timeIntervalSinceReferenceDate
-            HStack(spacing: 5) {
-                ForEach(0..<5, id: \.self) { i in
-                    let phase = sin((t * 2 * .pi * 1.1) - Double(i) * 0.75)
-                    Circle()
-                        .fill(.white.opacity(0.35 + 0.6 * max(0, phase)))
-                        .frame(width: 4.5, height: 4.5)
-                        .offset(y: -2.5 * max(0, phase))
-                }
-            }
-            .frame(width: 70, height: 18)
-        }
+    /// 0 shows the live levels, 1 the ripple. A pill that starts out working (a preview) is
+    /// already settled.
+    private func blend(at now: Date) -> Double {
+        guard working else { return 0 }
+        guard let since = workingSince else { return 1 }
+        let x = min(1, max(0, now.timeIntervalSince(since) / Self.settle))
+        return x * x * (3 - 2 * x)
     }
+
+    private func mix(_ a: Double, _ b: Double, _ t: Double) -> Double { a + (b - a) * t }
+    private func mix(_ a: CGFloat, _ b: Double, _ t: Double) -> CGFloat { a + (CGFloat(b) - a) * CGFloat(t) }
 }
 
 private struct DoneMark: View {
     let outcome: TurnReport.Outcome
     var body: some View {
         HStack(spacing: 7) {
-            if outcome == .pasted {
-                Image(systemName: "checkmark")
-                    .font(.system(size: 9.5, weight: .heavy))
-                    .foregroundStyle(Brand.ink)
-                    .frame(width: 18, height: 18)
-                    .background(Circle().fill(Brand.lime))
-            } else {
-                Image(systemName: symbol)
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(tint)
-            }
-            if let label {
-                Text(label)
-                    .font(.system(size: 11.5, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.92))
-                    .lineLimit(1)
-            }
+            Image(systemName: symbol)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(tint)
+            Text(label)
+                .font(.system(size: 11.5, weight: .medium))
+                .foregroundStyle(.white.opacity(0.92))
+                .lineLimit(1)
         }
     }
 
@@ -293,9 +305,9 @@ private struct DoneMark: View {
         if case .failed = outcome { return Brand.red }
         return .white
     }
-    private var label: String? {
+    private var label: String {
         switch outcome {
-        case .pasted: nil
+        case .pasted: "Typed"
         case .copied: "On the clipboard"
         case .empty: "Didn’t catch that"
         case .failed: "Couldn’t transcribe"
