@@ -40,6 +40,7 @@ final class SettingsStore: ObservableObject {
         case keepDictationAudio
         case dictationSounds
         case dictationHUD
+        case pillStyle
     }
 
     @Published var activeVoiceID: String {
@@ -182,6 +183,10 @@ final class SettingsStore: ObservableObject {
     @Published var dictationHUD: Bool {
         didSet { defaults.set(dictationHUD, forKey: Key.dictationHUD.rawValue) }
     }
+    /// What sits on the pill while you talk: the Loud Mouth lip-syncing you, or the level bars.
+    @Published var pillStyle: PillStyle {
+        didSet { defaults.set(pillStyle.rawValue, forKey: Key.pillStyle.rawValue) }
+    }
 
     /// True when nothing has ever been persisted — a genuinely fresh install.
     ///
@@ -266,6 +271,7 @@ final class SettingsStore: ObservableObject {
         self.keepDictationAudio = defaults.object(forKey: Key.keepDictationAudio.rawValue) as? Bool ?? true
         self.dictationSounds = defaults.object(forKey: Key.dictationSounds.rawValue) as? Bool ?? true
         self.dictationHUD = defaults.object(forKey: Key.dictationHUD.rawValue) as? Bool ?? true
+        self.pillStyle = PillStyle(rawValue: defaults.string(forKey: Key.pillStyle.rawValue) ?? "") ?? .mouth
         let storedScale = defaults.object(forKey: Key.cassetteScale.rawValue) as? Double ?? 1.0
         self.cassetteScale = min(max(storedScale, Self.cassetteScaleRange.lowerBound),
                                  Self.cassetteScaleRange.upperBound)
@@ -286,6 +292,17 @@ enum SettingsDesign: String, CaseIterable, Identifiable {
         switch self {
         case .systemStyle: "System Settings"
         case .minimal:     "Minimal"
+        }
+    }
+}
+
+enum PillStyle: String, CaseIterable, Identifiable {
+    case mouth, bars
+    var id: String { rawValue }
+    var displayName: String {
+        switch self {
+        case .mouth: "Mouth"
+        case .bars:  "Bars"
         }
     }
 }

@@ -138,6 +138,10 @@ final class AudioCapture: AudioCapturing {
 
     private let engine = AVAudioEngine()
     private let buffer = SampleBuffer()
+    /// The Loud Mouth's low-latency feed, when the pill shows the mouth. The tap below hands
+    /// Whisper ~100 ms buffers; a sink node beside it hands the mouth every ~10 ms IO buffer.
+    var mouthFeed: MouthLive?
+    private var mouthSink: AVAudioSinkNode?
     private var configObserver: NSObjectProtocol?
     nonisolated static let targetSampleRate: Double = 16_000
 
@@ -200,12 +204,14 @@ final class AudioCapture: AudioCapturing {
         input.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { @Sendable pcm, _ in
             processor.process(pcm)
         }
+        attachMouth(to: input, format: inputFormat)
 
         engine.prepare()
         do {
             try engine.start()
         } catch {
             input.removeTap(onBus: 0)
+            detachMouth()
             throw error
         }
         isRunning = true
@@ -217,6 +223,7 @@ final class AudioCapture: AudioCapturing {
         guard isRunning else { return buffer.drain() }
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
+        detachMouth()
         isRunning = false
         let samples = buffer.drain()
         Log.voice.info("AudioCapture stopped: \(samples.count, privacy: .public) samples (\(String(format: "%.1f", Double(samples.count) / Self.targetSampleRate), privacy: .public)s)")
@@ -233,8 +240,34 @@ final class AudioCapture: AudioCapturing {
         // Don't drain here — the coordinator's stop() collects the samples.
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
+        detachMouth()
         isRunning = false
         onInterrupted?()
+    }
+
+    /// The sink's block runs on the audio IO thread: it only copies channel 0 into the feed's ring.
+    private func attachMouth(to input: AVAudioInputNode, format: AVAudioFormat) {
+        guard let feed = mouthFeed, format.commonFormat == .pcmFormatFloat32 else { return }
+        let stride = format.isInterleaved ? Int(format.channelCount) : 1
+        let sink = AVAudioSinkNode { @Sendable _, frames, list -> OSStatus in
+            let buffers = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: list))
+            if let first = buffers.first, let data = first.mData {
+                feed.push(data.assumingMemoryBound(to: Float.self), count: Int(frames), stride: stride)
+            }
+            return noErr
+        }
+        engine.attach(sink)
+        engine.connect(input, to: sink, format: format)
+        mouthSink = sink
+        feed.start(inputRate: format.sampleRate)
+    }
+
+    private func detachMouth() {
+        guard let sink = mouthSink else { return }
+        engine.disconnectNodeInput(sink)
+        engine.detach(sink)
+        mouthSink = nil
+        mouthFeed?.stop()
     }
 
     private static func select(deviceID: AudioDeviceID, on input: AVAudioInputNode) throws {

@@ -1,0 +1,242 @@
+{
+ "step": 3,
+ "poses": [
+  {
+   "name": "fv",
+   "args": {
+    "fv": 1.0
+   },
+   "data": {
+    "UpperLip": {
+     "offset": 288,
+     "count": 2019
+    },
+    "LowerLip": {
+     "offset": 8364,
+     "count": 2019
+    },
+    "SkinUpper": {
+     "offset": 16440,
+     "count": 1395
+    },
+    "SkinLower": {
+     "offset": 22020,
+     "count": 1395
+    },
+    "LowerTooth2": {
+     "offset": 27600,
+     "count": 72
+    }
+   }
+  },
+  {
+   "name": "rest",
+   "args": {},
+   "data": {
+    "UpperLip": {
+     "offset": 27888,
+     "count": 2019
+    },
+    "LowerLip": {
+     "offset": 35964,
+     "count": 2019
+    },
+    "SkinUpper": {
+     "offset": 44040,
+     "count": 1395
+    },
+    "SkinLower": {
+     "offset": 49620,
+     "count": 1395
+    },
+    "LowerTooth2": {
+     "offset": 55200,
+     "count": 72
+    }
+   }
+  },
+  {
+   "name": "half",
+   "args": {
+    "J": 0.35
+   },
+   "data": {
+    "UpperLip": {
+     "offset": 55488,
+     "count": 2019
+    },
+    "LowerLip": {
+     "offset": 63564,
+     "count": 2019
+    },
+    "SkinUpper": {
+     "offset": 71640,
+     "count": 1395
+    },
+    "SkinLower": {
+     "offset": 77220,
+     "count": 1395
+    },
+    "LowerTooth2": {
+     "offset": 82800,
+     "count": 72
+    }
+   }
+  },
+  {
+   "name": "ah",
+   "args": {
+    "J": 1.0
+   },
+   "data": {
+    "UpperLip": {
+     "offset": 83088,
+     "count": 2019
+    },
+    "LowerLip": {
+     "offset": 91164,
+     "count": 2019
+    },
+    "SkinUpper": {
+     "offset": 99240,
+     "count": 1395
+    },
+    "SkinLower": {
+     "offset": 104820,
+     "count": 1395
+    },
+    "LowerTooth2": {
+     "offset": 110400,
+     "count": 72
+    }
+   }
+  },
+  {
+   "name": "ee",
+   "args": {
+    "J": 0.3,
+    "wide": 0.9
+   },
+   "data": {
+    "UpperLip": {
+     "offset": 110688,
+     "count": 2019
+    },
+    "LowerLip": {
+     "offset": 118764,
+     "count": 2019
+    },
+    "SkinUpper": {
+     "offset": 126840,
+     "count": 1395
+    },
+    "SkinLower": {
+     "offset": 132420,
+     "count": 1395
+    },
+    "LowerTooth2": {
+     "offset": 138000,
+     "count": 72
+    }
+   }
+  },
+  {
+   "name": "oo",
+   "args": {
+    "J": 0.1,
+    "pucker": 0.9
+   },
+   "data": {
+    "UpperLip": {
+     "offset": 138288,
+     "count": 2019
+    },
+    "LowerLip": {
+     "offset": 146364,
+     "count": 2019
+    },
+    "SkinUpper": {
+     "offset": 154440,
+     "count": 1395
+    },
+    "SkinLower": {
+     "offset": 160020,
+     "count": 1395
+    },
+    "LowerTooth2": {
+     "offset": 165600,
+     "count": 72
+    }
+   }
+  },
+  {
+   "name": "teeth",
+   "args": {
+    "J": 0.02,
+    "part": 1.0
+   },
+   "data": {
+    "UpperLip": {
+     "offset": 165888,
+     "count": 2019
+    },
+    "LowerLip": {
+     "offset": 173964,
+     "count": 2019
+    },
+    "SkinUpper": {
+     "offset": 182040,
+     "count": 1395
+    },
+    "SkinLower": {
+     "offset": 187620,
+     "count": 1395
+    },
+    "LowerTooth2": {
+     "offset": 193200,
+     "count": 72
+    }
+   }
+  },
+  {
+   "name": "mbp",
+   "args": {
+    "J": 0.3,
+    "close": 1.0
+   },
+   "data": {
+    "UpperLip": {
+     "offset": 193488,
+     "count": 2019
+    },
+    "LowerLip": {
+     "offset": 201564,
+     "count": 2019
+    },
+    "SkinUpper": {
+     "offset": 209640,
+     "count": 1395
+    },
+    "SkinLower": {
+     "offset": 215220,
+     "count": 1395
+    },
+    "LowerTooth2": {
+     "offset": 220800,
+     "count": 72
+    }
+   }
+  }
+ ],
+ "objects": [
+  "UpperLip",
+  "LowerLip",
+  "SkinUpper",
+  "SkinLower",
+  "LowerTooth2"
+ ],
+ "rigidRest": {
+  "offset": 0,
+  "count": 72
+ }
+}

@@ -57,12 +57,15 @@ final class AppState: ObservableObject {
     let snippets = SnippetStore()
     private lazy var sounds = DictationSounds()
     private(set) var recordingHUD: RecordingHUDController?
+    /// The Loud Mouth's live read of the mic, fed by `mic` while the pill shows the mouth.
+    let mouthLive = MouthLive()
+    private let mic = AudioCapture()
     /// The Yapper key press that finished a locked dictation; its tap or hold is spent.
     private var pressEndedLockedDictation = false
     lazy var voiceInput = VoiceInputCoordinator(
         settings: settings,
         vocabulary: vocabulary,
-        capture: AudioCapture(),
+        capture: mic,
         delivery: PasteDelivery(),
         makeTranscriber: { model, onStatus in
             switch model.engine {
@@ -184,6 +187,20 @@ final class AppState: ObservableObject {
         voiceInput.expandSnippets = { [weak self] text in self?.snippets.expand(text) ?? text }
         recordingHUD = RecordingHUDController(state: self)
         voiceInput.onLevel = { [weak self] in self?.recordingHUD?.level($0) }
+        // The mouth hears the mic only when the pill is on and shows it; it takes effect from the
+        // next time the mic opens.
+        settings.$pillStyle.combineLatest(settings.$dictationHUD)
+            .sink { [weak self] style, hud in
+                guard let self else { return }
+                self.mic.mouthFeed = (hud && style == .mouth) ? self.mouthLive : nil
+                if hud && style == .mouth {
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .seconds(1))
+                        MouthStage.shared.warmUp()            // compile its shaders before the first open
+                    }
+                }
+            }
+            .store(in: &voiceInputCancellables)
         if settings.dictationSounds { _ = sounds }   // render the sounds now, not on the first hold
         voiceInput.playStartCue = { [weak self] in
             guard let self, self.settings.dictationSounds else { return nil }

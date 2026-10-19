@@ -12,8 +12,12 @@ final class RecordingHUDModel: ObservableObject {
     }
 
     @Published var phase: Phase = .hidden
+    /// The Loud Mouth on the pill, or the level bars.
+    @Published var style: PillStyle = .mouth
     /// The mic level the bars follow, eased every frame.
     let motion = PillMotion()
+    /// What the mouth lip-syncs: the mic, read every 10 ms.
+    var live: MouthLive?
 
     func push(level rms: Float) { motion.hear(db: 20 * log10(max(Double(rms), 1e-7))) }
 
@@ -80,6 +84,10 @@ final class RecordingHUDController {
             .combineLatest(voice.$isLocked.removeDuplicates(), voice.$priming.removeDuplicates())
             .sink { [weak self] s, locked, priming in self?.update(state: s, locked: locked, priming: priming) }
             .store(in: &cancellables)
+        state.settings.$pillStyle.removeDuplicates()
+            .sink { [weak self] in self?.presenter.model.style = $0 }
+            .store(in: &cancellables)
+        presenter.model.live = state.mouthLive
     }
 
     var enabled: Bool { state?.settings.dictationHUD ?? true }
@@ -115,8 +123,11 @@ final class RecordingHUDPresenter {
     let model = RecordingHUDModel()
     private var panel: NSPanel?
 
-    /// The pill plus room for its shadow. The panel ignores the mouse, so the margin is free.
-    static let panelSize = NSSize(width: 280, height: 84)
+    /// The pill plus room for its shadow and for the mouth, which spills past the pill's edges as it
+    /// opens. The panel ignores the mouse, so the margin is free.
+    static let panelSize = NSSize(width: 280, height: 96)
+    /// The pill's bottom edge above the panel's.
+    static let pillInset: CGFloat = 20
 
     func level(_ rms: Float) {
         guard case .listening = model.phase else { return }
@@ -165,7 +176,7 @@ final class RecordingHUDPresenter {
         guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
         let v = screen.visibleFrame
         let size = Self.panelSize
-        panel.setFrame(NSRect(x: v.midX - size.width / 2, y: v.minY + 6, width: size.width, height: size.height),
+        panel.setFrame(NSRect(x: v.midX - size.width / 2, y: v.minY, width: size.width, height: size.height),
                        display: false)
     }
 
@@ -203,14 +214,47 @@ struct RecordingHUDView: View {
             // The shadow sits outside the opening mask, so it follows the pill as it grows.
             ZStack {
                 if model.phase != .hidden {
-                    RecordingPill(phase: model.phase, motion: model.motion, shadow: false)
+                    RecordingPill(phase: model.phase, motion: model.motion, shadow: false, style: model.style)
                         .transition(.pillOpen)
                 }
             }
             .shadow(color: .black.opacity(0.28), radius: 10, y: 4)
-            .padding(.bottom, 14)
+            .padding(.bottom, RecordingHUDPresenter.pillInset)
+            // The mouth sits on the pill, outside the pill's opening mask so it can spill past it.
+            if model.style == .mouth, model.phase != .hidden {
+                PillMouth(phase: model.phase, live: model.live)
+                    .transition(.mouthPop)                       // scales from the pill's centre
+                    .padding(.bottom, RecordingHUDPresenter.pillInset + RecordingPill.height / 2)
+            }
         }
         .frame(width: RecordingHUDPresenter.panelSize.width, height: RecordingHUDPresenter.panelSize.height)
+    }
+}
+
+/// The Loud Mouth as it sits on the pill: its lip line 14 pt above the pill's centre (the
+/// placement picked from the mockups). `bottom` padding puts this view's bottom edge on the
+/// pill's centre line.
+struct PillMouth: View {
+    let phase: RecordingHUDModel.Phase
+    let live: MouthLive?
+    var still: MouthPose?
+
+    /// The lip line's height above the pill's centre, and where it sits in the mouth's view
+    /// (`MouthFraming`'s defaults: 37 pt down from the top of a 100 pt view).
+    static let lift: CGFloat = 14, lipFromTop: CGFloat = 37
+
+    var body: some View {
+        let size = MouthStage.viewSize
+        MouthView(mode: mode, live: live)
+            .frame(width: size.width, height: size.height)
+            // bottom of this view = pill centre; the drawing hangs below it, past the panel if it must
+            .frame(width: size.width, height: Self.lift + Self.lipFromTop, alignment: .top)
+            .allowsHitTesting(false)
+    }
+
+    private var mode: MouthMode {
+        if let still { return .still(still) }
+        return phase == .transcribing ? .thinking : .live
     }
 }
 
@@ -230,6 +274,13 @@ private extension AnyTransition {
     static var pillOpen: AnyTransition {
         .modifier(active: PillOpen(open: 0), identity: PillOpen(open: 1))
     }
+    /// The mouth springs up out of the pill and drops back into it.
+    static var mouthPop: AnyTransition {
+        .asymmetric(insertion: .scale(scale: 0.3, anchor: .bottom).combined(with: .opacity)
+                        .animation(.spring(response: 0.34, dampingFraction: 0.58)),
+                    removal: .scale(scale: 0.5, anchor: .bottom).combined(with: .opacity)
+                        .animation(.easeIn(duration: 0.14)))
+    }
 }
 
 /// The pill's face for one phase. Shared by the HUD and the preview in Settings → Voice in.
@@ -237,11 +288,17 @@ struct RecordingPill: View {
     let phase: RecordingHUDModel.Phase
     let motion: PillMotion
     var shadow = true
+    var style: PillStyle = .bars
+
+    static let height: CGFloat = 32
+    /// Under the mouth the pill is a plain capsule, a little wider than the lips at rest.
+    static let mouthWidth: CGFloat = 108
 
     var body: some View {
         HStack(spacing: 9) { content }
             .padding(.horizontal, 13)
-            .frame(height: 32)
+            .frame(width: style == .mouth ? Self.mouthWidth : nil, height: Self.height,
+                   alignment: style == .mouth ? .trailing : .center)
             .background(Capsule(style: .continuous).fill(Brand.ink.opacity(0.94)))
             .overlay(Capsule(style: .continuous).strokeBorder(.white.opacity(0.12), lineWidth: 1))
             .shadow(color: .black.opacity(shadow ? 0.28 : 0), radius: 10, y: 4)
@@ -255,7 +312,7 @@ struct RecordingPill: View {
         case .hidden:
             EmptyView()
         case .listening, .transcribing:
-            Waveform(motion: motion, working: phase == .transcribing)
+            if style == .bars { Waveform(motion: motion, working: phase == .transcribing) }
             if handsFree {
                 Image(systemName: "ear")
                     .font(.system(size: 10, weight: .bold))

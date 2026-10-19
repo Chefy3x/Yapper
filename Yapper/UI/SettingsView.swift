@@ -1487,6 +1487,8 @@ struct VoiceInSection: View {
                           detail: "A small pill at the bottom of the screen shows your mic level while you talk, then a tick when the words land.",
                           isOn: $settings.dictationHUD)
                 RowDivider()
+                pillStyleRow
+                RowDivider()
                 toggleRow(icon: "speaker.wave.2", title: "Sounds",
                           detail: "A soft chime when the mic opens for a hold and when the words land. Yapper takes the chime back out of the recording.",
                           isOn: $settings.dictationSounds)
@@ -1589,6 +1591,29 @@ struct VoiceInSection: View {
                 .toggleStyle(.ink)
                 .tint(skin.controlTint)
                 .disabled(!settings.voiceInputEnabled)
+        }
+    }
+
+    private var pillStyleRow: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "mouth")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(skin.iconTint)
+                .frame(width: 22)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("On the pill").font(skin.body(13, .semibold))
+                Text("A mouth that moves with your voice as you talk, or the level bars.")
+                    .font(skin.body(11))
+                    .foregroundStyle(Brand.muted)
+            }
+            Spacer()
+            Picker("", selection: $settings.pillStyle) {
+                ForEach(PillStyle.allCases) { Text($0.displayName).tag($0) }
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+            .frame(width: 130)
+            .disabled(!settings.voiceInputEnabled || !settings.dictationHUD)
         }
     }
 

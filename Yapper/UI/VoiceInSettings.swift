@@ -172,6 +172,7 @@ struct VoiceInPanel: View {
 /// What the recording pill looks like in each state, so the toggle above means something.
 private struct PillPreviewCard: View {
     @Environment(\.settingsSkin) private var skin
+    @EnvironmentObject private var settings: SettingsStore
 
     var body: some View {
         Card {
@@ -191,7 +192,19 @@ private struct PillPreviewCard: View {
 
     private func stage(_ label: String, _ phase: RecordingHUDModel.Phase) -> some View {
         VStack(spacing: 10) {
-            RecordingPill(phase: phase, motion: PillMotion(fixed: 0.75, working: phase == .transcribing))
+            if settings.pillStyle == .mouth {
+                // the pill with the mouth on it, held in one pose
+                ZStack(alignment: .bottom) {
+                    RecordingPill(phase: phase, motion: PillMotion(fixed: 0.75), style: .mouth)
+                    PillMouth(phase: phase, live: nil,
+                              still: phase == .transcribing ? MouthStage.thinking(0.6) : .voice(J: 0.55, W: 0.25, T: 0))
+                        .padding(.bottom, RecordingPill.height / 2)
+                }
+                .frame(height: 80, alignment: .bottom)
+                .clipped()
+            } else {
+                RecordingPill(phase: phase, motion: PillMotion(fixed: 0.75, working: phase == .transcribing))
+            }
             Text(label)
                 .font(skin.body(9.5, .semibold))
                 .tracking(0.2)
