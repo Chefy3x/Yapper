@@ -52,18 +52,20 @@ final class MouthReader {
         static let fade = 30                // phrase-end fade, 300 ms
         static let floorBlock = 25, floorBlocks = 8   // 8 blocks of 250 ms = the 2 s minimum window
         static let voicedForFormants = 0.45
-        static let jawFloor = 0.2           // the jaw never shuts fully inside speech
-        static let jawBase = 0.25, jawSlope = 0.33    // envelope at the speaker's average level, per std
-        static let popDb = 14.0, popSize = 0.12, popTau = 5.0   // onset pop: low-band rise in 40 ms
+        static let jawFloor = 0.1           // the jaw never shuts fully inside speech
+        static let jawBase = 0.32, jawSlope = 0.55    // envelope at the speaker's average level, per std
+        static let popDb = 9.0, popSize = 0.30, popTau = 5.0    // onset pop: low-band rise in 40 ms
         static let loudTau = 2.0            // the level is eased over 20 ms before it drives the jaw
-        static let shapeTau = 2.0           // vowel width eases to a new vowel over ~20 ms
-        static let jawMulTau = 6.0          // the vowel's jaw multiplier eases slower, ~60 ms
+        static let shapeTau = 1.0           // vowel width eases to a new vowel over ~10 ms
+        static let jawMulTau = 4.0          // the vowel's jaw multiplier eases slower, ~40 ms
         static let formantMedian = 3        // vowel read from the median of this many formant readings
         static let voicedLo = 0.30, voicedHi = 0.60   // voicing over which vowel width takes over
         static let statsMax = 1500.0        // formant stats never weigh more than this many frames
-        static let loudMax = 300.0          // loudness forgets faster (~3 s of speech)
-        static let soft = 0.25              // softness of the vowel-class boundaries, in z units
-        static let widthGain = 1.25         // restores the range the soft classes blend away
+        static let loudMax = 150.0          // loudness forgets faster (~1.5 s of speech)
+        static let soft = 0.18              // softness of the vowel-class boundaries, in z units
+        static let widthGain = 1.5          // pushes the soft classes' widths out to the extremes
+        static let hissLo = 0.07, hissHi = 0.20      // share of energy above 4 kHz that counts as hiss
+        static let closeLo = 0.12, closeHi = 0.30, closeTeeth = 0.5   // jaw envelope below which teeth meet
         static let hissClose = 0.3          // s / sh / f close the jaw this much of the way
         // v3's lip width per vowel class
         static let widthAh = 0.0, widthOo = -0.95, widthOh = -0.55, widthEe = 0.9, widthUh = 0.3
@@ -117,6 +119,24 @@ final class MouthReader {
     }
 
     deinit { vDSP_destroy_fftsetupD(fftSetup) }
+
+    /// Starts over for a new dictation: clears the audio, the springs and the gate, and restarts `t`
+    /// at zero. Keeps what it has learned about the speaker and the room (`stats`).
+    func reset() {
+        buffer.removeAll()
+        hops = 0
+        blocks = [Double](repeating: stats.floorDb, count: K.floorBlocks)
+        blockMin = .infinity; blockCount = 0
+        hang = 0; fadeCount = K.fade
+        lows = [Double](repeating: -120, count: 4)
+        formantHistory.removeAll()
+        pop = 0; loudEased = 0
+        vowelWidth = 0; vowelJawMul = 1; widthEased = 0; jawMulEased = 1
+        last = (0, 0, 0)
+        jaw = Spring(up: 9, down: 10.5, zeta: 0.85)
+        width = Spring(up: 7, down: 7, zeta: 0.9)
+        teeth = Spring(up: 10, down: 10, zeta: 0.9)
+    }
 
     /// Feeds any number of samples (16 kHz mono, -1...1) and returns one frame per completed 10 ms hop.
     func feed(_ samples: UnsafeBufferPointer<Float>) -> [MouthFrame] {
@@ -196,12 +216,12 @@ final class MouthReader {
             }
             widthEased += (K.widthGain * vowelWidth - widthEased) * (1 - exp(-1 / K.shapeTau))
             jawMulEased += (vowelJawMul - jawMulEased) * (1 - exp(-1 / K.jawMulTau))
-            let hissy = Self.smooth(0.10, 0.25, hiss)
+            let hissy = Self.smooth(K.hissLo, K.hissHi, hiss)
             let vw = Self.smooth(K.voicedLo, K.voicedHi, voiced) * (1 - hissy)
             jt = min(1.2, (env + pop) * jawMulEased) * (1 - K.hissClose * hissy)
             wt = vw * widthEased + (1 - vw) * 0.15 * hissy
-            let closure = 1 - Self.smooth(0.20, 0.40, env)
-            tt = max(0.85 * hissy, 0.6 * closure) * (1 - vw * (1 - closure))
+            let closure = 1 - Self.smooth(K.closeLo, K.closeHi, env)
+            tt = max(0.85 * hissy, K.closeTeeth * closure) * (1 - vw * (1 - closure))
             last = (jt, wt, tt)
         } else {
             // phrase end: fade the jaw shut over 300 ms; width and teeth relax with it

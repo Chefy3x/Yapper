@@ -33,19 +33,21 @@ HANG = 6                # speech gate hangover, 60 ms
 FADE = 30               # phrase-end fade, 300 ms
 FLOOR_BLOCK, FLOOR_BLOCKS = 25, 8   # 8 blocks of 250 ms = 2 s minimum window
 VOICED_FM = 0.45        # voicing needed to read formants
-J_FLOOR = 0.2           # jaw never shuts fully inside speech (coarticulation)
-J_BASE, J_SLOPE = 0.25, 0.33        # envelope: J_BASE at the speaker's average level, +J_SLOPE per std
-POP_DB, POP_K, POP_TAU = 14.0, 0.12, 5.0   # onset pop: low band rising this fast in 40 ms, size, decay
+J_FLOOR = 0.1           # jaw never shuts fully inside speech (coarticulation)
+J_BASE, J_SLOPE = 0.32, 0.55        # envelope: J_BASE at the speaker's average level, +J_SLOPE per std
+POP_DB, POP_K, POP_TAU = 9.0, 0.30, 5.0    # onset pop: low band rising this fast in 40 ms, size, decay
 LOUD_TAU = 2.0          # the level is eased over 20 ms before it drives the jaw
-SHAPE_TAU = 2.0         # vowel width eases to a new vowel over ~20 ms
-JM_TAU = 6.0            # the vowel's jaw multiplier (ah wider, ee narrower) eases slower, ~60 ms
+SHAPE_TAU = 1.0         # vowel width eases to a new vowel over ~10 ms
+JM_TAU = 4.0            # the vowel's jaw multiplier (ah wider, ee narrower) eases slower, ~40 ms
 FM_MEDIAN = 3           # vowel read from the median of this many recent formant readings
 VW_LO, VW_HI = 0.30, 0.60   # voicing range over which the vowel width takes over from consonant width
 STATS_MAX = 1500.0      # formant stats never weigh more than this many frames (keeps adapting)
-LOUD_MAX = 300.0        # loudness follows mic distance and gain, so it forgets faster (~3 s of speech)
+LOUD_MAX = 150.0        # loudness follows mic distance and gain, so it forgets faster (~1.5 s of speech)
 WIDTH = {"D": 0.0, "F": -0.95, "E": -0.55, "W": 0.9, "C": 0.3}   # v3's widths per vowel class
-SOFT = 0.25             # softness of the vowel-class boundaries, in z units
-W_GAIN = 1.25           # soft classes blend towards the middle; this restores v3's range of widths
+SOFT = 0.18             # softness of the vowel-class boundaries, in z units
+W_GAIN = 1.5            # soft classes blend towards the middle; this pushes widths out to the extremes
+HISS_LO, HISS_HI = 0.07, 0.20   # share of energy above 4 kHz over which a frame counts as hiss
+CLOSE_LO, CLOSE_HI, CLOSE_T = 0.12, 0.30, 0.5   # jaw envelope below which teeth meet (consonant gaps)
 HISS_CLOSE = 0.3        # s / sh / f: the jaw closes this much of the way, teeth together
 
 
@@ -116,6 +118,11 @@ class LiveReader:
         self.lag_lo, self.lag_hi = int(sr / 400), int(sr / 75)                      # [lo, hi) lags
         self.fm_lo, self.fm_hi = int(200.0 / df), int(math.ceil(3600.0 / df))       # peak search bins
         self.stats = stats or SpeakerStats()
+        self.reset()
+        self.trace = None                 # set to a list to record per-hop internals (tuning only)
+
+    def reset(self):
+        """Start over for a new dictation; keeps the learned speaker stats."""
         self.buf = np.zeros(0)
         self.hops = 0
         # gate
@@ -131,7 +138,6 @@ class LiveReader:
         self.w_s, self.jm_s = 0.0, 1.0            # eased towards it every hop
         self.last = (0.0, 0.0, 0.0)       # last speaking targets, faded at phrase end
         self.sj, self.sw, self.st = Spring(9.0, 10.5, 0.85), Spring(7.0, 7.0, 0.9), Spring(10.0, 10.0, 0.9)
-        self.trace = None                 # set to a list to record per-hop internals (tuning only)
 
     # ---------------- analysis ----------------
     def spectrum(self, seg):
@@ -258,12 +264,12 @@ class LiveReader:
             a = 1.0 - math.exp(-1.0 / SHAPE_TAU)
             self.w_s += (W_GAIN * self.w_vowel - self.w_s) * a
             self.jm_s += (self.j_mul - self.jm_s) * (1.0 - math.exp(-1.0 / JM_TAU))
-            hissy = _smooth(0.10, 0.25, hiss)
+            hissy = _smooth(HISS_LO, HISS_HI, hiss)
             vw = _smooth(VW_LO, VW_HI, voiced) * (1.0 - hissy)
             jt = min(1.2, (env + self.pop) * self.jm_s) * (1.0 - HISS_CLOSE * hissy)
             wt = vw * self.w_s + (1.0 - vw) * 0.15 * hissy
-            closure = 1.0 - _smooth(0.20, 0.40, env)
-            tt = max(0.85 * hissy, 0.6 * closure) * (1.0 - vw * (1.0 - closure))
+            closure = 1.0 - _smooth(CLOSE_LO, CLOSE_HI, env)
+            tt = max(0.85 * hissy, CLOSE_T * closure) * (1.0 - vw * (1.0 - closure))
             self.last = (jt, wt, tt)
         else:
             # phrase end: fade the jaw shut over 300 ms, width and teeth relax with it

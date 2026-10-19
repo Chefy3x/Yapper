@@ -135,6 +135,18 @@ struct MouthReaderTests {
         #expect(whole == ragged)
     }
 
+    @Test func resetStartsOverButKeepsWhatItLearned() {
+        let x = Self.synth()
+        let (reader, _) = read(x)
+        let learned = reader.stats
+        reader.reset()
+        #expect(reader.stats == learned)
+        let again = reader.feed(x)
+        let fresh = MouthReader(stats: learned).feed(x)
+        #expect(again == fresh)
+        #expect(again.first?.t == 0.025)
+    }
+
     @Test func statsAdaptAndRoundTrip() throws {
         let (reader, _) = read(Self.synth())
         let learned = reader.stats
