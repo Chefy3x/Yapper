@@ -4,3 +4,9 @@ stills/
 verify/
 render.log
 .DS_Store
+
+# Licensed audio — Epidemic Sound SFX and HeyGen catalog music are licensed for
+# use IN renders, not for redistribution as raw files. This repo is public, so
+# the sources stay local; only the rendered MP4 carries them.
+public/audio/
+.media/
