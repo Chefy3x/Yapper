@@ -158,3 +158,24 @@ struct MouthReaderTests {
         #expect(MouthReader(stats: decoded).stats == learned)
     }
 }
+
+/// The live timeline spaces readings by the audio they came from, however unevenly the mic and the
+/// drain deliver them, so the mouth never stalls and then jumps.
+struct MouthTimelineTests {
+    @Test func evenSpacingFromUnevenDelivery() {
+        var timeline = MouthTimeline()
+        var now = 100.0, made = 0
+        // 30 ms chunks (a Bluetooth headset) drained at an uneven 10–16 ms
+        for k in 0..<200 {
+            now += 0.010 + Double(k * 7 % 7) * 0.001
+            let due = Int((now - 100) / 0.030) * 3
+            let fresh = (made..<due).map { MouthDrive(J: Float($0 % 20) / 20, W: 0, T: 0) }
+            made = due
+            timeline.add(fresh, at: now)
+        }
+        let gaps = zip(timeline.drives.dropFirst(), timeline.drives).map { $0.t - $1.t }
+        #expect(gaps.allSatisfy { abs($0 - MouthTimeline.hop) < 1e-9 })
+        // and the newest reading is never stamped after it arrived
+        #expect(timeline.drives.last!.t <= now)
+    }
+}

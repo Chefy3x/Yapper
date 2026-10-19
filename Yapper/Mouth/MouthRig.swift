@@ -26,6 +26,18 @@ struct MouthPose: Equatable, Sendable {
     /// F/V: the lower lip tucks under the upper front teeth. The teeth never move for it.
     var fv: Float = 0
 
+    /// `a` at 0, `b` at 1, every channel straight between.
+    static func mix(_ a: MouthPose, _ b: MouthPose, _ t: Float) -> MouthPose {
+        func m(_ x: Float, _ y: Float) -> Float { x + (y - x) * t }
+        func m(_ x: SIMD2<Float>, _ y: SIMD2<Float>) -> SIMD2<Float> { x + (y - x) * t }
+        return MouthPose(J: m(a.J, b.J), wide: m(a.wide, b.wide), pucker: m(a.pucker, b.pucker),
+                         funnel: m(a.funnel, b.funnel), part: m(a.part, b.part), close: m(a.close, b.close),
+                         slide: m(a.slide, b.slide), shift: m(a.shift, b.shift),
+                         rollUpper: m(a.rollUpper, b.rollUpper), rollLower: m(a.rollLower, b.rollLower),
+                         smile: m(a.smile, b.smile), upperUp: m(a.upperUp, b.upperUp),
+                         lowerDown: m(a.lowerDown, b.lowerDown), fv: m(a.fv, b.fv))
+    }
+
     /// From the voice reader's two Osipa channels plus teeth: jaw J, width W (negative is round),
     /// and T, teeth together (`from_voice`).
     static func voice(J: Float, W: Float, T: Float) -> MouthPose {

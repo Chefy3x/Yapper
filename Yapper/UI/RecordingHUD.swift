@@ -187,14 +187,14 @@ final class RecordingHUDPresenter {
         withAnimation(Self.closing) { model.phase = .hidden }
     }
 
-    /// The mouth sees the turn off with a grin or a grimace for about half a second, then the pill
+    /// The mouth eases into a grin or a grimace and holds it, about 0.7 s in all, then the pill
     /// closes. Without the mouth on show it just closes. A second reaction to the same turn is ignored.
     func react(_ r: MouthReaction) {
         guard model.phase != .hidden, model.style == .mouth else { close(); return }
         guard reacting == nil else { return }
         model.reaction = r
         reacting = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .milliseconds(550))
+            try? await Task.sleep(for: .milliseconds(700))
             guard let self, !Task.isCancelled else { return }
             self.reacting = nil
             self.close()

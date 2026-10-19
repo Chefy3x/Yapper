@@ -154,6 +154,74 @@ final class MouthMetalView: NSView {
     }
 }
 
+/// Decides what the mouth does each frame: acts out the voice while you talk, chews while the words
+/// are worked out, grins or grimaces at the end, and eases from one to the next. Pure: given the
+/// same frame times and drives it always does the same, so the film probe sees exactly the app.
+struct MouthDirector {
+    struct Frame { var pose: MouthPose; var head: SIMD3<Float>; var squash: Float; var dt: Float }
+
+    /// How long a change of mode takes to ease over.
+    static let modeEase: CFTimeInterval = 0.26
+
+    private var born: CFTimeInterval?
+    private var last: CFTimeInterval?
+    private var performance = MouthPerformance()
+    private var smoother = MouthDriveSmoother()
+    /// The jaw goes pose to pose; width and teeth ease on a spring.
+    private var jawMoves = MouthMoveFollower()
+    /// The last frame (pose, head turn, squash), and the mode it was made in.
+    private struct Shown { var pose = MouthPose(), head = SIMD3<Float>.zero, squash: Float = 0 }
+    private var shown = Shown()
+    private var shownMode: MouthMode?
+    private var easeIn: (from: Shown, start: CFTimeInterval)?
+
+    /// The mouth went off screen: the next frame starts fresh.
+    mutating func stop() { last = nil; shownMode = nil; easeIn = nil }
+
+    /// The frame that reaches the screen at host time `now`; `drive` reads the voice at a host time.
+    mutating func frame(mode: MouthMode, at now: CFTimeInterval, drive: (CFTimeInterval) -> MouthDrive) -> Frame {
+        if born == nil { born = now }
+        let t = now - born!
+        var dt = last.map { Float(min(0.1, max(0, now - $0))) } ?? 0
+        if last != nil, dt == 0 { dt = 1e-4 }          // a repeated frame: hold, don't reset the springs
+        last = now
+        var pose: MouthPose
+        var head = SIMD3<Float>.zero, squash: Float = 0
+        switch mode {
+        case .live:
+            if shownMode != .live { smoother.reset(); jawMoves.reset() }
+            let raw = drive(now)
+            var d = smoother.step(raw, dt: dt)
+            d.J = jawMoves.step(raw.J, dt: dt)
+            let acted = performance.step(J: d.J, W: d.W, T: d.T, dt: dt)
+            pose = acted.pose; head = acted.head; squash = acted.squash
+        case .thinking:
+            pose = MouthStage.thinking(t)
+            head = MouthStage.thinkingHead(t)
+        case .reacting(let r):
+            (pose, head, squash) = MouthStage.reaction(r)
+        case .still(let p):
+            pose = p; dt = 0
+        }
+        // a change of mode (talking, thinking, the grin) eases over from the last frame
+        if case .still = mode { easeIn = nil } else {
+            if shownMode != mode { easeIn = shownMode == nil ? nil : (from: shown, start: now) }
+            if let e = easeIn {
+                let u = Float(min(1, (now - e.start) / Self.modeEase))
+                if u >= 1 { easeIn = nil } else {
+                    let k = u * u * (3 - 2 * u)                     // smoothstep: leaves and lands softly
+                    pose = MouthPose.mix(e.from.pose, pose, k)
+                    head = e.from.head + (head - e.from.head) * k
+                    squash = e.from.squash + (squash - e.from.squash) * k
+                }
+            }
+        }
+        shown = Shown(pose: pose, head: head, squash: squash)
+        shownMode = mode
+        return Frame(pose: pose, head: head, squash: squash, dt: dt)
+    }
+}
+
 /// Draws one mouth into its layer on `MouthRenderThread`: live and thinking frames on a
 /// CAMetalDisplayLink, which hands over a drawable that's ready, and a still pose once each time it
 /// changes. `set`, `setRunning` and `refresh` may be called from anywhere; the rest runs on that
@@ -163,7 +231,6 @@ final class MouthFrames: NSObject, CAMetalDisplayLinkDelegate, @unchecked Sendab
     private let model: MouthModel
     private let layer: CAMetalLayer
     private let rest: SIMD3<Float>
-    private let born = CACurrentMediaTime()
 
     // written by the view, read by the render thread
     private let lock = NSLock()
@@ -173,8 +240,7 @@ final class MouthFrames: NSObject, CAMetalDisplayLinkDelegate, @unchecked Sendab
 
     // the render thread's own
     private var link: CAMetalDisplayLink?
-    private var performance = MouthPerformance()
-    private var last: CFTimeInterval?
+    private var director = MouthDirector()
     private var msaa: MTLTexture?
     private var depth: MTLTexture?
 
@@ -209,51 +275,32 @@ final class MouthFrames: NSObject, CAMetalDisplayLinkDelegate, @unchecked Sendab
         if running && !still {
             guard link == nil else { return }
             let l = CAMetalDisplayLink(metalLayer: layer)
-            l.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 60, preferred: 60)
+            l.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 240, preferred: 240)   // the screen's full rate: 120 on ProMotion, 144 on a gaming monitor
             l.delegate = self
             l.add(to: .current, forMode: .default)
             link = l
         } else {
             link?.invalidate()
             link = nil
-            last = nil
-            if running, still, let drawable = layer.nextDrawable() { render(drawable) }
+            director.stop()                     // the next showing starts fresh, not eased from this one
+            if running, still, let drawable = layer.nextDrawable() { render(drawable, at: CACurrentMediaTime()) }
         }
     }
 
+    /// Each frame is posed for the moment it reaches the screen, not the moment it happens to be
+    /// drawn: drawing starts a little early or late frame to frame, and posing by that jitters.
     func metalDisplayLink(_ link: CAMetalDisplayLink, needsUpdate update: CAMetalDisplayLink.Update) {
-        render(update.drawable)
+        render(update.drawable, at: update.targetPresentationTimestamp)
     }
 
-    private func render(_ drawable: CAMetalDrawable) {
+    private func render(_ drawable: CAMetalDrawable, at now: CFTimeInterval) {
         lock.lock(); let mode = self.mode, live = self.live; lock.unlock()
         let target = drawable.texture
         guard let pass = pass(into: target), let commands = renderer.queue.makeCommandBuffer() else { return }
-        let now = CACurrentMediaTime()
-        let t = now - born
-        var dt = last.map { Float(min(0.1, now - $0)) } ?? 0
-        last = now
-        var framing = MouthFraming(rotationDegrees: rest)
-        let pose: MouthPose
-        switch mode {
-        case .live:
-            let d = live?.drive(at: now) ?? .rest
-            let acted = performance.step(J: d.J, W: d.W, T: d.T, dt: dt)
-            pose = acted.pose
-            framing.rotationDegrees += acted.head
-            framing.squash = acted.squash
-        case .thinking:
-            pose = MouthStage.thinking(t)
-            framing.rotationDegrees += MouthStage.thinkingHead(t)
-        case .reacting(let r):
-            let (p, head, squash) = MouthStage.reaction(r)
-            pose = p
-            framing.rotationDegrees += head
-            framing.squash = squash
-        case .still(let p):
-            pose = p; dt = 0
-        }
-        model.pose(pose, dt: dt)
+        let frame = director.frame(mode: mode, at: now) { live?.drive(at: $0) ?? .rest }
+        var framing = MouthFraming(rotationDegrees: rest + frame.head)
+        framing.squash = frame.squash
+        model.pose(frame.pose, dt: frame.dt)
         guard renderer.encode(model, framing: framing, size: CGSize(width: target.width, height: target.height),
                               pass: pass, into: commands) else { return }   // GPU behind: skip this frame
         commands.present(drawable)

@@ -52,7 +52,7 @@ struct HUDRecording {
         }
         hud.work()
         try await Task.sleep(for: .seconds(0.9))
-        hud.close()
+        hud.react(.done)            // the words landed: the mouth grins, then the pill closes
         try await Self.waitFor(out.appendingPathComponent("stop"))
     }
 
