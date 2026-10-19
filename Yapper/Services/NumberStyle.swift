@@ -18,7 +18,11 @@ enum NumberStyle {
         var pa = 0, pb = 0
         for (ma, mb) in matches + [(a.count, b.count)] {
             let spanA = Array(a[pa..<ma]), spanB = Array(b[pb..<mb])
-            if !spanB.isEmpty, spanA.count == spanB.count, spanB.allSatisfy(isSmall) {
+            if !spanA.isEmpty, spanA.count != spanB.count, mergesSeparateNumbers(spanA) {
+                // "three and five" → "35", "four and eight" → "48": two numbers joined into a
+                // different one. The words as spoken are right; the conversion isn't.
+                out += spanA
+            } else if !spanB.isEmpty, spanA.count == spanB.count, spanB.allSatisfy(isSmall) {
                 // Each small number back to its word ("the 2nd 1" → "the second one"), with the
                 // punctuation the written form carries.
                 for (wordToken, digitToken) in zip(spanA, spanB) {
@@ -32,6 +36,22 @@ enum NumberStyle {
             pa = ma + 1; pb = mb + 1
         }
         return out.joined(separator: " ")
+    }
+
+    private static let units: Set<String> = ["zero", "oh", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"]
+    /// Words after which "and" belongs to the number: "two hundred and five", "five dollars and fifty cents".
+    private static let andJoins: Set<String> = ["hundred", "thousand", "million", "billion", "dollars", "dollar",
+                                                "pounds", "euros", "bucks"]
+
+    /// The spoken words are two or more numbers side by side, not one: joined by "and" where "and"
+    /// can't be part of a number ("three and five"), or a run of single digits ("three five").
+    static func mergesSeparateNumbers(_ spoken: [String]) -> Bool {
+        let words = spoken.map { key($0) }
+        for (i, w) in words.enumerated() where w == "and" {
+            guard i > 0 else { continue }
+            if !andJoins.contains(words[i - 1]) { return true }
+        }
+        return words.count >= 2 && words.allSatisfy(units.contains)
     }
 
     private static func isSmall(_ token: String) -> Bool {

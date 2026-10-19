@@ -70,6 +70,16 @@ struct NumberStyleTests {
         #expect(r("the second one looks better", "the 2nd 1 looks better") == "the second one looks better")
     }
 
+    @Test func separateNumbersStaySeparate() {
+        #expect(r("I'm tied between three and five.", "I'm tied between 35.") == "I'm tied between three and five.")
+        #expect(r("I like four and eight the best.", "I like 48 the best.") == "I like four and eight the best.")
+        #expect(r("the number four and probably number two", "the number 4 probably number 2")
+                == "the number four and probably number two")
+        #expect(r("press three five", "press 35") == "press three five")
+        #expect(r("about two hundred and five", "about 205") == "about 205")
+        #expect(r("it was five dollars and fifty cents", "it was $5.50") == "it was $5.50")
+    }
+
     @Test func biggerOnesKeepTheirDigits() {
         #expect(r("we have twenty five users", "we have 25 users") == "we have 25 users")
         #expect(r("it costs five dollars", "it costs $5") == "it costs $5")

@@ -54,3 +54,25 @@ struct DisfluencyWordsTests {
         #expect(Disfluency.clean("we-we tried") == "we tried")
     }
 }
+
+struct RestartTests {
+    private func clean(_ s: String) -> String { Disfluency.clean(s) }
+
+    @Test func dropsTheAbandonedStart() {
+        #expect(clean("we need to worry about the other signs like the other sounds that come after")
+                == "we need to worry about the other sounds that come after")
+        #expect(clean("Nah, I don't like the I don't like that.") == "Nah, I don't like that.")
+        #expect(clean("It doesn't look like we're it doesn't look right when we move")
+                == "It doesn't look right when we move")
+        #expect(clean("I like the thud like I like that little thud sound") == "I like that little thud sound")
+    }
+
+    @Test func keepsParallelPhrasing() {
+        #expect(clean("It's not too low and it's not high at all.") == "It's not too low and it's not high at all.")
+        #expect(clean("use them as a timer use them to schedule tasks") == "use them as a timer use them to schedule tasks")
+        #expect(clean("open source isn't necessarily open source") == "open source isn't necessarily open source")
+        #expect(clean("our CTRs are good, our CPCs are good") == "our CTRs are good, our CPCs are good")
+        #expect(clean("should we keep this should we change this") == "should we keep this should we change this")
+        #expect(clean("I like the drawing of like the car park") == "I like the drawing of like the car park")
+    }
+}
