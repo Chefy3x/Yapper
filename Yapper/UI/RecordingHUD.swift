@@ -51,8 +51,8 @@ final class RecordingHUDController {
         self.state = state
         let voice = state.voiceInput
         voice.$state.removeDuplicates()
-            .combineLatest(voice.$isLocked.removeDuplicates())
-            .sink { [weak self] s, locked in self?.update(state: s, locked: locked) }
+            .combineLatest(voice.$isLocked.removeDuplicates(), voice.$priming.removeDuplicates())
+            .sink { [weak self] s, locked, priming in self?.update(state: s, locked: locked, priming: priming) }
             .store(in: &cancellables)
     }
 
@@ -76,8 +76,19 @@ final class RecordingHUDController {
         }
     }
 
-    private func update(state: VoiceInputCoordinator.State, locked: Bool) {
+    private func update(state: VoiceInputCoordinator.State, locked: Bool, priming: Bool) {
         guard enabled else { hide(); return }
+        // The mic opened at key-down: show it now, as if this were already a hold. A tap ends
+        // the priming with the state still idle, and the pill goes again below.
+        if priming, state == .idle {
+            hideTask?.cancel()
+            model.resetLevels()
+            show()
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
+                model.phase = .listening(locked: false, handsFree: false)
+            }
+            return
+        }
         switch state {
         case .listening(let mode):
             hideTask?.cancel()

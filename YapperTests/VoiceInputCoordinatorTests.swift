@@ -533,16 +533,45 @@ extension VoiceInputCoordinatorTests {
         rig.coordinator.cancelPushToTalk()
     }
 
-    @Test func aPrimedHoldPlaysTheCueWhenTheHoldIsRecognised() async {
+    @Test func aPrimedPressPlaysTheCueAtKeyDownAndOnlyOnce() async {
         let rig = makeRig()
         await settle()
         var cues = 0
         rig.coordinator.playStartCue = { cues += 1; return Date() }
         rig.coordinator.keyPressed(playbackActive: false)
-        #expect(cues == 0)                     // could still be a tap: stay silent
+        #expect(cues == 1)                     // announced the moment the mic opens
+        #expect(rig.coordinator.priming)
         rig.coordinator.beginPushToTalk()
-        #expect(cues == 1)
+        #expect(cues == 1)                     // the hold adopts it; no second cue
+        #expect(!rig.coordinator.priming)
         rig.coordinator.cancelPushToTalk()
+    }
+
+    @Test func aTapCutsTheKeyDownCueShort() async {
+        let rig = makeRig()
+        await settle()
+        var stops = 0
+        rig.coordinator.playStartCue = { Date() }
+        rig.coordinator.stopStartCue = { stops += 1 }
+        rig.coordinator.keyPressed(playbackActive: false)
+        rig.coordinator.keyAbandoned()
+        #expect(stops == 1)
+        #expect(!rig.coordinator.priming)
+        // A hold that never primed (and so never played early) has nothing to cut.
+        rig.coordinator.keyAbandoned()
+        #expect(stops == 1)
+    }
+
+    @Test func levelsReachTheHUDWhileTheMicIsPrimed() async {
+        let rig = makeRig()
+        await settle()
+        var levels: [Float] = []
+        rig.coordinator.onLevel = { levels.append($0) }
+        rig.coordinator.keyPressed(playbackActive: false)
+        rig.capture.onLevel?(0.3)
+        rig.coordinator.keyAbandoned()
+        rig.capture.onLevel?(0.4)
+        #expect(levels == [0.3])
     }
 
     @Test func aRetryReportsAsARetry() async {

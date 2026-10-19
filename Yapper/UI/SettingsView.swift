@@ -128,7 +128,7 @@ struct SettingsView: View {
             }
             .background(Brand.canvas.ignoresSafeArea())
         }
-        .frame(minWidth: 780, minHeight: 580)
+        .frame(minWidth: 780, maxWidth: .infinity, minHeight: 580, maxHeight: .infinity)
         .foregroundStyle(Brand.ink)
         .background(WindowChrome())
         .environment(\.settingsSkin, skin)
@@ -185,6 +185,8 @@ private struct WindowChrome: NSViewRepresentable {
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.styleMask.insert(.fullSizeContentView)
+        // A Settings scene is created fixed-size; let the user drag it larger.
+        window.styleMask.insert(.resizable)
         window.appearance = NSAppearance(named: .aqua)
         window.backgroundColor = NSColor(Brand.canvas)
     }

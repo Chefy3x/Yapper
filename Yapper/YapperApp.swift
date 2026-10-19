@@ -19,7 +19,7 @@ struct YapperApp: App {
 
         Settings {
             SettingsView()
-                .frame(minWidth: 760, minHeight: 580)
+                .frame(minWidth: 780, maxWidth: .infinity, minHeight: 580, maxHeight: .infinity)
                 .environmentObject(state)
                 .environmentObject(settings)
         }
