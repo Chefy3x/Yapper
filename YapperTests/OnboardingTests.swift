@@ -50,9 +50,9 @@ struct OnboardingGateTests {
 // The menu bar strip and the guide's closing recap render from one list, so they can't drift.
 struct ShortcutReferenceTests {
 
-    @Test func listsTheFiveUserFacingGestures() {
-        // Read/pause, hold-to-talk, selection, Conversation Mode, skip.
-        #expect(ShortcutReference.all(yapperKey: .rightOption).count == 5)
+    @Test func listsTheUserFacingGestures() {
+        // Read/pause, hold-to-talk, lock the mic, paste again, selection, Conversation Mode, skip.
+        #expect(ShortcutReference.all(yapperKey: .rightOption).count == 7)
     }
 
     // Right ⌘ + D dumps the accessibility tree to disk. It's a debug affordance that belongs in

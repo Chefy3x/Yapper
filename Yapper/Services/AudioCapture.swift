@@ -35,6 +35,33 @@ enum AudioInputDevices {
         list().isEmpty ? nil : translate(uid)
     }
 
+    /// True when the mic Voice In would open — the persisted one, else the system default input —
+    /// is Bluetooth. Opening a Bluetooth mic flips the headset into its call profile, which drops
+    /// playback quality for every app, so it must only happen when the user has asked to talk.
+    static func isBluetooth(uid: String?) -> Bool {
+        guard let id = uid.flatMap(translate) ?? defaultInputDevice() else { return false }
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyTransportType,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain)
+        var transport: UInt32 = 0
+        var size = UInt32(MemoryLayout<UInt32>.size)
+        guard AudioObjectGetPropertyData(id, &address, 0, nil, &size, &transport) == noErr else { return false }
+        return transport == kAudioDeviceTransportTypeBluetooth || transport == kAudioDeviceTransportTypeBluetoothLE
+    }
+
+    private static func defaultInputDevice() -> AudioDeviceID? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain)
+        var id = AudioDeviceID(0)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &id) == noErr,
+              id != kAudioObjectUnknown else { return nil }
+        return id
+    }
+
     private static func translate(_ uid: String) -> AudioDeviceID? {
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioHardwarePropertyTranslateUIDToDevice,
@@ -91,6 +118,13 @@ protocol AudioCapturing: AnyObject {
     func start(deviceUID: String?) throws
     /// Stops recording and returns everything captured as 16 kHz mono float samples.
     func stop() -> [Float]
+    /// Whether opening this input has side effects beyond the mic indicator (a Bluetooth headset
+    /// switching profiles). Such inputs are never opened speculatively.
+    func isDisruptive(deviceUID: String?) -> Bool
+}
+
+extension AudioCapturing {
+    func isDisruptive(deviceUID: String?) -> Bool { false }
 }
 
 /// AVAudioEngine input tap → 16 kHz mono Float32, which is what Whisper wants. The tap runs on
@@ -129,6 +163,7 @@ final class AudioCapture: AudioCapturing {
     func start(deviceUID: String?) throws {
         guard !isRunning else { return }
         buffer.reset()
+        let requestedAt = DispatchTime.now()
 
         let input = engine.inputNode
         if let uid = deviceUID {
@@ -154,6 +189,12 @@ final class AudioCapture: AudioCapturing {
             sink: buffer,
             onLevel: { [weak self] level in
                 Task { @MainActor [weak self] in self?.onLevel?(level) }
+            },
+            onFirstBuffer: {
+                // How long the user waits between "open the mic" and audio actually arriving —
+                // the gap that eats first words. .notice so it persists and can be compared.
+                let ms = Double(DispatchTime.now().uptimeNanoseconds - requestedAt.uptimeNanoseconds) / 1_000_000
+                Log.voice.notice("Mic first audio after \(String(format: "%.0f", ms), privacy: .public)ms")
             }
         )
         input.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { @Sendable pcm, _ in
@@ -168,7 +209,8 @@ final class AudioCapture: AudioCapturing {
             throw error
         }
         isRunning = true
-        Log.voice.info("AudioCapture started @\(inputFormat.sampleRate, privacy: .public)Hz ch=\(inputFormat.channelCount, privacy: .public)")
+        let startMs = Double(DispatchTime.now().uptimeNanoseconds - requestedAt.uptimeNanoseconds) / 1_000_000
+        Log.voice.notice("AudioCapture started @\(inputFormat.sampleRate, privacy: .public)Hz ch=\(inputFormat.channelCount, privacy: .public) in \(String(format: "%.0f", startMs), privacy: .public)ms")
     }
 
     func stop() -> [Float] {
@@ -179,6 +221,10 @@ final class AudioCapture: AudioCapturing {
         let samples = buffer.drain()
         Log.voice.info("AudioCapture stopped: \(samples.count, privacy: .public) samples (\(String(format: "%.1f", Double(samples.count) / Self.targetSampleRate), privacy: .public)s)")
         return samples
+    }
+
+    func isDisruptive(deviceUID: String?) -> Bool {
+        AudioInputDevices.isBluetooth(uid: deviceUID)
     }
 
     private func handleConfigurationChange() {
@@ -215,17 +261,27 @@ private final class TapProcessor: @unchecked Sendable {
     private let ratio: Double
     private let sink: SampleBuffer
     private let onLevel: @Sendable (Float) -> Void
+    private let onFirstBuffer: @Sendable () -> Void
+    private let firstLock = NSLock()
+    private var sawFirst = false
 
     init(converter: AVAudioConverter, target: AVAudioFormat, ratio: Double,
-         sink: SampleBuffer, onLevel: @escaping @Sendable (Float) -> Void) {
+         sink: SampleBuffer, onLevel: @escaping @Sendable (Float) -> Void,
+         onFirstBuffer: @escaping @Sendable () -> Void) {
         self.converter = converter
         self.target = target
         self.ratio = ratio
         self.sink = sink
         self.onLevel = onLevel
+        self.onFirstBuffer = onFirstBuffer
     }
 
     func process(_ pcm: AVAudioPCMBuffer) {
+        firstLock.lock()
+        let first = !sawFirst
+        sawFirst = true
+        firstLock.unlock()
+        if first { onFirstBuffer() }
         let capacity = AVAudioFrameCount(Double(pcm.frameLength) * ratio) + 32
         guard let out = AVAudioPCMBuffer(pcmFormat: target, frameCapacity: capacity) else { return }
         let feed = OneShotFeed(pcm)

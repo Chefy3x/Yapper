@@ -25,9 +25,20 @@ final class SettingsStore: ObservableObject {
         case onboardingCompleted
         case voiceInputEnabled
         case whisperModelID
+        case speechModelMovedToParakeet
         case handsFreeEnabled
+        case pauseMediaWhileTalking
+        case learnFromEdits
+        case useScreenWords
+        case codeWords
+        case smartFormattingEnabled
+        case cleanUpSpeech
         case inputDeviceUID
         case yapperKey
+        case dictationRetention
+        case keepDictationAudio
+        case dictationSounds
+        case dictationHUD
     }
 
     @Published var activeVoiceID: String {
@@ -101,7 +112,7 @@ final class SettingsStore: ObservableObject {
     @Published var voiceInputEnabled: Bool {
         didSet { defaults.set(voiceInputEnabled, forKey: Key.voiceInputEnabled.rawValue) }
     }
-    /// WhisperKit model variant. Defaults per architecture — see `WhisperModel.recommended`.
+    /// Speech model (Whisper variant or Parakeet). Defaults per architecture — see `WhisperModel.recommended`.
     @Published var whisperModelID: String {
         didSet { defaults.set(whisperModelID, forKey: Key.whisperModelID.rawValue) }
     }
@@ -110,6 +121,32 @@ final class SettingsStore: ObservableObject {
     @Published var handsFreeEnabled: Bool {
         didSet { defaults.set(handsFreeEnabled, forKey: Key.handsFreeEnabled.rawValue) }
     }
+    /// Pause other apps' media (a YouTube tab, Spotify) while the user talks or Yapper reads, and
+    /// play it again afterwards if Yapper was the one that paused it.
+    @Published var pauseMediaWhileTalking: Bool {
+        didSet { defaults.set(pauseMediaWhileTalking, forKey: Key.pauseMediaWhileTalking.rawValue) }
+    }
+    /// Watch the field a transcript went into for a minute and learn the words the user fixes.
+    @Published var learnFromEdits: Bool {
+        didSet { defaults.set(learnFromEdits, forKey: Key.learnFromEdits.rawValue) }
+    }
+    /// Bias each decode toward the names and jargon visible in the window being dictated into.
+    @Published var useScreenWords: Bool {
+        didSet { defaults.set(useScreenWords, forKey: Key.useScreenWords.rawValue) }
+    }
+    /// In editors, terminals and AI chats: type on-screen code names the way the code spells them.
+    @Published var codeWords: Bool {
+        didSet { defaults.set(codeWords, forKey: Key.codeWords.rawValue) }
+    }
+    /// Run dictations with a list or a self-correction through the on-device formatting model.
+    @Published var smartFormattingEnabled: Bool {
+        didSet { defaults.set(smartFormattingEnabled, forKey: Key.smartFormattingEnabled.rawValue) }
+    }
+    /// Take out um/uh, stutters and repeated words (rules), and with smart formatting on, filler
+    /// and false starts too (the model).
+    @Published var cleanUpSpeech: Bool {
+        didSet { defaults.set(cleanUpSpeech, forKey: Key.cleanUpSpeech.rawValue) }
+    }
     /// The one modifier that drives Yapper (tap / hold / chords). See `YapperKey`.
     @Published var yapperKey: YapperKey {
         didSet { defaults.set(yapperKey.rawValue, forKey: Key.yapperKey.rawValue) }
@@ -117,6 +154,22 @@ final class SettingsStore: ObservableObject {
     /// CoreAudio device UID to record from. Nil = whatever macOS calls the default input.
     @Published var inputDeviceUID: String? {
         didSet { defaults.set(inputDeviceUID, forKey: Key.inputDeviceUID.rawValue) }
+    }
+    /// How long Settings → Dictations keeps what you said.
+    @Published var dictationRetention: DictationRetention {
+        didSet { defaults.set(dictationRetention.rawValue, forKey: Key.dictationRetention.rawValue) }
+    }
+    /// Keep each dictation's recording (at most a week) so it can be played or transcribed again.
+    @Published var keepDictationAudio: Bool {
+        didSet { defaults.set(keepDictationAudio, forKey: Key.keepDictationAudio.rawValue) }
+    }
+    /// A short sound when the mic opens for a hold and when the words land.
+    @Published var dictationSounds: Bool {
+        didSet { defaults.set(dictationSounds, forKey: Key.dictationSounds.rawValue) }
+    }
+    /// The floating pill that shows the mic level while you talk.
+    @Published var dictationHUD: Bool {
+        didSet { defaults.set(dictationHUD, forKey: Key.dictationHUD.rawValue) }
     }
 
     /// True when nothing has ever been persisted — a genuinely fresh install.
@@ -167,10 +220,31 @@ final class SettingsStore: ObservableObject {
         let themeRaw = defaults.string(forKey: Key.miniPlayerTheme.rawValue) ?? MiniPlayerTheme.minimal.rawValue
         self.miniPlayerTheme = MiniPlayerTheme(rawValue: themeRaw) ?? .minimal
         self.voiceInputEnabled = defaults.object(forKey: Key.voiceInputEnabled.rawValue) as? Bool ?? true
-        self.whisperModelID = defaults.string(forKey: Key.whisperModelID.rawValue) ?? WhisperModel.recommended.id
+        var modelID = defaults.string(forKey: Key.whisperModelID.rawValue) ?? WhisperModel.recommended.id
+        // Once: anyone still on the old Apple Silicon default moves to Parakeet, which matched it
+        // for accuracy at a tenth of the time. A deliberate pick of another model stays.
+        if !defaults.bool(forKey: Key.speechModelMovedToParakeet.rawValue) {
+            defaults.set(true, forKey: Key.speechModelMovedToParakeet.rawValue)
+            if modelID == WhisperModel.formerDefaultID, WhisperModel.recommended.engine == .parakeet {
+                modelID = WhisperModel.recommended.id
+                defaults.set(modelID, forKey: Key.whisperModelID.rawValue)
+            }
+        }
+        self.whisperModelID = modelID
         self.handsFreeEnabled = defaults.bool(forKey: Key.handsFreeEnabled.rawValue)
+        self.pauseMediaWhileTalking = defaults.object(forKey: Key.pauseMediaWhileTalking.rawValue) as? Bool ?? true
+        self.learnFromEdits = defaults.object(forKey: Key.learnFromEdits.rawValue) as? Bool ?? true
+        self.useScreenWords = defaults.object(forKey: Key.useScreenWords.rawValue) as? Bool ?? true
+        self.codeWords = defaults.object(forKey: Key.codeWords.rawValue) as? Bool ?? true
+        // On by default: it only does anything once the model is downloaded.
+        self.smartFormattingEnabled = defaults.object(forKey: Key.smartFormattingEnabled.rawValue) as? Bool ?? true
+        self.cleanUpSpeech = defaults.object(forKey: Key.cleanUpSpeech.rawValue) as? Bool ?? true
         self.inputDeviceUID = defaults.string(forKey: Key.inputDeviceUID.rawValue)
         self.yapperKey = YapperKey(rawValue: defaults.string(forKey: Key.yapperKey.rawValue) ?? "") ?? .default
+        self.dictationRetention = DictationRetention(rawValue: defaults.string(forKey: Key.dictationRetention.rawValue) ?? "") ?? .week
+        self.keepDictationAudio = defaults.object(forKey: Key.keepDictationAudio.rawValue) as? Bool ?? true
+        self.dictationSounds = defaults.object(forKey: Key.dictationSounds.rawValue) as? Bool ?? true
+        self.dictationHUD = defaults.object(forKey: Key.dictationHUD.rawValue) as? Bool ?? true
         let storedScale = defaults.object(forKey: Key.cassetteScale.rawValue) as? Double ?? 1.0
         self.cassetteScale = min(max(storedScale, Self.cassetteScaleRange.lowerBound),
                                  Self.cassetteScaleRange.upperBound)

@@ -56,11 +56,11 @@ enum YapperKey: String, CaseIterable, Codable, Identifiable, Sendable {
     var caveat: String? {
         switch self {
         case .rightOption:
-            "Right ⌥ + → is taken only while Yapper is playing or has replies queued; otherwise it still jumps a word. Right ⌥ + S and + D stop typing ß and ∂."
+            "Right ⌥ + → is taken only while Yapper is playing or has replies queued; otherwise it still jumps a word. Right ⌥ + S, + D and + V stop typing ß, ∂ and √."
         case .fn:
             "Set System Settings → Keyboard → “Press 🌐 key to” → Do Nothing, or macOS opens the emoji picker when you let go."
         case .rightControl:
-            "Right ⌃ + S and + D are taken — in a terminal that's freeze-output and end-of-file. Use the left ⌃ for those."
+            "Right ⌃ + S, + D and + V are taken — in a terminal that's freeze-output, end-of-file and literal-next. Use the left ⌃ for those."
         case .rightCommand:
             "Holding ⌘ changes state in many apps (link previews, alternate cursors). Right ⌘ + S / D / Return / → are taken from the app."
         }

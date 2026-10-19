@@ -116,3 +116,38 @@ struct VocabularyStoreTests {
         #expect(b.replacements.map(\.heard) == ["yapper"])
     }
 }
+
+// MARK: - Where dictionary entries came from
+
+@MainActor
+struct VocabularyOriginTests {
+    private func store(_ url: URL = FileManager.default.temporaryDirectory
+        .appendingPathComponent("vocab-\(UUID().uuidString).json")) -> VocabularyStore { VocabularyStore(url: url) }
+
+    @Test func typedInWordsAreManualAndLearnedOnesAreMarked() {
+        let v = store()
+        v.addTerm("Kestrel")
+        v.applyLearned([LearnedWord(heard: "vercell", typed: "Vercel", makesRule: true)])
+        #expect(v.origin(ofTerm: "Kestrel") == .manual)
+        #expect(v.origin(ofTerm: "vercel") == .learned)
+        #expect(v.replacements.first?.origin == .learned)
+    }
+
+    @Test func importedEntriesAreMarkedAndOriginsPersist() {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("vocab-\(UUID().uuidString).json")
+        let v = store(url)
+        v.merge(terms: ["Quillbase"], rules: [Replacement(heard: "quill base", typed: "Quillbase")])
+        let reloaded = store(url)
+        #expect(reloaded.origin(ofTerm: "Quillbase") == .imported)
+        #expect(reloaded.replacements.first?.origin == .imported)
+    }
+
+    @Test func undoingALearnedBatchClearsItsMarks() {
+        let v = store()
+        v.applyLearned([LearnedWord(heard: "vercell", typed: "Vercel", makesRule: true)])
+        v.undoLearned()
+        #expect(v.terms.isEmpty)
+        #expect(v.termOrigins.isEmpty)
+        #expect(v.replacements.isEmpty)
+    }
+}

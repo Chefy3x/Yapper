@@ -6,6 +6,8 @@ struct Replacement: Codable, Identifiable, Equatable, Sendable {
     var id: UUID = UUID()
     var heard: String
     var typed: String
+    /// Where the rule came from. Nil for rules written before this was tracked: treated as typed in.
+    var origin: VocabOrigin? = nil
 
     /// Two rules are the same rule when they say the same thing; the id is only for lists.
     static func == (lhs: Replacement, rhs: Replacement) -> Bool {
@@ -13,11 +15,31 @@ struct Replacement: Codable, Identifiable, Equatable, Sendable {
     }
 }
 
+/// How a word or correction got into the dictionary, so Settings can mark the ones Yapper added.
+enum VocabOrigin: String, Codable, Sendable {
+    case manual     // typed in Settings
+    case learned    // from an edit to something Yapper typed
+    case imported   // from Wispr Flow
+}
+
 /// The most recent transcript, kept so the user can correct it and teach Yapper the fix.
 struct LastTranscript: Codable, Equatable, Sendable {
     var original: String     // what Whisper produced, after the confidence filter
     var delivered: String    // after replacements — what actually got typed
     var at: Date
+}
+
+/// Words learned from one edit, kept so the menu can offer to undo them.
+struct LearnedBatch: Equatable, Sendable {
+    var words: [String]
+    var at: Date
+    fileprivate var addedTerms: [String]
+    /// Corrections this batch wrote, each with the one it replaced (nil when it was new).
+    fileprivate var rules: [(new: Replacement, previous: Replacement?)]
+
+    static func == (lhs: LearnedBatch, rhs: LearnedBatch) -> Bool {
+        lhs.words == rhs.words && lhs.at == rhs.at
+    }
 }
 
 /// Persistent vocabulary: terms that bias Whisper's decoding, replacement rules that fix what it
@@ -28,11 +50,16 @@ final class VocabularyStore: ObservableObject {
     @Published var terms: [String] { didSet { save() } }
     @Published var replacements: [Replacement] { didSet { save() } }
     @Published private(set) var lastTranscript: LastTranscript?
+    /// How each term arrived, keyed by its lowercased spelling. Terms typed in have no entry.
+    @Published private(set) var termOrigins: [String: VocabOrigin] = [:] { didSet { save() } }
+    /// The most recent words learned from an edit, until undone or superseded. Not persisted.
+    @Published private(set) var recentlyLearned: LearnedBatch?
 
     private struct File: Codable {
         var terms: [String] = []
         var replacements: [Replacement] = []
         var lastTranscript: LastTranscript?
+        var termOrigins: [String: VocabOrigin]?
     }
 
     private let url: URL
@@ -43,6 +70,7 @@ final class VocabularyStore: ObservableObject {
         terms = file.terms
         replacements = file.replacements
         lastTranscript = file.lastTranscript
+        termOrigins = file.termOrigins ?? [:]
     }
 
     static func defaultURL() -> URL {
@@ -54,23 +82,30 @@ final class VocabularyStore: ObservableObject {
 
     // MARK: Editing
 
-    func addTerm(_ raw: String) {
+    func addTerm(_ raw: String, origin: VocabOrigin = .manual) {
         let term = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !term.isEmpty, !terms.contains(where: { $0.caseInsensitiveCompare(term) == .orderedSame }) else { return }
+        if origin != .manual { termOrigins[term.lowercased()] = origin }
         terms.append(term)
     }
 
-    func removeTerm(_ term: String) { terms.removeAll { $0 == term } }
+    func removeTerm(_ term: String) {
+        terms.removeAll { $0 == term }
+        if !terms.contains(where: { $0.lowercased() == term.lowercased() }) { termOrigins[term.lowercased()] = nil }
+    }
 
-    func addReplacement(heard: String, typed: String) {
+    func origin(ofTerm term: String) -> VocabOrigin { termOrigins[term.lowercased()] ?? .manual }
+
+    func addReplacement(heard: String, typed: String, origin: VocabOrigin = .manual) {
         let h = heard.trimmingCharacters(in: .whitespacesAndNewlines)
         let t = typed.trimmingCharacters(in: .whitespacesAndNewlines)
         // Case-only rules ("yapper" → "Yapper") are the most common kind — proper nouns.
         guard !h.isEmpty, !t.isEmpty, h != t else { return }
         if let idx = replacements.firstIndex(where: { $0.heard.caseInsensitiveCompare(h) == .orderedSame }) {
             replacements[idx].typed = t
+            replacements[idx].origin = origin
         } else {
-            replacements.append(Replacement(heard: h, typed: t))
+            replacements.append(Replacement(heard: h, typed: t, origin: origin))
         }
     }
 
@@ -90,16 +125,70 @@ final class VocabularyStore: ObservableObject {
         guard let last = lastTranscript else { return [] }
         let learned = TranscriptCorrector.learn(original: last.delivered, corrected: corrected)
         for rule in learned {
-            addReplacement(heard: rule.heard, typed: rule.typed)
-            addTerm(rule.typed)
+            addReplacement(heard: rule.heard, typed: rule.typed, origin: .learned)
+            addTerm(rule.typed, origin: .learned)
         }
         lastTranscript = LastTranscript(original: last.original, delivered: corrected, at: last.at)
         save()
         return learned
     }
 
+    /// Words the edit watcher saw the user fix. Each becomes an expected word, and a correction
+    /// when it's safe (see `LearnedWord.makesRule`).
+    func applyLearned(_ learned: [LearnedWord]) {
+        guard !learned.isEmpty else { return }
+        var batch = LearnedBatch(words: [], at: Date(), addedTerms: [], rules: [])
+        for word in learned {
+            if !terms.contains(where: { $0.caseInsensitiveCompare(word.typed) == .orderedSame }) {
+                addTerm(word.typed, origin: .learned)
+                batch.addedTerms.append(word.typed)
+            }
+            if word.makesRule {
+                let previous = replacements.first { $0.heard.caseInsensitiveCompare(word.heard) == .orderedSame }
+                if previous?.typed != word.typed {
+                    addReplacement(heard: word.heard, typed: word.typed, origin: .learned)
+                    batch.rules.append((Replacement(heard: word.heard, typed: word.typed), previous))
+                }
+            }
+            batch.words.append(word.typed)
+        }
+        recentlyLearned = batch
+    }
+
+    /// Takes back exactly what the last learned batch added, leaving later edits alone.
+    func undoLearned() {
+        guard let batch = recentlyLearned else { return }
+        recentlyLearned = nil
+        for term in batch.addedTerms { removeTerm(term) }
+        for (rule, previous) in batch.rules {
+            guard let idx = replacements.firstIndex(where: { $0.heard.caseInsensitiveCompare(rule.heard) == .orderedSame
+                                                             && $0.typed == rule.typed }) else { continue }
+            if let previous {
+                replacements[idx].typed = previous.typed
+                replacements[idx].origin = previous.origin
+            } else {
+                replacements.remove(at: idx)
+            }
+        }
+    }
+
+    func dismissLearned() { recentlyLearned = nil }
+
+    /// Adds what an import found, skipping anything already here. Returns how many were new.
+    @discardableResult
+    func merge(terms newTerms: [String], rules newRules: [Replacement]) -> (terms: Int, rules: Int) {
+        let termsBefore = terms.count
+        let rulesBefore = replacements
+        for term in newTerms { addTerm(term, origin: .imported) }
+        for rule in newRules where !replacements.contains(where: { $0.heard.caseInsensitiveCompare(rule.heard) == .orderedSame }) {
+            addReplacement(heard: rule.heard, typed: rule.typed, origin: .imported)
+        }
+        return (terms.count - termsBefore, replacements.count - rulesBefore.count)
+    }
+
     private func save() {
-        let file = File(terms: terms, replacements: replacements, lastTranscript: lastTranscript)
+        let file = File(terms: terms, replacements: replacements, lastTranscript: lastTranscript,
+                        termOrigins: termOrigins.isEmpty ? nil : termOrigins)
         if let data = try? JSONEncoder().encode(file) {
             try? data.write(to: url, options: .atomic)
         }
@@ -125,11 +214,71 @@ enum TranscriptCorrector {
         return out
     }
 
+    /// Fixes the spelling of words Whisper got nearly right, using the user's terms and the
+    /// words on screen. Deliberately narrow, because it runs without asking:
+    ///   • two words that together spell a candidate become it ("whisper kit" → "WhisperKit");
+    ///   • a word that matches a candidate except for case takes the candidate's case, unless
+    ///     the word is an ordinary one ("apple" stays a fruit even with "Apple" on screen);
+    ///   • a word the dictionary doesn't know, close in spelling to exactly one candidate,
+    ///     becomes it ("Vercell" → "Vercel"). Ordinary words are never respelled.
+    static func respell(_ text: String, candidates: [String], isDictionaryWord: (String) -> Bool) -> String {
+        let single = candidates.filter { !$0.contains(" ") && $0.count >= 3 }
+        guard !single.isEmpty else { return text }
+        var byLower: [String: String] = [:]
+        for c in single where byLower[c.lowercased()] == nil { byLower[c.lowercased()] = c }
+
+        var tokens = text.split(separator: " ", omittingEmptySubsequences: false).map(String.init)
+        func parts(_ token: String) -> (lead: String, core: String, trail: String) {
+            let scalars = Array(token)
+            var start = 0, end = scalars.count
+            while start < end, !(scalars[start].isLetter || scalars[start].isNumber) { start += 1 }
+            while end > start, !(scalars[end - 1].isLetter || scalars[end - 1].isNumber) { end -= 1 }
+            return (String(scalars[..<start]), String(scalars[start..<end]), String(scalars[end...]))
+        }
+
+        // Joined pairs first, so "whisper kit" isn't respelled one half at a time.
+        var i = 0
+        while i + 1 < tokens.count {
+            let a = parts(tokens[i]), b = parts(tokens[i + 1])
+            if a.trail.isEmpty, b.lead.isEmpty, !a.core.isEmpty, !b.core.isEmpty,
+               let match = byLower[(a.core + b.core).lowercased()] {
+                tokens[i] = a.lead + match + b.trail
+                tokens.remove(at: i + 1)
+            }
+            i += 1
+        }
+
+        for (index, token) in tokens.enumerated() {
+            let p = parts(token)
+            guard p.core.count >= 3 else { continue }
+            let lower = p.core.lowercased()
+            if let match = byLower[lower] {
+                if match != p.core, !isDictionaryWord(lower) { tokens[index] = p.lead + match + p.trail }
+                continue
+            }
+            guard p.core.count >= 4, !isDictionaryWord(p.core), !isDictionaryWord(lower) else { continue }
+            let close = single.filter { EditLearner.similar(lower, $0.lowercased()) }
+            let distinct = Set(close.map { $0.lowercased() })
+            if distinct.count == 1, let match = close.first { tokens[index] = p.lead + match + p.trail }
+        }
+        return tokens.joined(separator: " ")
+    }
+
     /// Whisper's prompt is "text that came before": a comma-separated list of the user's
     /// terms reads as prior context and nudges spelling toward them. Capped well under the
     /// decoder's ~220-token prompt budget; newest terms win when the list is long.
-    static func prompt(terms: [String], maxCharacters: Int = 600) -> String? {
-        let cleaned = terms.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+    ///
+    /// `screenWords` are read off the focused window for this turn. They come before the user's
+    /// own terms, so when the budget runs out it's screen words that drop, never your vocabulary.
+    static func prompt(terms: [String], screenWords: [String] = [], maxCharacters: Int = 600) -> String? {
+        var seen: Set<String> = []
+        var cleaned: [String] = []
+        // Walk from the end so a word that is both on screen and in your terms keeps your slot.
+        for term in (screenWords + terms).reversed() {
+            let t = term.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !t.isEmpty, seen.insert(t.lowercased()).inserted else { continue }
+            cleaned.insert(t, at: 0)
+        }
         guard !cleaned.isEmpty else { return nil }
         var kept: [String] = []
         var length = 0

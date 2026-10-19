@@ -7,7 +7,8 @@ include:
 options:
   bundleIdPrefix: app.yapper
   deploymentTarget:
-    macOS: "13.0"
+    # 14: FluidAudio (Parakeet speech-to-text) needs Sonoma; llama.cpp needs 13.3.
+    macOS: "14.0"
   createIntermediateGroups: true
   defaultConfig: Debug
 settings:
@@ -34,6 +35,15 @@ packages:
   WhisperKit:
     url: https://github.com/argmaxinc/WhisperKit
     exactVersion: "0.18.0"
+  # On-device formatting for Voice In (lists, "no wait, I mean" fixes). Local package wrapping
+  # llama.cpp's official xcframework; see Vendor/LlamaCpp/Package.swift.
+  LlamaCpp:
+    path: Vendor/LlamaCpp
+  # Parakeet speech-to-text (Core ML, Neural Engine) and inverse text normalisation. Apache-2.0;
+  # the Parakeet weights are CC-BY-4.0 and credited in Settings → About.
+  FluidAudio:
+    url: https://github.com/FluidInference/FluidAudio
+    exactVersion: "0.17.5"
 schemes:
   Yapper:
     build:
@@ -51,6 +61,9 @@ targets:
     platform: macOS
     sources:
       - path: Yapper
+      # Loaded by /usr/bin/perl to reach MediaRemote (pause other media while the user talks).
+      - path: Vendor/MediaRemoteAdapter/bin/mediaremote-adapter.pl
+        buildPhase: resources
     resources:
       - path: Yapper/Resources
         optional: true
@@ -72,6 +85,12 @@ targets:
     dependencies:
       - package: Sparkle
       - package: WhisperKit
+      - package: LlamaCpp
+      - package: FluidAudio
+      # Embedded, never linked: only the Perl helper process loads it.
+      - target: MediaRemoteAdapter
+        embed: true
+        link: false
     entitlements:
       path: Yapper/Yapper.entitlements
       properties:
@@ -88,6 +107,32 @@ targets:
         SWIFT_EMIT_LOC_STRINGS: YES
         COMBINE_HIDPI_IMAGES: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+  # Vendored BSD-3 mediaremote-adapter (see Vendor/MediaRemoteAdapter/VENDORED.md). Since macOS
+  # 15.4 only Apple-signed processes may use MediaRemote; /usr/bin/perl is one, and it loads this
+  # framework to read Now Playing and send pause/play. Symbols must stay visible for the script.
+  MediaRemoteAdapter:
+    type: framework
+    platform: macOS
+    sources:
+      - path: Vendor/MediaRemoteAdapter/src
+        excludes:
+          - "test/*.m"
+      - path: Vendor/MediaRemoteAdapter/include
+        headerVisibility: public
+    settings:
+      base:
+        PRODUCT_NAME: MediaRemoteAdapter
+        PRODUCT_BUNDLE_IDENTIFIER: app.yapper.MediaRemoteAdapter
+        GENERATE_INFOPLIST_FILE: YES
+        CLANG_ENABLE_OBJC_ARC: YES
+        GCC_SYMBOLS_PRIVATE_EXTERN: NO
+        OTHER_CFLAGS: ["-fvisibility=default"]
+        HEADER_SEARCH_PATHS: ["$(SRCROOT)/Vendor/MediaRemoteAdapter/src", "$(SRCROOT)/Vendor/MediaRemoteAdapter/include"]
+        OTHER_LDFLAGS: ["-framework", "Foundation", "-framework", "AppKit", "-framework", "UniformTypeIdentifiers"]
+        DEFINES_MODULE: NO
+        SKIP_INSTALL: YES
+        GCC_TREAT_WARNINGS_AS_ERRORS: NO
+        CLANG_WARN_DOCUMENTATION_COMMENTS: NO
   # Standalone logic tests: compiles the app sources (minus @main) into the test bundle instead
   # of test-hosting Yapper.app — so running tests never launches the app, installs its event tap,
   # or triggers permission prompts.
@@ -106,6 +151,8 @@ targets:
       # App sources reference Sparkle (UpdaterService), so the test bundle links it too.
       - package: Sparkle
       - package: WhisperKit
+      - package: LlamaCpp
+      - package: FluidAudio
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.yapper.YapperTests

@@ -49,12 +49,28 @@ final class AppState: ObservableObject {
     lazy var tts = TTSCoordinator(keychain: keychain, settings: settings)
     lazy var conversationWatcher = ConversationWatcher(settings: settings)
     let vocabulary = VocabularyStore()
+    let media = MediaController()
+    let editWatcher = EditWatcher()
+    let formatter = SmartFormatter()
+    /// Every dictation, for Settings → Dictations. Not the read-aloud `history`.
+    let dictations = DictationHistoryStore()
+    let snippets = SnippetStore()
+    private lazy var sounds = DictationSounds()
+    private(set) var recordingHUD: RecordingHUDController?
+    /// The Yapper key press that finished a locked dictation; its tap or hold is spent.
+    private var pressEndedLockedDictation = false
     lazy var voiceInput = VoiceInputCoordinator(
         settings: settings,
         vocabulary: vocabulary,
         capture: AudioCapture(),
         delivery: PasteDelivery(),
-        makeTranscriber: { model, onStatus in WhisperTranscriber(model: model, onStatus: onStatus) }
+        makeTranscriber: { model, onStatus in
+            switch model.engine {
+            case .parakeet: ParakeetTranscriber(model: model, onStatus: onStatus)
+            case .whisper: WhisperTranscriber(model: model, onStatus: onStatus)
+            }
+        },
+        lastRecording: LastRecording()
     )
 
     private var conversationModeCancellable: AnyCancellable?
@@ -82,6 +98,8 @@ final class AppState: ObservableObject {
             activeVoice = saved
         }
         history.prune(retentionHours: settings.historyRetentionHours)
+        dictations.prune(retention: settings.dictationRetention)
+        dictations.sweepOrphanAudio()
         startHistoryPruneTimer()
         wireReadingIndicator()
         wireHotkeys()
@@ -99,6 +117,32 @@ final class AppState: ObservableObject {
         wireVoiceInput()
     }
 
+    // MARK: - Media pause
+
+    private var mediaGate = MediaResumeGate()
+    /// How long a pause sent at key-down takes to silence the other app: the audio the mic
+    /// takes in before then is dropped from the dictation.
+    static let mediaPauseLag: TimeInterval = 0.15
+    private var mediaResumeTask: Task<Void, Never>?
+
+    /// Re-decide when paused media comes back. Publishers fire before their property updates,
+    /// so the caller passes the value that just changed.
+    private func reconsiderMediaResume(voiceState: VoiceInputCoordinator.State? = nil,
+                                       yapperReading: Bool? = nil, queued: Int? = nil) {
+        mediaResumeTask?.cancel()
+        mediaResumeTask = nil
+        guard media.isHoldingPause else { return }
+        let voiceBusy = (voiceState ?? voiceInput.state) != .idle
+        let speaking = (yapperReading ?? (tts.active != nil)) || (queued ?? tts.queueCount) > 0
+        guard let at = mediaGate.resumeTime(voiceBusy: voiceBusy, yapperSpeaking: speaking, now: Date()) else { return }
+        mediaResumeTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(max(0, at.timeIntervalSinceNow)))
+            guard let self, !Task.isCancelled else { return }
+            self.mediaGate.awaitingReplyUntil = nil
+            self.media.resumeIfPaused()
+        }
+    }
+
     // MARK: - Voice In
 
     private func wireVoiceInput() {
@@ -107,10 +151,95 @@ final class AppState: ObservableObject {
             self.tts.stop()   // you're answering — the reply stops reading, queue included
         }
         voiceInput.onEvent = { [weak self] in self?.lastEvent = $0 }
-        voiceInput.onDelivered = { text in
+        voiceInput.onDelivered = { [weak self] text, receipt in
             Log.voice.info("Delivered \(text.count, privacy: .public) chars to the focused app")
+            guard let self else { return }
+            if self.settings.learnFromEdits { self.editWatcher.watch(receipt, delivered: receipt.text.isEmpty ? text : receipt.text) }
+            guard self.conversationModeEnabled else { return }
+            self.mediaGate.awaitingReplyUntil = Date().addingTimeInterval(MediaResumeGate.replyWait)
+        }
+        voiceInput.captureTarget = { await DeliveryTarget.current() }
+        voiceInput.screenWords = { [weak self] in
+            guard let self else { return .empty }
+            let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+            let words = self.settings.useScreenWords
+            let code = self.settings.codeWords && CodeWords.isCodingApp(bundleID: bundleID)
+            guard words || code else { return .empty }
+            let text = await ScreenVocabulary.visibleText()
+            return ScreenReading(
+                words: words ? ScreenVocabulary.candidates(in: text) { WordKnowledge.isDictionaryWord($0) } : [],
+                identifiers: code ? CodeWords.identifiers(in: text) : [],
+                tagsFiles: code && CodeWords.tagsFiles(bundleID: bundleID))
+        }
+        voiceInput.format = { [weak self] text in
+            guard let self else { return text }
+            let cleanup = self.settings.cleanUpSpeech
+            let tidied = cleanup ? Disfluency.clean(text) : text
+            let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+            // "First, … second, …" is laid out by rule: reliable where the model is a coin flip.
+            if let listed = SpokenLists.format(tidied, mode: FormatMode.forApp(bundleID: bundleID)) { return listed }
+            guard self.settings.smartFormattingEnabled, !tidied.isEmpty else { return tidied }
+            return await self.formatter.format(tidied, bundleID: bundleID, cleanup: cleanup)
+        }
+        voiceInput.expandSnippets = { [weak self] text in self?.snippets.expand(text) ?? text }
+        recordingHUD = RecordingHUDController(state: self)
+        voiceInput.onLevel = { [weak self] in self?.recordingHUD?.level($0) }
+        if settings.dictationSounds { _ = sounds }   // render the sounds now, not on the first hold
+        voiceInput.playStartCue = { [weak self] in
+            guard let self, self.settings.dictationSounds else { return nil }
+            return self.sounds.playStart()
+        }
+        voiceInput.stopStartCue = { [weak self] in
+            guard let self, self.settings.dictationSounds else { return }
+            self.sounds.stopStart()
+        }
+        voiceInput.onTurnFinished = { [weak self] in self?.turnFinished($0) }
+        voiceInput.onPasteLanded = { [weak self] in self?.pasteLanded() }
+        editWatcher.onLearned = { [weak self] learned in
+            guard let self else { return }
+            self.vocabulary.applyLearned(learned)
+            let names = learned.map { "“\($0.typed)”" }.joined(separator: ", ")
+            self.lastEvent = "Learned \(names) from your edit"
         }
         voiceInput.$state.sink { [weak self] in self?.voiceInputState = $0 }.store(in: &voiceInputCancellables)
+
+        // Other apps' media pauses while the user talks or Yapper reads, and comes back once
+        // both are done (MediaResumeGate decides when).
+        media.start()
+        voiceInput.$state
+            .removeDuplicates()
+            .sink { [weak self] state in
+                guard let self else { return }
+                if state == .listening(.pushToTalk), self.settings.pauseMediaWhileTalking {
+                    self.media.pauseIfPlaying()
+                }
+                // A new dictation ends the watch on the last one: learn from what's there now.
+                if state.isListening {
+                    self.editWatcher.finish()
+                    if self.settings.smartFormattingEnabled {
+                        self.formatter.warmUp(bundleID: NSWorkspace.shared.frontmostApplication?.bundleIdentifier,
+                                              cleanup: self.settings.cleanUpSpeech)
+                    }
+                }
+                self.reconsiderMediaResume(voiceState: state)
+            }
+            .store(in: &voiceInputCancellables)
+        tts.$active
+            .map { $0 != nil }
+            .removeDuplicates()
+            .sink { [weak self] reading in
+                guard let self else { return }
+                if reading {
+                    self.mediaGate.awaitingReplyUntil = nil   // the reply arrived
+                    if self.settings.pauseMediaWhileTalking { self.media.pauseIfPlaying() }
+                }
+                self.reconsiderMediaResume(yapperReading: reading)
+            }
+            .store(in: &voiceInputCancellables)
+        tts.$queueCount
+            .removeDuplicates()
+            .sink { [weak self] in self?.reconsiderMediaResume(queued: $0) }
+            .store(in: &voiceInputCancellables)
         voiceInput.$modelStatus.sink { [weak self] in self?.whisperModelStatus = $0 }.store(in: &voiceInputCancellables)
         voiceInput.$microphoneStatus
             .map { $0 == .granted }
@@ -151,6 +280,72 @@ final class AppState: ObservableObject {
         voiceInput.bootstrap()
     }
 
+    /// The words just appeared: the pill closes and the done sound plays now, not once the
+    /// clipboard has been put back.
+    private func pasteLanded() {
+        recordingHUD?.finish(.pasted)
+        if settings.dictationSounds { sounds.playDone() }
+    }
+
+    /// A voice turn ended: tell the HUD, play the sound (a paste already had its own when it
+    /// landed), and keep it in Dictations. Everything here runs after the paste, so none of it
+    /// adds to the lag.
+    private func turnFinished(_ report: TurnReport) {
+        recordingHUD?.finish(report.outcome)
+        if settings.dictationSounds {
+            switch report.outcome {
+            case .pasted: break
+            case .copied: sounds.playDone()
+            case .empty, .failed: sounds.playFailed()
+            }
+        }
+        guard settings.dictationRetention != .never else { return }
+        let app = report.target.flatMap { NSRunningApplication(processIdentifier: $0.pid) }
+        let outcome: Dictation.Outcome
+        var error: String?
+        switch report.outcome {
+        case .pasted: outcome = .pasted
+        case .copied: outcome = .copied
+        case .empty: outcome = .empty
+        case .failed(let why): outcome = .failed; error = why
+        }
+        dictations.record(Dictation(at: report.startedAt,
+                                    appName: report.target?.appName ?? app?.localizedName,
+                                    bundleID: app?.bundleIdentifier,
+                                    heard: report.heard, text: report.text,
+                                    duration: Double(report.samples.count) / AudioCapture.targetSampleRate,
+                                    outcome: outcome, modelID: report.modelID, error: error),
+                          samples: settings.keepDictationAudio ? report.samples : nil)
+    }
+
+    /// Settings → Dictations → Paste. Settings steps aside first, so the words land in the app
+    /// you were in rather than in the Settings window.
+    func pasteDictation(_ text: String) {
+        NSApp.hide(nil)
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(300))
+            self?.voiceInput.paste(text, announce: "Pasted that dictation again")
+        }
+    }
+
+    /// Settings → Dictations → Transcribe again: runs the kept recording through the current
+    /// speech model and pipeline and updates the entry. No paste. Returns an error to show.
+    func retranscribe(_ entry: Dictation) async -> String? {
+        guard let samples = await dictations.loadAudio(for: entry), !samples.isEmpty else {
+            return "The recording isn't kept any more."
+        }
+        do {
+            let result = try await voiceInput.transcribe(samples: samples)
+            dictations.update(entry.id, heard: result.heard, text: result.text,
+                              outcome: result.text.isEmpty ? .empty
+                                  : entry.outcome == .pasted || entry.outcome == .copied ? entry.outcome : .retried,
+                              modelID: voiceInput.model.id)
+            return result.text.isEmpty ? "Still nothing to type in that one." : nil
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
     /// Yapper runs for weeks at a time, so the retention window has to be enforced continuously —
     /// not just at launch. Hourly with generous tolerance; pruning is cheap.
     private func startHistoryPruneTimer() {
@@ -158,6 +353,7 @@ final class AppState: ObservableObject {
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 self.history.prune(retentionHours: self.settings.historyRetentionHours)
+                self.dictations.prune(retention: self.settings.dictationRetention)
             }
         }
         t.tolerance = 300
@@ -341,6 +537,7 @@ final class AppState: ObservableObject {
     private func wireHotkeys() {
         hotkeys.onReadLatestOrToggle = { [weak self] in
             guard let self else { return }
+            if self.pressEndedLockedDictation { self.pressEndedLockedDictation = false; return }
             self.hotkeyFired.send(.readLatestOrToggle)
             // Double-tap: force a fresh Read Latest of the CURRENT window, superseding whatever
             // is playing or paused. Without this, tapping after a pause always resumes the old
@@ -421,11 +618,49 @@ final class AppState: ObservableObject {
         }
         hotkeys.onPushToTalkBegan = { [weak self] in
             guard let self else { return }
+            if self.pressEndedLockedDictation { self.pressEndedLockedDictation = false; return }
             self.hotkeyFired.send(.pushToTalk)
             self.pendingResumeTask?.cancel()   // a hold is not a tap; never resume under it
             self.pendingResumeTask = nil
             Log.hotkey.info("Yapper key hold -> Voice In")
             self.voiceInput.beginPushToTalk()
+        }
+        hotkeys.onKeyDown = { [weak self] in
+            guard let self else { return }
+            // While locked, the next press finishes the dictation, and is nothing else: not a
+            // read, not a new hold.
+            if self.voiceInput.isLocked {
+                self.pressEndedLockedDictation = true
+                self.voiceInput.finishLocked()
+                return
+            }
+            self.pressEndedLockedDictation = false
+            // A video or song playing: pause it now and open the mic now, instead of waiting
+            // out the 0.45 s tap-or-hold decision with the mic shut, which cost the first words.
+            // A tap reads aloud, which pauses media anyway; anything else gets it back below.
+            // Yapper's own reading still keeps the early mic off: it would hear itself.
+            var trim: TimeInterval = 0
+            if self.media.isOtherMediaPlaying, self.settings.pauseMediaWhileTalking {
+                self.media.pauseIfPlaying()
+                trim = Self.mediaPauseLag
+            }
+            self.voiceInput.keyPressed(playbackActive: self.tts.isPlaying || (trim == 0 && self.media.isOtherMediaPlaying),
+                                       trimLead: trim)
+        }
+        hotkeys.onKeyAbandoned = { [weak self] in
+            guard let self else { return }
+            self.voiceInput.keyAbandoned()
+            // Not a hold after all: media paused at key-down comes back once nobody is talking.
+            self.reconsiderMediaResume()
+        }
+        hotkeys.onLockRequested = { [weak self] in self?.voiceInput.lock() }
+        hotkeys.canLockMic = { [weak self] in
+            guard let self else { return false }
+            return self.voiceInput.state == .listening(.pushToTalk)
+        }
+        hotkeys.onRepasteLast = { [weak self] in
+            Log.hotkey.info("Yapper key+V -> Re-paste last transcript")
+            self?.voiceInput.repasteLast()
         }
         hotkeys.onPushToTalkEnded = { [weak self] in self?.voiceInput.endPushToTalk() }
         hotkeys.onPushToTalkCancelled = { [weak self] in self?.voiceInput.cancelPushToTalk() }
