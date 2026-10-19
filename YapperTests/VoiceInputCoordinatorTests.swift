@@ -37,8 +37,9 @@ struct VoiceInputCoordinatorTests {
     final class DeliveryLog: @unchecked Sendable { var delivered: [String] = [] }
     struct FakeDelivery: TextDelivering {
         let log: DeliveryLog
-        func deliver(_ text: String, target: DeliveryTarget?) async throws -> DeliveryReceipt {
-            log.delivered.append(text); return DeliveryReceipt(text: text)
+        func deliver(_ text: String, target: DeliveryTarget?,
+                     landed: @escaping @Sendable () -> Void) async throws -> DeliveryReceipt {
+            log.delivered.append(text); landed(); return DeliveryReceipt(text: text)
         }
     }
 
@@ -460,6 +461,20 @@ extension VoiceInputCoordinatorTests {
         #expect(reports.first?.text == "send it to sam@example.com")
         #expect(reports.first?.samples.count == 16_000)
         #expect(reports.first?.isRetry == false)
+    }
+
+    @Test func aPasteSaysItLandedBeforeTheTurnReports() async {
+        let rig = makeRig()
+        await settle()
+        var events: [String] = []
+        rig.coordinator.onPasteLanded = { events.append("landed") }
+        rig.coordinator.onTurnFinished = { _ in events.append("finished") }
+        rig.transcriber.result = "on my way"
+        rig.coordinator.beginPushToTalk()
+        await settle(0.4)
+        rig.coordinator.endPushToTalk()
+        await waitUntil(events.count == 2)
+        #expect(events == ["landed", "finished"])
     }
 
     @Test func codeNamesOnScreenAreTypedAsTheCodeSpellsThem() async {

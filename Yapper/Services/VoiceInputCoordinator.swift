@@ -77,6 +77,9 @@ final class VoiceInputCoordinator: ObservableObject {
     /// A turn that got as far as the speech model ended: pasted, copied, empty or failed.
     /// Accidental holds and cancelled turns don't report.
     var onTurnFinished: ((TurnReport) -> Void)?
+    /// The focused app took a transcript: the moment the words appear, a few hundred
+    /// milliseconds before the turn reports (the clipboard is still being put back).
+    var onPasteLanded: (() -> Void)?
     /// Plays the start sound as a hold begins, returning when it started (nil: nothing played).
     /// The mic is already open by then, so the sound is notched back out of the recording.
     var playStartCue: (@MainActor () -> Date?)?
@@ -676,7 +679,9 @@ final class VoiceInputCoordinator: ObservableObject {
             report.target = target
             let receipt: DeliveryReceipt
             do {
-                receipt = try await delivery.deliver(text, target: target)
+                receipt = try await delivery.deliver(text, target: target, landed: { [weak self] in
+                    Task { @MainActor [weak self] in self?.onPasteLanded?() }
+                })
             } catch PasteDelivery.DeliveryError.notPasted {
                 // The words survived on the clipboard; say so instead of "failed".
                 vocabulary.record(original: heard, delivered: text)

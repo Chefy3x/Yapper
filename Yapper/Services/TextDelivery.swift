@@ -33,12 +33,18 @@ struct DeliveryTarget: Sendable {
 /// What the coordinator needs to get text on screen. The real one pastes; tests capture.
 protocol TextDelivering: Sendable {
     /// Puts `text` into the field the user was in when they started talking (`target`), or the
-    /// focused field of the frontmost app. Never presses Return.
+    /// focused field of the frontmost app. Never presses Return. `landed` runs the moment the
+    /// app takes the text, before the clipboard is put back, so what should feel instant can be.
     @discardableResult
-    func deliver(_ text: String, target: DeliveryTarget?) async throws -> DeliveryReceipt
+    func deliver(_ text: String, target: DeliveryTarget?,
+                 landed: @escaping @Sendable () -> Void) async throws -> DeliveryReceipt
 }
 
 extension TextDelivering {
+    @discardableResult
+    func deliver(_ text: String, target: DeliveryTarget?) async throws -> DeliveryReceipt {
+        try await deliver(text, target: target, landed: {})
+    }
     @discardableResult
     func deliver(_ text: String) async throws -> DeliveryReceipt { try await deliver(text, target: nil) }
 }
@@ -80,7 +86,8 @@ struct PasteDelivery: TextDelivering {
     static let retryAfter: TimeInterval = 0.75
 
     @discardableResult
-    func deliver(_ text: String, target: DeliveryTarget?) async throws -> DeliveryReceipt {
+    func deliver(_ text: String, target: DeliveryTarget?,
+                 landed: @escaping @Sendable () -> Void) async throws -> DeliveryReceipt {
         let vKey = await MainActor.run { KeyboardLayout.keyCode() }   // TIS is main-thread only
         if let target { await Self.bringBack(target) }
         // Fit the words to what's around the cursor: mid-sentence they continue it.
@@ -88,7 +95,7 @@ struct PasteDelivery: TextDelivering {
         let fitted = await MainActor.run {
             InsertionFit.fit(text, before: context?.before, after: context?.after) { WordKnowledge.isDictionaryWord($0) }
         }
-        var receipt = try await Self.paste(fitted, vKey: vKey)
+        var receipt = try await Self.paste(fitted, vKey: vKey, landed: landed)
         receipt.text = fitted
         return receipt
     }
@@ -120,7 +127,8 @@ struct PasteDelivery: TextDelivering {
     }
 
     @AXWorker
-    private static func paste(_ text: String, vKey: CGKeyCode) throws -> DeliveryReceipt {
+    private static func paste(_ text: String, vKey: CGKeyCode,
+                              landed onLanded: @Sendable () -> Void) throws -> DeliveryReceipt {
         guard NSWorkspace.shared.frontmostApplication != nil else { throw DeliveryError.noFrontmostApp }
         let field = FocusedField.current()
         let valueBefore = field?.value
@@ -185,6 +193,7 @@ struct PasteDelivery: TextDelivering {
             how = "read after a retry"
         }
         if landed {
+            onLanded()
             let elapsed = Date().timeIntervalSince(postedAt)
             Thread.sleep(forTimeInterval: max(afterReadGrace, minimumSettle - elapsed))
             restoreIfUnchanged(pb, prior: prior, ourChangeCount: ourChangeCount)

@@ -119,7 +119,7 @@ final class RecordingHUDPresenter {
 
     /// Opening: a quick start and a long soft landing, no bounce. Closing: eases in and goes.
     static let opening = Animation.timingCurve(0.05, 0.6, 0.4, 0.95, duration: 0.28)
-    static let closing = Animation.timingCurve(0.4, 0, 0.6, 1, duration: 0.22)
+    static let closing = Animation.timingCurve(0.4, 0, 0.6, 1, duration: 0.16)
 
     init() {
         // The panel goes up once, empty, and stays: ordering a window in at the moment the pill

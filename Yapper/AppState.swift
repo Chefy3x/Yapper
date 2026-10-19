@@ -190,6 +190,7 @@ final class AppState: ObservableObject {
             return self.sounds.playStart()
         }
         voiceInput.onTurnFinished = { [weak self] in self?.turnFinished($0) }
+        voiceInput.onPasteLanded = { [weak self] in self?.pasteLanded() }
         editWatcher.onLearned = { [weak self] learned in
             guard let self else { return }
             self.vocabulary.applyLearned(learned)
@@ -275,13 +276,22 @@ final class AppState: ObservableObject {
         voiceInput.bootstrap()
     }
 
-    /// A voice turn ended: tell the HUD, play the done sound, and keep it in Dictations.
-    /// Everything here runs after the paste, so none of it adds to the lag.
+    /// The words just appeared: the pill closes and the done sound plays now, not once the
+    /// clipboard has been put back.
+    private func pasteLanded() {
+        recordingHUD?.finish(.pasted)
+        if settings.dictationSounds { sounds.playDone() }
+    }
+
+    /// A voice turn ended: tell the HUD, play the sound (a paste already had its own when it
+    /// landed), and keep it in Dictations. Everything here runs after the paste, so none of it
+    /// adds to the lag.
     private func turnFinished(_ report: TurnReport) {
         recordingHUD?.finish(report.outcome)
         if settings.dictationSounds {
             switch report.outcome {
-            case .pasted, .copied: sounds.playDone()
+            case .pasted: break
+            case .copied: sounds.playDone()
             case .empty, .failed: sounds.playFailed()
             }
         }
