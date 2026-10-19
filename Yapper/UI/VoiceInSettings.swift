@@ -180,7 +180,6 @@ private struct PillPreviewCard: View {
                            subtitle: "Sits just above the Dock while you talk. It never takes a click or the focus, so the words still land where you were.")
                 HStack(spacing: 18) {
                     stage("Talking", .listening(locked: false, handsFree: false))
-                    stage("Locked", .listening(locked: true, handsFree: false))
                     stage("Working", .transcribing)
                 }
                 .frame(maxWidth: .infinity)

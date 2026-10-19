@@ -256,12 +256,7 @@ struct RecordingPill: View {
             EmptyView()
         case .listening, .transcribing:
             Waveform(motion: motion, working: phase == .transcribing)
-            if locked {
-                Image(systemName: "lock.fill")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.85))
-                    .transition(.opacity.combined(with: .scale(scale: 0.6)))
-            } else if handsFree {
+            if handsFree {
                 Image(systemName: "ear")
                     .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(.white.opacity(0.6))
@@ -269,10 +264,6 @@ struct RecordingPill: View {
         }
     }
 
-    private var locked: Bool {
-        if case .listening(let locked, _) = phase { return locked }
-        return false
-    }
     private var handsFree: Bool {
         if case .listening(_, let handsFree) = phase { return handsFree }
         return false
