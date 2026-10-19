@@ -28,7 +28,7 @@ os.makedirs(out, exist_ok=True)
 # cel band and darker shadows for more form.
 LOOKS = {
     "v1": {},
-    "ref": dict(corner_ext=0.20, bow=0.11, ends=0.8, lip_ink=0.058, teeth="big", tooth_ink=0.03, jaw_deg=13.0,
+    "ref": dict(corner_ext=0.20, bow=0.25, ends=0.8, lip_ink=0.058, teeth="big", tooth_ink=0.03, jaw_deg=13.0,
                 # the lower lip drops broadly, so a wide open stays a crescent rather than a V
                 follow_lo=0.70, follow_reach=0.95, follow_od=(0.30, 0.30),
                 oval_drop=0.03, upper_lift=0.10, pitch=4.0, yaw=-5.0, roll=0.0, lips="flat",
