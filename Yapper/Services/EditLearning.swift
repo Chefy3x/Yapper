@@ -145,7 +145,7 @@ enum EditLearner {
         return pairs
     }
 
-    private static func levenshtein(_ a: [Character], _ b: [Character]) -> Int {
+    static func levenshtein(_ a: [Character], _ b: [Character]) -> Int {
         guard !a.isEmpty else { return b.count }
         guard !b.isEmpty else { return a.count }
         var prev = Array(0...b.count)

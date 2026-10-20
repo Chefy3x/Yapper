@@ -15,7 +15,7 @@ enum Disfluency {
     static let meantTwice: Set<String> = [
         "that", "had", "is", "do", "very", "really", "so", "no", "yes", "bye", "ha", "haha", "yeah", "okay",
         "well", "go", "now", "many", "much", "more", "far", "long", "too", "again", "please", "wait", "hey",
-        "oh", "ah", "la", "knock", "tick", "tok", "chop", "night", "boo", "hip", "hear", "there",
+        "oh", "ah", "la", "da", "na", "blah", "knock", "tick", "tok", "chop", "night", "boo", "hip", "hear", "there",
     ]
 
     /// "like" right after these is filler for nearly everyone ("I have like three", "as like a").
@@ -57,8 +57,9 @@ enum Disfluency {
             }
         }
 
-        // A word or a 2–3 word phrase said twice in a row: keep the second, which is the one the
-        // speaker finished.
+        // A word or a 2–3 word phrase said twice (or more) in a row: keep the last, which is the
+        // one the speaker finished. After a drop the kept copy is compared with the next, so
+        // "it's it's it's it's" comes down to one.
         for k in 1...3 {
             var i = 0
             while i + 2 * k <= tokens.count {
@@ -71,7 +72,7 @@ enum Disfluency {
                 let unbroken = first.dropLast().allSatisfy { $0.trail.isEmpty } && (first.last!.trail.isEmpty || first.last!.trail == ",")
                 if same, undropped, unbroken, !(k == 1 && meantTwice.contains(first[0].key)) {
                     for j in i..<i + k { drop[j] = true }
-                    i += 2 * k
+                    i += k
                 } else {
                     i += 1
                 }

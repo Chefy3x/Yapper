@@ -72,12 +72,14 @@ final class LlamaRunner: @unchecked Sendable {
     }
 
     func unload() async {
-        await run {
-            if let context = self.context { llama_free(context) }
-            if let model = self.model { llama_model_free(model) }
-            self.context = nil; self.model = nil; self.vocab = nil
-            self.prefixStates.removeAll()
-        }
+        await run { self.unloadOnQueue() }
+    }
+
+    /// Frees the model before returning. For quitting: llama.cpp's Metal device aborts in its
+    /// exit-time destructor while a model still holds GPU memory, so every quit within a few
+    /// minutes of a dictation used to end in a crash report.
+    func unloadNow() {
+        queue.sync { unloadOnQueue() }
     }
 
     /// Continues `prefix + suffix` until an end-of-turn token, `maxTokens`, or `deadline`. Both
@@ -100,6 +102,13 @@ final class LlamaRunner: @unchecked Sendable {
     }
 
     // MARK: On the queue
+
+    private func unloadOnQueue() {
+        if let context { llama_free(context) }
+        if let model { llama_model_free(model) }
+        context = nil; model = nil; vocab = nil
+        prefixStates.removeAll()
+    }
 
     private func loadOnQueue() throws {
         guard context == nil else { return }

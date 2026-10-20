@@ -44,4 +44,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Start Sparkle's scheduled update checks.
         _ = UpdaterService.shared
     }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        AppState.shared.formatter.shutdown()
+    }
 }

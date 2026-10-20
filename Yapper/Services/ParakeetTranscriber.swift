@@ -15,6 +15,12 @@ actor ParakeetTranscriber: Transcribing {
 
     private var manager: AsrManager?
     private var loadTask: Task<Void, Error>?
+    private var lastRun = Date()
+    private var warming: Task<Void, Never>?
+
+    /// Idle longer than this and the Neural Engine has let the model go cold: a day of the
+    /// user's dictations took 0.11 s to decode within 30 s of the last one, 0.31–0.41 s after.
+    static let coldAfter: TimeInterval = 20
     private let onStatus: @Sendable (WhisperModelStatus) -> Void
 
     init(model: WhisperModel, onStatus: @escaping @Sendable (WhisperModelStatus) -> Void) {
@@ -69,9 +75,26 @@ actor ParakeetTranscriber: Transcribing {
         (TranscriptFilter.frameLevels(samples).max() ?? 0) > signalFloor
     }
 
+    /// A throwaway decode of one second of silence while the user is still talking, so the real
+    /// one runs warm. Only after an idle spell; back-to-back dictations are warm already.
+    func warm() async {
+        guard let manager, warming == nil, Date().timeIntervalSince(lastRun) > Self.coldAfter else { return }
+        lastRun = Date()
+        warming = Task {
+            let started = Date()
+            var state = TdtDecoderState.make(decoderLayers: Self.version.decoderLayers)
+            _ = try? await manager.transcribe([Float](repeating: 0, count: 16_000), decoderState: &state)
+            Log.voice.info("Parakeet warmed in \(String(format: "%.2f", Date().timeIntervalSince(started)), privacy: .public)s")
+            self.warming = nil
+        }
+    }
+
     func transcribe(samples: [Float], prompt: String?) async throws -> String {
         try await prepare()
         guard let manager else { throw WhisperTranscriber.TranscriberError.notLoaded }
+        // One decode at a time: a warm-up still running finishes first.
+        await warming?.value
+        defer { lastRun = Date() }
         let started = Date()
         // Only a recording with no signal at all is skipped. Whisper's speech gate isn't used:
         // Parakeet doesn't invent words from silence the way Whisper does, and on a quiet mic

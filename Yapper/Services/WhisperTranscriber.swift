@@ -135,6 +135,12 @@ protocol Transcribing: AnyObject, Sendable {
     func prepare() async throws
     /// `prompt` is prior-context text that biases decoding toward the user's vocabulary.
     func transcribe(samples: [Float], prompt: String?) async throws -> String
+    /// The user started talking: get the model ready to answer fast when they let go.
+    func warm() async
+}
+
+extension Transcribing {
+    func warm() async {}
 }
 
 /// WhisperKit wrapper. Downloads with progress on first use, keeps the pipeline resident while

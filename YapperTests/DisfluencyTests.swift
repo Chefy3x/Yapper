@@ -15,6 +15,8 @@ struct DisfluencyTests {
         #expect(clean("The the dog barked.") == "The dog barked.")
         #expect(clean("I think I think we should ship it.") == "I think we should ship it.")
         #expect(clean("we need to we need to fix it") == "we need to fix it")
+        #expect(clean("I feel like it's it's it's it's way too much.") == "I feel like it's way too much.")
+        #expect(clean("I think I think I think so") == "I think so")
     }
 
     @Test func keepsDeliberateRepeats() {
@@ -22,6 +24,7 @@ struct DisfluencyTests {
         #expect(clean("No no, that's fine.") == "No no, that's fine.")
         #expect(clean("He said that that was wrong.") == "He said that that was wrong.")
         #expect(clean("Done. Done.") == "Done. Done.")
+        #expect(clean("and then blah blah blah") == "and then blah blah blah")
     }
 
     @Test func fixesStutters() {

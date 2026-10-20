@@ -57,7 +57,17 @@ enum FormatCues {
         #"\b(first(ly)?\b.{1,400}\bsecond(ly)?|number one|step one|bullet points?|the following (things|items|points|steps)|(a couple of|a few|three|four|five|six|several) (things|items|points|steps|reasons|options))\b"#,
         options: [.caseInsensitive, .dotMatchesLineSeparators])
 
-    static func hasCorrection(_ text: String) -> Bool { matches(correction, text) }
+    /// "I mean" opening a sentence ("…leaving. I mean, I'm already…") is how people talk, not a
+    /// correction; on the user's dictations it sent text to the model for 1.8 s and changed
+    /// nothing. Mid-sentence it still counts: "word, I mean letter by letter".
+    static func hasCorrection(_ text: String) -> Bool {
+        correction.matches(in: text, range: NSRange(text.startIndex..., in: text)).contains { match in
+            guard let range = Range(match.range, in: text) else { return false }
+            guard text[range].lowercased() == "i mean" else { return true }
+            let before = text[..<range.lowerBound].trimmingCharacters(in: .whitespaces)
+            return !(before.isEmpty || ".!?".contains(before.last!))
+        }
+    }
 
     /// The text after the last correction phrase, or nil when there is none.
     static func afterLastCorrection(_ text: String) -> String? {
