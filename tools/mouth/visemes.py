@@ -268,9 +268,39 @@ def ema_norm_torch(lm, mu0, sd):
     return out
 
 
-def augment(lm, rng, noise_mel, eq_db=12.0):
+def noise_floors(seconds=20, seed=7):
+    """Mel power per hop of steady mic noise at 0 dBFS RMS, one (hops, N_MELS) array per colour: white,
+    pink, brown, a high hiss and 50/60 Hz hum. Made as waveforms, so each band's hop-to-hop wobble is
+    what a real floor's is (a smooth floor with jitter on top reads like a fricative)."""
+    rng = np.random.default_rng(seed)
+    n = SR * seconds
+    f = np.fft.rfftfreq(n, 1.0 / SR)
+    t = np.arange(n) / SR
+    shaped = lambda g: np.fft.irfft(np.fft.rfft(rng.standard_normal(n)) * g, n)
+    x = {"white": rng.standard_normal(n), "pink": shaped(1 / np.sqrt(np.maximum(f, 20))),
+         "brown": shaped(1 / np.maximum(f, 20)), "hiss": shaped(np.clip(f / 4000, 0.03, 2.0))}
+    for f0 in (50, 60):
+        hum = sum(np.sin(2 * np.pi * f0 * k * t + rng.uniform(0, 2 * np.pi)) / k for k in range(1, 9))
+        x[f"hum{f0}"] = hum / np.sqrt(np.mean(hum ** 2)) + 0.1 * rng.standard_normal(n)
+    return {k: (np.exp(log_mel(v / np.sqrt(np.mean(v ** 2)))) - LOG_EPS).astype(np.float32) for k, v in x.items()}
+
+
+def floor_under(n, rng, floors, kind=None, db=None):
+    """n hops of one floor (a random colour, sometimes two, at -70 to -35 dBFS), mel power."""
+    kinds = sorted(floors)
+    out = np.zeros((n, N_MELS), np.float32)
+    for k in ([kind] if kind else [kinds[i] for i in rng.choice(len(kinds), 1 + (rng.random() < 0.3), replace=False)]):
+        F = floors[k]
+        idx = (rng.integers(0, len(F)) + np.arange(n)) % len(F)
+        out += F[idx] * 10 ** ((db if db is not None else rng.uniform(-70, -35)) / 10)
+    return out
+
+
+def augment(lm, rng, noise_mel, eq_db=12.0, floors=None):
     """Mic conditions in the mel-power domain: gain, a spectral tilt, a mic's EQ, a bit of room, a noise
-    floor. The tilt and EQ also start the running mean off-colour, as a new mic does."""
+    floor. The tilt and EQ also start the running mean off-colour, as a new mic does. With `floors`, the
+    floor is a steady one (noise_floors) at its own level, and the old jittery white noise at a level
+    relative to the speech comes in only sometimes."""
     import torch
     B, T, M = lm.shape
     dev = lm.device
@@ -292,8 +322,29 @@ def augment(lm, rng, noise_mel, eq_db=12.0):
         p = p + tail
     snr = rng.uniform(5, 45, (B, 1, 1))
     level = torch.exp(lm).mean((1, 2), keepdim=True) * torch.tensor(10 ** (-snr / 10), device=dev, dtype=torch.float32)
+    if floors is not None:
+        level = level * torch.tensor(rng.random((B, 1, 1)) < 0.3, device=dev, dtype=torch.float32)
+        p = p + torch.tensor(np.stack([floor_under(T, rng, floors) for _ in range(B)]), device=dev)
     p = p + level * torch.exp(gain) * noise_mel[None, None] * torch.tensor(rng.uniform(0.5, 1.5, (B, T, 1)), device=dev, dtype=torch.float32)
     return torch.log(p + LOG_EPS)
+
+
+def crop(m, l, z, T, rng, pause_p):
+    """A training crop of T hops; with probability pause_p, one or two stretches of nothing (0.2-3 s, at
+    most 4 s in all, labelled rest) are spliced in, for the floor to fill. Returns log-mel, labels, teacher logits (or
+    None) and a mask that is 0 on the spliced hops (the teacher never heard them)."""
+    gaps = rng.integers(20, 301, rng.integers(1, 3)) if rng.random() < pause_p else np.zeros(0, int)
+    if gaps.sum() > min(400, T // 2): gaps = gaps[:1]
+    need = T - int(gaps.sum())
+    a = rng.integers(0, max(1, len(l) - need))
+    x, y, k = m[a:a + need].astype(np.float32), l[a:a + need], np.ones(need, np.float32)
+    zt = None if z is None else z[a:a + need].astype(np.float32)
+    for g, at in zip(gaps, np.sort(rng.integers(0, need, len(gaps)))[::-1]):      # last first: earlier places hold
+        x = np.concatenate([x[:at], np.full((g, N_MELS), math.log(1e-9), np.float32), x[at:]])
+        y = np.concatenate([y[:at], np.zeros(g, y.dtype), y[at:]])
+        k = np.concatenate([k[:at], np.zeros(g, np.float32), k[at:]])
+        if zt is not None: zt = np.concatenate([zt[:at], np.zeros((g, zt.shape[1]), np.float32), zt[at:]])
+    return x, y, zt, k
 
 
 def held_speakers(args, spk):
@@ -354,6 +405,8 @@ def cmd_train(args):
           f"{sum(len(l) for _, l in eval_s) / 360000:.2f} h; classes {dict(zip(CLASSES, (counts / counts.sum()).round(3)))}")
     # flat-spectrum (white) noise through the bank, normalised to unit mean
     noise_mel = torch.tensor(BANK.sum(1) / BANK.sum(1).mean(), device=dev, dtype=torch.float32)
+    eval_floors = noise_floors(seed=8)                  # other noise than training's
+    floors = noise_floors() if args.floors else None
     net = torch_net(layers, ch, drop=args.dropout).to(dev)
     nparams = sum(p.numel() for p in net.parameters() if p.requires_grad)
     ships = lookahead <= MAX_LOOKAHEAD and nparams - 2 * ch * len(layers) < MAX_WEIGHTS     # BatchNorm folds away
@@ -389,15 +442,10 @@ def cmd_train(args):
         tl = 0
         for _ in range(steps_per_epoch):
             si = rng.choice(len(train_s), args.batch, p=lens / lens.sum())
-            xs, ys, zs = [], [], []
-            for s in si:
-                m, l = train_s[s]
-                a = rng.integers(0, max(1, len(l) - T))
-                xs.append(m[a:a + T].astype(np.float32)); ys.append(l[a:a + T])
-                if teach: zs.append(teach[s][a:a + T].astype(np.float32))
+            xs, ys, zs, ks = zip(*(crop(*train_s[s], teach[s] if teach else None, T, rng, args.pauses) for s in si))
             x = torch.tensor(np.stack(xs), device=dev)
             y = torch.tensor(np.stack(ys).astype(np.int64), device=dev)
-            x = augment(x, rng, noise_mel, args.eq)
+            x = augment(x, rng, noise_mel, args.eq, floors)
             # the running mean starts from the training mean plus whatever the mic did to it
             x = ema_norm_torch(x, mu0_t, sd_t)
             with torch.autocast(dev.type, dtype=torch.bfloat16, enabled=args.bf16):
@@ -409,7 +457,8 @@ def cmd_train(args):
                 zt = torch.tensor(np.stack(zs), device=dev).transpose(1, 2)
                 kl = F.kl_div(F.log_softmax(logits / args.temp, 1), F.log_softmax(zt / args.temp, 1),
                               log_target=True, reduction="none").sum(1)
-                kd = (kl * w[y]).sum() / w[y].sum() * args.temp ** 2
+                k = torch.tensor(np.stack(ks), device=dev) * w[y]
+                kd = (kl * k).sum() / k.sum().clamp_min(1e-6) * args.temp ** 2
                 loss = args.kd * kd + (1 - args.kd) * loss
             opt.zero_grad(); loss.backward(); opt.step(); sched.step()
             tl += loss.item()
@@ -418,14 +467,31 @@ def cmd_train(args):
         synth_ok = not ships or synth_check(synth_probs(net, mu0, sd, dev), quiet=True)
         print(f"epoch {ep + 1:2d}  loss {tl / steps_per_epoch:.3f}  eval acc {acc:.3f}  balanced {bal:.3f}  "
               + (f"synthetic {'ok' if synth_ok else 'FAILS'}  " if ships else "") + f"{time.time() - t0:.0f} s", flush=True)
+        if ships: print("          " + pause_line(pause_eval(torch_predict(net, mu0, sd, dev), eval_s, eval_floors, (-45,))), flush=True)
         if bal > best and synth_ok:
             best = bal
             torch.save({"net": net.state_dict(), "mu0": mu0, "sd": sd, "layers": layers, "ch": ch,
                         "classes": CLASSES, "shift": args.shift, "held": sorted(held),
                         "splits": args.splits, "teacher": args.teacher and Path(args.teacher).name}, out / "best.pt")
             np.save(out / "confusion.npy", cm)
-    if best: report(out)
+    if best:
+        report(out)
+        if ships:
+            ck = torch.load(out / "best.pt", weights_only=False); net.load_state_dict(ck["net"])
+            res = pause_eval(torch_predict(net, mu0, sd, dev), eval_s, eval_floors)
+            print(pause_line(res)); print("  " + "  ".join(f"{k} {100 * r:.0f}" for k, (r, _) in res.items()))
     else: print("no epoch's net read the synthetic sounds as the app's tests want: nothing saved")
+
+
+def torch_predict(net, mu0, sd, dev):
+    import torch
+    mu0_t, sd_t = torch.tensor(mu0, device=dev), torch.tensor(sd, device=dev, dtype=torch.float32)
+    def predict(lm):
+        net.eval()
+        with torch.no_grad():
+            x = ema_norm_torch(torch.tensor(lm, dtype=torch.float32, device=dev)[None], mu0_t, sd_t)
+            return net(x.transpose(1, 2))[0].argmax(0).cpu().numpy()
+    return predict
 
 
 def evaluate(net, eval_s, mu0, sd, dev, clean=True):
@@ -441,6 +507,47 @@ def evaluate(net, eval_s, mu0, sd, dev, clean=True):
     acc = np.trace(cm) / cm.sum()
     bal = np.mean(np.diag(cm) / np.maximum(1, cm.sum(1)))
     return acc, bal, cm
+
+
+def with_pauses(eval_s, seed=3):
+    """The held-out streams with a 0.5-3 s silence spliced into a natural pause about every 6 s: LibriTTS
+    pauses are short, and in a long one the running mean sinks towards the mic's floor."""
+    rng = np.random.default_rng(seed)
+    out = []
+    for m, l in eval_s:
+        at = np.sort(rng.choice(np.flatnonzero(l == 0), max(1, len(l) // 600), replace=False))[::-1]
+        for a in at:
+            g = rng.integers(50, 301)
+            m = np.concatenate([m[:a], np.full((g, N_MELS), math.log(1e-9), m.dtype), m[a:]])
+            l = np.concatenate([l[:a], np.zeros(g, l.dtype), l[a:]])
+        out.append((m, l))
+    return out
+
+
+def pause_eval(predict, eval_s, floors, levels=(-60, -45, -35)):
+    """Each held-out stream, with long pauses (with_pauses), under each steady floor (colour x level):
+    rest recall on the hops within 6 dB of the floor (the pauses, as a real mic hears them), and frame
+    accuracy over everything."""
+    rng = np.random.default_rng(3)
+    eval_s = with_pauses(eval_s)
+    res = {}
+    for kind in sorted(floors):
+        for db in levels:
+            hit = tot = good = n = 0
+            for m, l in eval_s:
+                P = np.exp(m.astype(np.float32))
+                fl = floor_under(len(m), rng, floors, kind, db)
+                pred = predict(np.log(P + fl))
+                r = ((P + fl).sum(1) <= fl.sum(1).mean() * 10 ** 0.6) & (l == 0)
+                hit += int((pred[r] == 0).sum()); tot += int(r.sum()); good += int((pred == l).sum()); n += len(l)
+            res[f"{kind} {db}"] = (hit / max(tot, 1), good / n)
+    return res
+
+
+def pause_line(res):
+    rec = np.array([r for r, _ in res.values()]); acc = np.array([a for _, a in res.values()])
+    worst = min(res, key=lambda k: res[k][0])
+    return f"pauses: rest {100 * rec.mean():.1f}% (worst {worst} dBFS {100 * rec.min():.1f}%), accuracy under the floors {100 * acc.mean():.1f}%"
 
 
 def report(run):
@@ -576,21 +683,24 @@ def cmd_score(args):
     `train` prints for the run it came from, and a way to score nets whose runs are gone."""
     import torch, torch.nn.functional as F
     h, mu0, sd, layers, ow, ob = read_bin(args.bin)
-    mel, lab, spk = load(data_dir(args), args.splits, args.shift)
-    cm = np.zeros((len(CLASSES), len(CLASSES)), dtype=np.int64)
-    with torch.no_grad():
-        for m, l in streams(mel, lab, spk, set(args.held)):
-            x = ema_norm_torch(torch.tensor(m.astype(np.float32))[None], torch.tensor(mu0.astype(np.float64)),
+    def predict(lm):
+        with torch.no_grad():
+            x = ema_norm_torch(torch.tensor(lm, dtype=torch.float32)[None], torch.tensor(mu0.astype(np.float64)),
                                torch.tensor(sd)).transpose(1, 2)
             for i, L in enumerate(layers):
                 y = F.relu(F.conv1d(F.pad(x, ((L["k"] - 1) * L["d"] - L["la"], L["la"])), torch.tensor(L["W"]),
                                     torch.tensor(L["b"]), dilation=L["d"]))
                 x = y if i == 0 else x + y
-            p = (torch.tensor(ow) @ x[0] + torch.tensor(ob)[:, None]).argmax(0).numpy()
-            np.add.at(cm, (l, p), 1)
+            return (torch.tensor(ow) @ x[0] + torch.tensor(ob)[:, None]).argmax(0).numpy()
+    mel, lab, spk = load(data_dir(args), args.splits, args.shift)
+    eval_s = streams(mel, lab, spk, set(args.held))
+    cm = np.zeros((len(CLASSES), len(CLASSES)), dtype=np.int64)
+    for m, l in eval_s: np.add.at(cm, (l, predict(m)), 1)
     out = Path(args.out); out.mkdir(parents=True, exist_ok=True)
     np.save(out / "confusion.npy", cm)
     report(out)
+    res = pause_eval(predict, eval_s, noise_floors(seed=8))
+    print(pause_line(res)); print("  " + "  ".join(f"{k} {100 * r:.0f}" for k, (r, _) in res.items()))
 
 
 def synth():
@@ -678,6 +788,9 @@ def main():
     p.add_argument("--kd", type=float, default=0.7, help="weight of the teacher term")
     p.add_argument("--temp", type=float, default=2.0, help="softmax temperature for distillation")
     p.add_argument("--seed", type=int, default=0); p.add_argument("--threads", type=int)
+    p.add_argument("--floors", action=argparse.BooleanOptionalAction, default=True,
+                   help="steady mic noise floors (white/pink/brown/hiss/hum, -70 to -35 dBFS) under everything")
+    p.add_argument("--pauses", type=float, default=0.5, help="share of crops with noise-only pauses spliced in")
     p.add_argument("--eq", type=float, default=12.0, help="largest mic-EQ boost or cut in the augmentation, dB")
     p.add_argument("--bf16", action="store_true", help="train in bfloat16 autocast (fast on CPUs with AMX); eval stays float32")
     p = sub.add_parser("report"); p.add_argument("run")
