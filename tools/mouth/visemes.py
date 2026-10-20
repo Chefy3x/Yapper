@@ -733,15 +733,16 @@ def synth_check(probs, quiet=False):
     """MouthVisemesTests.soundsComeOutAsTheirShapes on the Python side: each synthetic sound's mean shape."""
     sys.path.insert(0, str(Path(__file__).parent))
     from reader_live import SYNTH
-    c = {k: CLASSES.index(k) for k in ("rest", "OO", "OH", "EE", "AH", "teeth", "SH")}
+    c = {k: CLASSES.index(k) for k in ("rest", "FV", "OO", "OH", "EE", "AH", "teeth", "SH")}
     t = (np.arange(len(probs)) * HOP + WIN / 2) / SR
     ok, start, fails = True, 0.0, []
     for name, dur in SYNTH:
         lo, hi = start + min(0.06, 0.3 * dur), start + dur - 0.04
         start += dur
         p = probs[(t >= lo) & (t <= hi)].mean(0)
-        want = {"a": (p[c["AH"]], 0.5), "i": (p[c["EE"]], 0.5), "u": (p[c["OO"]] + p[c["OH"]], 0.5),
-                "s": (p[c["teeth"]] + p[c["SH"]], 0.4)}.get(name, (p[c["rest"]], 0.5))
+        # the synthetic a sits on the ah/oh line and the s is white noise, as much an f as an s
+        want = {"a": (p[c["AH"]] + p[c["OH"]], 0.5), "i": (p[c["EE"]], 0.5), "u": (p[c["OO"]] + p[c["OH"]], 0.5),
+                "s": (p[c["teeth"]] + p[c["SH"]] + p[c["FV"]], 0.4)}.get(name, (p[c["rest"]], 0.5))
         ok &= bool(want[0] > want[1])
         if want[0] <= want[1]: fails.append(f"{name} {want[0]:.2f}")
         if not quiet: print(f"  {name:>3}: {want[0]:.2f} (needs > {want[1]})" + ("" if want[0] > want[1] else "  FAILS"))
