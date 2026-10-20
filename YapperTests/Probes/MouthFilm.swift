@@ -9,9 +9,10 @@ import UniformTypeIdentifiers
 /// timeline and director the app runs, then thinking and a grin as a turn ends. Motion is a matter
 /// of taste, so this makes something to watch rather than something to assert.
 /// YAPPER_MOUTH_FILM=<output folder> (TEST_RUNNER_… through xcodebuild) writes PNGs to
-/// <folder>/frames and the jaw's opening per frame to <folder>/jaw.csv; YAPPER_MOUTH_FILM_AUDIO picks
-/// the speech (default site/audio/river-1.mp3), YAPPER_MOUTH_FILM_FPS the frame rate (default 60)
-/// and YAPPER_MOUTH_SHAPES=0 leaves out the viseme net. Join the frames with the audio using ffmpeg.
+/// <folder>/frames and, per frame, the jaw's opening and the shape the net hears to
+/// <folder>/jaw.csv; YAPPER_MOUTH_FILM_AUDIO picks the speech (default site/audio/river-1.mp3),
+/// YAPPER_MOUTH_FILM_FPS the frame rate (default 60) and YAPPER_MOUTH_SHAPES=0 leaves out the
+/// viseme net. Join the frames with the audio using ffmpeg.
 struct MouthFilm {
     nonisolated static let env = ProcessInfo.processInfo.environment
     nonisolated static let outDir = env["YAPPER_MOUTH_FILM"]
@@ -37,7 +38,7 @@ struct MouthFilm {
         // The mic hands over 10 ms at a time and each is read 2 ms later, as in the app.
         let hop = Int(MouthLive.rate * 0.01)
         var fed = 0
-        var jawTrace = "t,J\n"
+        var jawTrace = "t,J,shape,p\n"
         let talk = Double(audio.count) / MouthLive.rate + 0.3
         let total = talk + 0.9 + 0.7
         for f in 0..<Int(total * fps) {
@@ -53,7 +54,9 @@ struct MouthFilm {
             var framing = MouthFraming(rotationDegrees: asset.view.rotationDegrees + frame.head)
             framing.squash = frame.squash
             model.pose(frame.pose, dt: frame.dt)
-            jawTrace += "\(now),\(frame.pose.J)\n"
+            let heard = timeline.drive(at: now).shape            // what the net hears at this frame
+            let top = MouthShape.allCases.max { heard[$0.rawValue] < heard[$1.rawValue] }!
+            jawTrace += "\(now),\(frame.pose.J),\(heard.sum() > 0.5 ? "\(top)" : "-"),\(heard[top.rawValue])\n"
             let image = try #require(renderer.image(model, framing: framing, width: 480, height: 300))
             let url = out.appendingPathComponent(String(format: "%05d.png", f))
             let dst = try #require(CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil))

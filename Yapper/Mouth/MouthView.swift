@@ -176,9 +176,24 @@ struct MouthDirector {
     private var shown = Shown()
     private var shownMode: MouthMode?
     private var easeIn: (from: Shown, start: CFTimeInterval)?
+    /// How long the voice has been quiet at the mouth's playhead.
+    private var quiet: Double = 0
+    /// How much further behind the voice the mouth is playing than usual. A pause plays slowly to
+    /// build this up, so the mouth can see the next word coming and draw a breath before it; the
+    /// first words then play a little fast until it's caught up again.
+    private var behind: Double = 0
+    /// How far into a breath the mouth is (0…1); it fades as the first word lands rather than snapping.
+    private var breath: Float = 0
+
+    /// Silence after speech this long closes the jaw.
+    static let closeAfter: Double = 0.08
+    /// A pause this long starts slowing down, building up to `breathLead` of look-ahead.
+    static let slowAfter: Double = 0.3, breathLead: Double = 0.15
+    /// The lips as the mouth arrives on the pill: pressed together, about to speak.
+    static let arriving = MouthPose(slide: 1, rollUpper: 0.5, rollLower: 0.5)
 
     /// The mouth went off screen: the next frame starts fresh.
-    mutating func stop() { last = nil; shownMode = nil; easeIn = nil }
+    mutating func stop() { last = nil; shownMode = nil; easeIn = nil; quiet = 0; behind = 0; breath = 0 }
 
     /// The frame that reaches the screen at host time `now`; `drive` reads the voice at a host time.
     mutating func frame(mode: MouthMode, at now: CFTimeInterval, drive: (CFTimeInterval) -> MouthDrive) -> Frame {
@@ -191,16 +206,38 @@ struct MouthDirector {
         var head = SIMD3<Float>.zero, squash: Float = 0
         switch mode {
         case .live:
-            if shownMode != .live { smoother.reset(); jawMoves.reset(); shaper.reset() }
-            let raw = drive(now)
+            if shownMode != .live { smoother.reset(); jawMoves.reset(); shaper.reset(); quiet = 0; behind = 0; breath = 0 }
+            let playhead = now - behind
+            let raw = drive(playhead)
+            quiet = raw.speaking > 0.5 ? 0 : quiet + Double(dt)
+            // a pause plays at half speed until the mouth can see `breathLead` ahead; speech at 1.2x
+            // until it's caught up. Nothing moves in a pause, so the slow-down never shows.
+            if quiet > Self.slowAfter { behind = min(Self.breathLead, behind + 0.5 * Double(dt)) }
+            else if quiet == 0 { behind = max(0, behind - 0.2 * Double(dt)) }
             var d = smoother.step(raw, dt: dt)
-            d.J = jawMoves.step(raw.J, dt: dt)
+            // in a pause the jaw closes in one move, rather than fading for as long as the pause lasts
+            d.J = jawMoves.step(quiet > Self.closeAfter ? 0 : raw.J, dt: dt)
             // with the viseme net running, its shapes set the lips; the reader's jaw still sets how open
             let lips = raw.hasShape ? shaper.step(raw.shape, dt: dt) : nil
             if lips == nil { shaper.reset() }
             let acted = performance.step(J: d.J, W: lips?.W ?? d.W, T: d.T, dt: dt)
             pose = acted.pose; head = acted.head; squash = acted.squash
             if let lips { MouthShaper.apply(close: lips.close, fv: lips.fv, part: lips.part, to: &pose) }
+            // a breath before the next words: the lips part and the head lifts as the first word nears
+            var lead: Double?
+            if quiet > Self.slowAfter {
+                for k in stride(from: 0.01, through: behind, by: 0.01) where drive(playhead + k).speaking > 0.5 { lead = k; break }
+            }
+            let u = lead.map { Float(1 - $0 / Self.breathLead) } ?? 0
+            let want = u * u * (3 - 2 * u)
+            breath = want >= breath ? want : breath * exp(-dt / 0.08)     // fades as the words take over
+            if breath > 0.001 {
+                let b = breath
+                pose.J += 0.07 * b; pose.part += 0.5 * b
+                pose.rollUpper -= 0.15 * b; pose.rollLower -= 0.15 * b
+                pose.upperUp += SIMD2(repeating: 0.12 * b)
+                head.x -= 1.5 * b; squash += 0.03 * b
+            }
         case .thinking:
             pose = MouthStage.thinking(t)
             head = MouthStage.thinkingHead(t)
@@ -211,7 +248,12 @@ struct MouthDirector {
         }
         // a change of mode (talking, thinking, the grin) eases over from the last frame
         if case .still = mode { easeIn = nil } else {
-            if shownMode != mode { easeIn = shownMode == nil ? nil : (from: shown, start: now) }
+            if shownMode != mode {
+                if let _ = shownMode { easeIn = (from: shown, start: now) }
+                // arriving on the pill to listen: lips pressed, then they part into the voice
+                else if case .live = mode { easeIn = (from: Shown(pose: Self.arriving, squash: -0.04), start: now) }
+                else { easeIn = nil }
+            }
             if let e = easeIn {
                 let u = Float(min(1, (now - e.start) / Self.modeEase))
                 if u >= 1 { easeIn = nil } else {
