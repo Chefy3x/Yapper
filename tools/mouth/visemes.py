@@ -268,7 +268,7 @@ def ema_norm_torch(lm, mu0, sd):
     return out
 
 
-def augment(lm, rng, noise_mel, eq_db=6.0):
+def augment(lm, rng, noise_mel, eq_db=12.0):
     """Mic conditions in the mel-power domain: gain, a spectral tilt, a mic's EQ, a bit of room, a noise
     floor. The tilt and EQ also start the running mean off-colour, as a new mic does."""
     import torch
@@ -665,7 +665,7 @@ def main():
     p.add_argument("--kd", type=float, default=0.7, help="weight of the teacher term")
     p.add_argument("--temp", type=float, default=2.0, help="softmax temperature for distillation")
     p.add_argument("--seed", type=int, default=0); p.add_argument("--threads", type=int)
-    p.add_argument("--eq", type=float, default=6.0, help="largest mic-EQ boost or cut in the augmentation, dB")
+    p.add_argument("--eq", type=float, default=12.0, help="largest mic-EQ boost or cut in the augmentation, dB")
     p.add_argument("--bf16", action="store_true", help="train in bfloat16 autocast (fast on CPUs with AMX); eval stays float32")
     p = sub.add_parser("report"); p.add_argument("run")
     p = sub.add_parser("export"); p.add_argument("--data"); p.add_argument("--run", required=True)
