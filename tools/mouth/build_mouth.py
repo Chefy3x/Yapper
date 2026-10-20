@@ -660,9 +660,9 @@ def anat_targets(J=0.0, wide=0.0, pucker=0.0, funnel=0.0, part=0.0, close=0.0, s
                  smile=(0.0, 0.0), upper_up=(0.0, 0.0), lower_down=(0.0, 0.0), fv=0.0, shift=0.0):
     """(The app also lifts the tongue's tip for L/TH, on top of the jaw: MouthRig.tongueMatrix. The
     tongue stays rigid on the jaw here; no still uses the lift.)
-    fv: F/V. The jaw nearly shut; the lower lip's centre rolls up and back and tucks under the
-    upper front teeth, which rest on it; the upper lip lifts a little so those teeth show. The teeth
-    never move for it: only the lips do."""
+    fv: F/V. The jaw nearly shut; the upper front teeth rest on the lower lip's centre, which stays in
+    front of them, rolled in a little; the upper lip lifts a little so those teeth show. The teeth never
+    move for it: only the lips do."""
     J = J + 0.07 * fv * (1 - J)
     """Per-bone targets [angle, ox, oy, oz, sy, sz] plus the jaw. J 0..1.2 (1 = a big 'ah', ~11 deg).
     part: lips part over closed teeth (s, t, ee); close: lips seal over an open jaw (m, b, p)."""
@@ -710,11 +710,11 @@ def anat_targets(J=0.0, wide=0.0, pucker=0.0, funnel=0.0, part=0.0, close=0.0, s
             off.y -= (0.08 if outer else 0.04) * J * c_ + (0.07 if outer else 0.03) * rnd_ * c_
             if not outer: sy *= 1 + 0.25 * J * c_ + 0.15 * rnd_ * c_; sz *= 1 + 0.12 * J * c_ + 0.15 * rnd_ * c_
             off.y += 0.06 * roll_l * c_; sy -= 0.25 * roll_l * c_; sz -= 0.3 * roll_l * c_
-            # F/V: the lower lip's mouth edge rolls up and back behind the upper teeth's front, pressed
-            # flat where they rest on it; its outer edge follows a little
+            # F/V: the upper teeth rest on the lower lip, which stays in front of them, rolled in a little
+            # and pressed flat (pulled back any further it went through the teeth)
             f_ = fv * c_
-            off.z += (0.0 if outer else 0.01) * f_
-            off.y += (0.10 if outer else 0.32) * f_
+            off.z -= (0.0 if outer else 0.02) * f_
+            off.y += (0.03 if outer else 0.06) * f_
             if not outer: sz *= 1 - 0.25 * f_; sy *= 1 - 0.3 * f_
         off += slideV * FOLLOW[name] / 0.72
         # an O, as a real mouth makes it: the lip edge settles onto a round hole and the outer edge onto

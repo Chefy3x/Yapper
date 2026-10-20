@@ -8,8 +8,13 @@ enum MouthShape: Int, CaseIterable, Sendable {
 }
 
 /// How sure the net is of each `MouthShape` at one moment, in `MouthShape` order. All zero means
-/// nothing is known (no net, or not read yet).
+/// nothing is known (no net, or not read yet). Lane `MouthShape.steadyLane` is 1 while the sound is
+/// steady (a held sound): the mouth keeps the shape it has.
 typealias MouthShapes = SIMD16<Float>
+
+extension MouthShape {
+    static let steadyLane = 15
+}
 
 /// The viseme net's weights and feature settings, exported by `tools/mouth/visemes.py export`.
 ///
@@ -106,6 +111,11 @@ final class MouthVisemes {
     private(set) var mean: [Double]
     private var history: [[Float]]      // per layer: its last (k-1)*d+1 inputs, oldest first, flattened
     private var hops = 0
+    private var hum: MouthHum
+    private var steadiness = MouthSteady()
+    private var steadies: [Bool] = []
+    /// Whether a held hum was sounding, for the last `lookahead` + 1 hops, oldest first.
+    private var hums: [Bool] = []
 
     init(model: MouthVisemeModel) {
         self.model = model
@@ -117,6 +127,7 @@ final class MouthVisemes {
         log2n = l
         fftSetup = vDSP_create_fftsetupD(vDSP_Length(l), FFTRadix(kFFTRadix2))!
         mean = model.mean0
+        hum = MouthHum(model.header)
         history = model.layers.map { [Float](repeating: 0, count: (($0.kernel - 1) * $0.dilation + 1) * $0.inputs) }
     }
 
@@ -128,6 +139,7 @@ final class MouthVisemes {
     func reset() {
         buffer.removeAll()
         hops = 0
+        hum.reset(); hums.removeAll(); steadiness.reset(); steadies.removeAll()
         for i in history.indices { history[i] = [Float](repeating: 0, count: history[i].count) }
     }
 
@@ -202,6 +214,10 @@ final class MouthVisemes {
             mean[i] += ema * (lm[i] - mean[i])
             x[i] = Float((lm[i] - mean[i]) / model.spread[i])
         }
+        hums.append(hum.step(lm, mean: mean))
+        if hums.count > lookahead + 1 { hums.removeFirst(hums.count - lookahead - 1) }
+        steadies.append(steadiness.step(lm))
+        if steadies.count > lookahead + 1 { steadies.removeFirst(steadies.count - lookahead - 1) }
         defer { hops += 1 }
         var lag = 0
         for (li, layer) in model.layers.enumerated() {
@@ -241,11 +257,80 @@ final class MouthVisemes {
         var z = [Float](repeating: 0, count: k)
         vDSP_mmul(model.outWeights, 1, x, 1, &z, 1, vDSP_Length(k), 1, vDSP_Length(x.count))
         vDSP_vadd(z, 1, model.outBias, 1, &z, 1, vDSP_Length(k))
-        let top = z.max()!
         var shapes = MouthShapes()
-        var total: Float = 0
-        for i in 0..<min(k, 16) { let e = exp(z[i] - top); shapes[i] = e; total += e }
-        return shapes / total
+        if hums[0] {                                    // a held hum at the hop answered for: m
+            shapes[MouthShape.mbp.rawValue] = 1
+        } else {
+            let top = z.max()!
+            var total: Float = 0
+            for i in 0..<min(k, MouthShape.steadyLane) { let e = exp(z[i] - top); shapes[i] = e; total += e }
+            shapes /= total
+        }
+        shapes[MouthShape.steadyLane] = steadies[0] ? 1 : 0
+        return shapes
+    }
+}
+
+/// Whether the sound is steady (`Steady` in tools/mouth/visemes.py): a held sound barely changes from
+/// hop to hop, while speech changes all the time. The change is the mean log-mel difference over
+/// 50 ms across the bands under ~4 kHz, averaged over 100 ms. It depends on how much the sound
+/// changes, not how it sounds, so it holds on any mic.
+struct MouthSteady: Sendable {
+    static let bands = 30, lag = 5, average = 10
+    static let below = 0.75
+    private var rows: [[Double]] = []
+    private var changes: [Double] = []
+
+    mutating func reset() { rows = []; changes = [] }
+
+    mutating func step(_ lm: [Double]) -> Bool {
+        rows.append(Array(lm.prefix(Self.bands)))
+        if rows.count > Self.lag + 1 { rows.removeFirst() }
+        var d = 0.0
+        if rows.count > Self.lag {
+            d = zip(rows[rows.count - 1], rows[0]).reduce(0) { $0 + abs($1.0 - $1.1) } / Double(Self.bands)
+        }
+        changes.append(d)
+        if changes.count > Self.average { changes.removeFirst() }
+        return changes.reduce(0, +) / Double(changes.count) < Self.below
+    }
+}
+
+/// A held hum ("mmm"), caught from the sound itself (`Hum` in tools/mouth/visemes.py). The net hears a
+/// held m poorly: in speech an m lasts ~60 ms, and held hums are rare in what it learned from. A hum
+/// has a clear fingerprint: the low hum under 400 Hz, a nasal band at 1–2 kHz well below it, and
+/// almost nothing above 2 kHz. It has to last 120 ms before it counts, so an m inside a word is left
+/// to the net; on other speakers it fires on 0.04% of their speech.
+struct MouthHum: Sendable {
+    /// Bands in dB against 80–400 Hz must fall in these: 400 Hz–1 kHz, 1–2 kHz, then below for
+    /// 2–4 kHz and 4–8 kHz.
+    static let bands: [(Double, Double)] = [(80, 400), (400, 1000), (1000, 2000), (2000, 4000), (4000, 8000)]
+    static let loMid = (-17.0, -5.0), mid = (-15.0, -3.0), hi = -14.0, top = -24.0
+    /// 120 ms in the box before it counts, no quieter than this against the running mean level.
+    static let hold = 12, loudDb = -8.0
+
+    let index: [[Int]]
+    private var run = 0
+
+    init(_ h: MouthVisemeModel.Header) {
+        func mel(_ f: Double) -> Double { 2595 * log10(1 + f / 700) }
+        func hz(_ m: Double) -> Double { 700 * (pow(10, m / 2595) - 1) }
+        let lo = mel(h.fmin), hi = mel(h.fmax)
+        let centres = (1...h.mels).map { hz(lo + (hi - lo) * Double($0) / Double(h.mels + 1)) }
+        index = Self.bands.map { b in centres.indices.filter { centres[$0] >= b.0 && centres[$0] < b.1 } }
+    }
+
+    mutating func reset() { run = 0 }
+
+    /// One hop's log-mel and the running mean (after this hop): whether a held hum is sounding.
+    mutating func step(_ lm: [Double], mean: [Double]) -> Bool {
+        let e = index.map { ix in ix.reduce(1e-9) { $0 + exp(lm[$1]) } }
+        let rel = e.dropFirst().map { 10 * log10($0 / e[0]) }
+        let level = 10 * log10(e.reduce(0, +)), ref = 10 * log10(mean.reduce(1e-9) { $0 + exp($1) })
+        let box = rel[0] > Self.loMid.0 && rel[0] < Self.loMid.1 && rel[1] > Self.mid.0 && rel[1] < Self.mid.1
+            && rel[2] < Self.hi && rel[3] < Self.top && level > ref + Self.loudDb
+        run = box ? run + 1 : 0
+        return run >= Self.hold
     }
 }
 
@@ -297,7 +382,10 @@ struct MouthShaper: Sendable {
     /// The way an animator times a mouth: the net's answers are eased over `listen` seconds, the
     /// mouth commits to one shape and keeps it at least `minHold`, and only changes for a shape
     /// that's clearly ahead (`margin`). A seal or an f/v can cut in sooner, since it's what reads.
-    static let listen: Float = 0.03, minHold: Float = 0.12, margin: Float = 0.2
+    /// While the sound is steady (a held sound) it doesn't change at all.
+    static let listen: Float = 0.03, minHold: Float = 0.15, margin: Float = 0.25
+    /// How sure the net must be of a shape before its minimum opening applies in full.
+    static let sureOpen: Float = 0.8
 
     private var width = MouthMoveFollower()
     private var close = MouthMoveFollower(threshold: 0.15, shortest: 0.035, perUnit: 0.03, longest: 0.065)
@@ -333,9 +421,10 @@ struct MouthShaper: Sendable {
         heard = h
         let top = MouthShape.allCases.max { h[$0.rawValue] < h[$1.rawValue] }!
         shownFor += dt
-        if let now = shown, top != now {
+        let steady = shapes[MouthShape.steadyLane] > 0.5    // a held sound: keep the shape
+        if let now = shown, top != now, !steady {
             let cutIn = (top == .mbp || top == .fv) && h[top.rawValue] > 0.5
-            if (shownFor >= Self.minHold || cutIn) && h[top.rawValue] > h[now.rawValue] + Self.margin { shown = top; shownFor = 0 }
+            if cutIn && h[top.rawValue] > h[now.rawValue] || shownFor >= Self.minHold && h[top.rawValue] > h[now.rawValue] + Self.margin { shown = top; shownFor = 0 }
         } else if shown == nil { shown = top; shownFor = 0 }
         return shown!
     }
@@ -364,8 +453,12 @@ struct MouthShaper: Sendable {
 
     /// Eases towards `shapes` by `dt`.
     mutating func step(_ shapes: MouthShapes, dt: Float) -> Lips {
-        var one = MouthShapes(); one[commit(shapes, dt: dt).rawValue] = 1
-        let g = Self.goal(one)
+        let shown = commit(shapes, dt: dt)
+        var one = MouthShapes(); one[shown.rawValue] = 1
+        var g = Self.goal(one)
+        // a shape that opens the jaw (oo, ah, l) opens it only as far as the net is sure of it, so a
+        // moment's mishearing doesn't throw the jaw open
+        if let h = heard { g.open *= min(1, h[shown.rawValue] / Self.sureOpen) }
         func held(_ x: Float, _ h: inout (v: Float, left: Float)) -> Float {
             h.left -= dt
             if x >= 0.5 && x >= h.v || h.left <= 0 { h = (x, x >= 0.5 ? Self.hold : 0) }
@@ -389,6 +482,8 @@ struct MouthShaper: Sendable {
     /// round re-made for that jaw (an O opened at least `open`), then the seal, the f/v, the press, the flare and the lips on or off the teeth.
     static func apply(_ l: Lips, to p: inout MouthPose) {
         p.J = max(min(p.J, max(0, l.jaw)), l.open)
+        // lips can only seal over a nearly shut jaw: the jaw shuts in step with the seal, not after it
+        p.J = min(p.J, Self.lips(.mbp).jaw + max(0, 1 - 1.5 * l.close) * MouthRig.jawLimit)
         p.pucker = l.round
         p.funnel = l.flare
         p.close = max(p.close, l.close)

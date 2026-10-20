@@ -63,6 +63,8 @@ final class MouthRenderer {
     private let skinPipeline: MTLComputePipelineState
     private let normalsPipeline: MTLComputePipelineState
     private let depth: MTLDepthStencilState
+    /// The holdout skin wins over anything drawn before it, whatever its depth.
+    private let skinDepth: MTLDepthStencilState
     private let asset: MouthAsset
 
     private struct Draw {
@@ -131,6 +133,9 @@ final class MouthRenderer {
         dd.isDepthWriteEnabled = true
         guard let ds = device.makeDepthStencilState(descriptor: dd) else { throw SetupError.noDevice }
         depth = ds
+        dd.depthCompareFunction = .always
+        guard let sd = device.makeDepthStencilState(descriptor: dd) else { throw SetupError.noDevice }
+        skinDepth = sd
 
         func buffer<T>(_ a: [T]) throws -> MTLBuffer {
             let bytes = max(16, a.count * MemoryLayout<T>.stride)
@@ -248,7 +253,6 @@ final class MouthRenderer {
 
         guard let enc = commands.makeRenderCommandEncoder(descriptor: pass) else { return true }
         enc.setRenderPipelineState(pipeline)
-        enc.setDepthStencilState(depth)
         enc.setFrontFacing(.counterClockwise)
         let head = Self.rotation(framing.rotationDegrees)
             * simd_float4x4(diagonal: SIMD4(1 - 0.5 * framing.squash, 1, 1 + framing.squash, 1))   // as Blender scales the rig
@@ -276,8 +280,17 @@ final class MouthRenderer {
             enc.drawIndexedPrimitives(type: .triangle, indexCount: g.indexCount, indexType: .uint32,
                                       indexBuffer: g.index, indexBufferOffset: 0)
         }
-        for i in asset.meshes.indices { draw(i, outline: false) }
-        for i in asset.meshes.indices where asset.meshes[i].outline != nil { draw(i, outline: true) }
+        // Teeth, tongue and the dark inside first, then the skin over them whatever their depth (a
+        // round O pulls the skin in past the side teeth, behind them, and they poked out beside the
+        // lips), then the lips on top
+        func layer(_ m: MouthAsset.Mesh) -> Int {
+            asset.materials[m.material].kind == .holdout ? 1 : (m.name.hasSuffix("Lip") ? 2 : 0)
+        }
+        for l in 0...2 {
+            enc.setDepthStencilState(l == 1 ? skinDepth : depth)
+            for i in asset.meshes.indices where layer(asset.meshes[i]) == l { draw(i, outline: false) }
+            for i in asset.meshes.indices where layer(asset.meshes[i]) == l && asset.meshes[i].outline != nil { draw(i, outline: true) }
+        }
         enc.endEncoding()
         return true
     }

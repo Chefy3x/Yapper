@@ -151,10 +151,11 @@ struct MouthRig: Sendable {
                 off.y -= (n.outer ? 0.08 : 0.04) * J * c + (n.outer ? 0.07 : 0.03) * round * c
                 if !n.outer { sy *= 1 + 0.25 * J * c + 0.15 * round * c; sz *= 1 + 0.12 * J * c + 0.15 * round * c }
                 off.y += 0.06 * q.rollLower * c; sy -= 0.25 * q.rollLower * c; sz -= 0.3 * q.rollLower * c
-                // F/V: the lower lip rolls up and back behind the upper teeth, pressed flat
+                // F/V: the upper teeth rest on the lower lip, which stays in front of them, rolled in a
+                // little and pressed flat (pulled back any further it went through the teeth)
                 let f = q.fv * c
-                off.z += (n.outer ? 0 : 0.01) * f
-                off.y += (n.outer ? 0.10 : 0.32) * f
+                off.z -= (n.outer ? 0 : 0.02) * f
+                off.y += (n.outer ? 0.03 : 0.06) * f
                 if !n.outer { sz *= 1 - 0.25 * f; sy *= 1 - 0.3 * f }
             }
             off += slide * n.follow / 0.72
