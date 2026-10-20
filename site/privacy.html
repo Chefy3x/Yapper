@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<title>Privacy policy & credits — Yapper</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="What Yapper keeps on your Mac, the little that leaves it, and the open-source projects and datasets it is built on.">
+<meta name="theme-color" content="#F7F6F2">
+<link rel="canonical" href="https://useyapper.vercel.app/privacy.html">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap">
+<style>
+/* ============================================================
+   YAPPER — privacy policy & credits
+   Same tokens as the landing page (index.html), one narrow column.
+   ============================================================ */
+:root{
+  --bg:#F7F6F2;
+  --surface:#FFFFFF;
+  --ink:#141412;
+  --ink-2:#4B4943;
+  --muted:#77746B;
+  --line:rgba(20,20,18,.08);
+  --line-2:rgba(20,20,18,.14);
+  --blue-soft:#E5EBFE;
+  --blue-deep:#2447C9;
+  --blue-lcd:#7D97FF;
+  --sans:'DM Sans',-apple-system,BlinkMacSystemFont,'SF Pro Text',system-ui,'Segoe UI',Roboto,sans-serif;
+  --serif:'Instrument Serif',Georgia,'Times New Roman',serif;
+  --mono:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;
+  --r-lg:20px;
+  --shadow-sm:0 1px 2px rgba(20,20,18,.05),0 1px 4px rgba(20,20,18,.04);
+}
+*,*::before,*::after{box-sizing:border-box}
+body{
+  margin:0;background:var(--bg);color:var(--ink);
+  font-family:var(--sans);font-size:16px;line-height:1.65;
+  -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
+}
+a{color:inherit;text-decoration:none}
+::selection{background:var(--blue-soft);color:var(--ink)}
+.wrap{max-width:1120px;margin:0 auto;padding:0 24px}
+
+/* ---------- nav ---------- */
+.nav{
+  position:sticky;top:0;z-index:50;
+  background:rgba(247,246,242,.82);
+  -webkit-backdrop-filter:saturate(1.4) blur(12px);backdrop-filter:saturate(1.4) blur(12px);
+  border-bottom:1px solid var(--line);
+}
+.nav-inner{height:64px;display:flex;align-items:center;justify-content:space-between;gap:20px}
+.brand{display:flex;align-items:center;gap:9px;font-weight:600;font-size:16px;letter-spacing:-.015em}
+.brand img{width:26px;height:26px;display:block}
+.back{font-size:14px;color:var(--ink-2);padding:8px 12px;border-radius:999px}
+.back:hover{color:var(--ink);background:rgba(20,20,18,.05)}
+
+/* ---------- page ---------- */
+.page{max-width:720px;margin:0 auto;padding:88px 0 0}
+.eyebrow{
+  display:inline-flex;align-items:center;gap:10px;
+  font:600 11.5px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;
+  color:var(--muted);margin-bottom:18px;
+}
+.eyebrow .ctr{
+  font:600 11px/1 var(--mono);letter-spacing:.1em;color:var(--blue-lcd);
+  background:#1B1A17;border-radius:5px;padding:5px 7px 4px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 1px 2px rgba(20,20,18,.18);
+}
+h1,h2{margin:0;font-family:var(--serif);font-weight:400;letter-spacing:-.02em;line-height:1.02;text-wrap:balance}
+h1{font-size:clamp(46px,7vw,72px)}
+h2{font-size:clamp(30px,4vw,38px);margin:64px 0 16px}
+p{margin:0 0 14px;color:var(--ink-2)}
+p b,li b{color:var(--ink);font-weight:600}
+.lead{font-size:18px;line-height:1.55;margin-top:18px}
+.dated{font:500 12px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-top:22px}
+ul{margin:0 0 14px;padding-left:20px;color:var(--ink-2)}
+li{margin:0 0 8px}
+.inline{text-decoration:underline;text-underline-offset:3px;text-decoration-color:var(--line-2)}
+.inline:hover{text-decoration-color:var(--ink)}
+.card{
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);
+  box-shadow:var(--shadow-sm);padding:8px 24px;margin:8px 0 14px;
+}
+.row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 20px;padding:16px 0;border-top:1px solid var(--line)}
+.row:first-child{border-top:0}
+.row .what{font-weight:600;color:var(--ink)}
+.row .what a{text-decoration:underline;text-underline-offset:3px;text-decoration-color:var(--line-2)}
+.row .lic{font:500 12px/1.9 var(--mono);color:var(--muted);white-space:nowrap}
+.row .use{grid-column:1 / -1;font-size:14.5px;color:var(--ink-2);line-height:1.55}
+
+/* ---------- footer ---------- */
+footer{margin-top:96px;border-top:1px solid var(--line);padding:28px 0 40px}
+.foot-inner{
+  display:flex;justify-content:space-between;align-items:center;gap:18px;flex-wrap:wrap;
+  font-size:13px;color:var(--muted);
+}
+.foot-inner .mono{font:500 11.5px/1.6 var(--mono);letter-spacing:.08em;text-transform:uppercase}
+.foot-links{display:flex;gap:18px}
+.foot-links a:hover{color:var(--ink)}
+
+@media (max-width:760px){
+  .wrap{padding:0 16px}
+  .nav-inner{height:60px}
+  .page{padding-top:56px}
+  .card{padding:4px 18px}
+  .row{grid-template-columns:minmax(0,1fr)}
+  .row .lic{white-space:normal}
+}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="./" aria-label="Yapper home">
+      <img src="favicon.svg" alt="">
+      Yapper
+    </a>
+    <a class="back" href="./">← Back to Yapper</a>
+  </div>
+</nav>
+
+<div class="wrap">
+<main class="page">
+
+  <span class="eyebrow"><span class="ctr">061</span>the fine print, in full</span>
+  <h1>Privacy policy &amp; credits.</h1>
+  <p class="lead">Yapper has no accounts, no servers of its own and no analytics. What you say and
+  what it reads stay on your Mac, except the text you choose to send to a voice provider.</p>
+  <p class="dated">Last updated October 20, 2026</p>
+
+  <h2>What Yapper collects</h2>
+  <p>Nothing. Yapper doesn't collect, store or sell any personal data, and it sends no telemetry,
+  usage statistics or crash reports. There's no Yapper account to sign up for.</p>
+
+  <h2>What stays on your Mac</h2>
+  <ul>
+    <li><b>Your voice.</b> Voice In turns speech into text on your Mac. The Loud Mouth animation
+    also listens on your Mac to shape its mouth. Microphone audio is never uploaded or saved.</li>
+    <li><b>What was read and dictated.</b> Spoken replies stay in a local history that's deleted on
+    your schedule, from one hour to seven days. Yapper keeps only your most recent dictation, so you
+    can correct it.</li>
+    <li><b>What Yapper learns.</b> Your vocabulary and the corrections you make to dictated words are
+    saved locally so it spells them right next time. To spell names correctly, it may read words from
+    the window you're dictating into. Those are used once, then discarded.</li>
+    <li><b>Your API keys.</b> They're stored in the macOS Keychain and sent only to the provider they
+    belong to.</li>
+  </ul>
+
+  <h2>What leaves your Mac</h2>
+  <ul>
+    <li><b>Text for a voice provider, if you pick one.</b> With ElevenLabs or OpenAI, the text being
+    read aloud goes straight from your Mac to that provider, on your own API key. It's handled under
+    their privacy policy:
+    <a class="inline" href="https://elevenlabs.io/privacy-policy">ElevenLabs</a>,
+    <a class="inline" href="https://openai.com/policies/privacy-policy/">OpenAI</a>.
+    With the Mac's built-in voice, nothing leaves.</li>
+    <li><b>One-time model downloads.</b> Speech and formatting models are downloaded from Hugging Face
+    the first time you use them. After that they run offline.</li>
+    <li><b>Update checks.</b> Yapper checks GitHub for new versions and downloads updates from it.
+    Like any website, GitHub sees your IP address when this happens. Updates are checked against
+    Yapper's signing key before they install.</li>
+    <li><b>Text you dictate.</b> Voice In types the text into the app you're using. From there, that
+    app handles it under its own policies.</li>
+  </ul>
+
+  <h2>Permissions</h2>
+  <p><b>Accessibility</b> lets Yapper find the latest reply and type what you dictate.
+  <b>Microphone</b> is only needed if you turn on Voice In. You can revoke either one any time in
+  System Settings → Privacy &amp; Security.</p>
+
+  <h2>This website</h2>
+  <p>This site has no cookies, analytics or tracking. It's hosted on Vercel, which keeps standard
+  server logs (such as IP addresses) to run and protect the service. Fonts load from Google Fonts,
+  which sees your IP address when it serves them.</p>
+
+  <h2>Changes and questions</h2>
+  <p>If this policy changes, the new version will be posted here with a new date. Every change is
+  also visible in the <a class="inline" href="https://github.com/Chefy3x/Yapper">public source
+  code</a>. For questions, open an issue on
+  <a class="inline" href="https://github.com/Chefy3x/Yapper/issues">GitHub</a>.</p>
+
+  <h2 id="credits">Credits</h2>
+  <p>Yapper is built on these open-source projects, models and datasets. Thank you to everyone who made
+  them. No audio from any dataset ships with Yapper. The mouth-shape model contains only trained
+  weights.</p>
+  <div class="card">
+    <div class="row"><span class="what"><a href="https://github.com/argmaxinc/WhisperKit">WhisperKit</a> and OpenAI Whisper models</span><span class="lic">MIT</span>
+      <span class="use">Speech to text</span></div>
+    <div class="row"><span class="what"><a href="https://github.com/FluidInference/FluidAudio">FluidAudio</a></span><span class="lic">Apache 2.0</span>
+      <span class="use">Speech to text on the Neural Engine, number conversion</span></div>
+    <div class="row"><span class="what"><a href="https://huggingface.co/FluidInference/parakeet-ultra-coreml">NVIDIA Parakeet TDT</a></span><span class="lic">CC BY 4.0</span>
+      <span class="use">The default speech model on Apple silicon, by NVIDIA, used unmodified in FluidAudio's Core ML conversion</span></div>
+    <div class="row"><span class="what"><a href="https://github.com/ggml-org/llama.cpp">llama.cpp</a></span><span class="lic">MIT</span>
+      <span class="use">Runs the on-device formatting model</span></div>
+    <div class="row"><span class="what"><a href="https://huggingface.co/Qwen/Qwen3.5-2B">Qwen3.5 2B</a></span><span class="lic">Apache 2.0</span>
+      <span class="use">On-device formatting model</span></div>
+    <div class="row"><span class="what"><a href="https://sparkle-project.org">Sparkle</a></span><span class="lic">MIT</span>
+      <span class="use">App updates</span></div>
+    <div class="row"><span class="what"><a href="https://github.com/ungive/mediaremote-adapter">mediaremote-adapter</a></span><span class="lic">BSD 3-Clause</span>
+      <span class="use">Pausing other apps' media while you dictate</span></div>
+    <div class="row"><span class="what"><a href="https://www.openslr.org/60/">LibriTTS</a> by Heiga Zen et al. (Google)</span><span class="lic">CC BY 4.0</span>
+      <span class="use">Training data for the Loud Mouth's mouth-shape model: the dev-clean, test-clean and train-clean-100 subsets, derived from LibriSpeech and LibriVox. Phone alignments from <a class="inline" href="https://huggingface.co/datasets/cdminix/libritts-aligned">cdminix/libritts-aligned</a> (CC BY 4.0)</span></div>
+    <div class="row"><span class="what"><a href="https://www.tensorflow.org/datasets/catalog/speech_commands">Speech Commands v0.02</a> by Pete Warden (Google)</span><span class="lic">CC BY 4.0</span>
+      <span class="use">Training data for the mouth-shape model: one-word clips recorded on people's own phones and laptops, so it hears real microphones</span></div>
+    <div class="row"><span class="what"><a href="https://www.openslr.org/28/">OpenSLR 28 room impulse responses and noises</a></span><span class="lic">Apache 2.0</span>
+      <span class="use">Used to simulate rooms and background noise while training the mouth-shape model</span></div>
+    <div class="row"><span class="what"><a href="https://montreal-forced-aligner.readthedocs.io">Montreal Forced Aligner</a></span><span class="lic">MIT</span>
+      <span class="use">Lined up the training recordings with their sounds</span></div>
+    <div class="row"><span class="what"><a href="https://fonts.google.com/specimen/Instrument+Serif">Instrument Serif</a>, <a href="https://fonts.google.com/specimen/DM+Sans">DM Sans</a>, <a href="https://fonts.google.com/specimen/Permanent+Marker">Permanent Marker</a></span><span class="lic">OFL / Apache 2.0</span>
+      <span class="use">Type on this website</span></div>
+  </div>
+  <p>The full license texts are in the
+  <a class="inline" href="https://github.com/Chefy3x/Yapper/blob/main/THIRD_PARTY_NOTICES.md">third-party notices</a>
+  in the source code.</p>
+
+</main>
+
+<footer>
+  <div class="foot-inner">
+    <span class="mono">YAPPER · C-90 · LINER NOTES</span>
+    <span>© 2026 Yapper · made for macOS · this page contains no cloud</span>
+    <span class="foot-links"><a href="./">Home</a><a href="https://github.com/Chefy3x/Yapper">GitHub</a><a href="https://github.com/Chefy3x/Yapper/releases">Release notes</a></span>
+  </div>
+</footer>
+</div>
+
+</body>
+</html>
