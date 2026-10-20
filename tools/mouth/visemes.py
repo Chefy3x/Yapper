@@ -301,12 +301,18 @@ def held_speakers(args, spk):
     return split_speakers(spk, args.eval_speakers)
 
 
-def teacher_logits(run, streams_, shift, held, dev):
+def teacher_logits(run, streams_, shift, held, splits, dev):
     """The teacher's logits over each (clean) training stream, moved so row t is the teacher's answer for
-    the label the student is taught at hop t (the teacher may read its labels at another shift)."""
+    the label the student is taught at hop t (the teacher may read its labels at another shift). Kept
+    next to the teacher, so the next student skips this."""
     import torch
     ck = torch.load(Path(run) / "best.pt", weights_only=False)
     if set(ck["held"]) != held: sys.exit(f"{run} held out other speakers: it may have heard the ones scored here")
+    cache = Path(run) / f"logits_{'+'.join(splits)}_{shift:g}.npy"
+    lens = [len(l) for _, l in streams_]
+    if cache.exists() and cache.stat().st_mtime > (Path(run) / "best.pt").stat().st_mtime:
+        z = np.load(cache)
+        if len(z) == sum(lens): return np.split(z, np.cumsum(lens)[:-1])
     net = torch_net(ck["layers"], ck["ch"]).to(dev); net.load_state_dict(ck["net"]); net.eval()
     off = int(round((shift - ck["shift"]) * SR / HOP))
     mu0, sd = torch.tensor(ck["mu0"], device=dev), torch.tensor(ck["sd"], device=dev, dtype=torch.float32)
@@ -318,6 +324,7 @@ def teacher_logits(run, streams_, shift, held, dev):
             if off > 0: z = np.concatenate([z[off:], np.repeat(z[-1:], off, 0)])
             if off < 0: z = np.concatenate([np.repeat(z[:1], -off, 0), z[:off]])
             out.append(z.astype(np.float16))
+    np.save(cache, np.concatenate(out))
     return out
 
 
@@ -354,7 +361,7 @@ def cmd_train(args):
     teach = None
     if args.teacher:
         t0 = time.time()
-        teach = teacher_logits(args.teacher, train_s, args.shift, held, dev)
+        teach = teacher_logits(args.teacher, train_s, args.shift, held, args.splits, dev)
         acc = np.mean(np.concatenate([z.argmax(1) for z in teach]) == alll)
         print(f"teacher {args.teacher}: logits for {len(alll)} hops in {time.time() - t0:.0f} s, "
               f"agrees with the labels on {acc:.3f}; KD weight {args.kd}, temperature {args.temp}", flush=True)
