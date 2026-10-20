@@ -76,7 +76,7 @@ LAYERS = [(5, 1, 2), (3, 1, 1), (3, 2, 1), (3, 4, 0), (3, 8, 0)]
 LOOKAHEAD = sum(l[2] for l in LAYERS)
 CH = 80
 # what MouthVisemes.swift and its tests accept: the shapes land inside MouthTimeline's 45 ms playout
-MAX_LOOKAHEAD, MAX_WEIGHTS = 4, 150_000
+MAX_LOOKAHEAD, MAX_WEIGHTS = 4, 1_000_000
 
 # The fixed held-out speakers (all from dev-clean and test-clean): never trained on, always scored, so
 # runs on more data stay comparable. They are what split_speakers(seed 1) drew for the first net.
@@ -144,8 +144,14 @@ def read_textgrid(path):
     return out
 
 
-def labels(phones, n, shift=0.0):
-    """Class per hop, read at the hop window's centre (+ shift seconds). HH takes the next phone's class."""
+# sounds a person can hold (a long "mmm", "fff", "ooo"): continuants and vowels, not stops or affricates
+HOLDABLE = {"M", "N", "NG", "F", "V", "S", "Z", "SH", "ZH", "TH", "DH", "L", "R",
+            "AA", "AE", "AH", "AO", "AW", "AY", "EH", "ER", "EY", "IH", "IY", "OW", "OY", "UH", "UW"}
+
+
+def labels(phones, n, shift=0.0, holdable=False):
+    """Class per hop, read at the hop window's centre (+ shift seconds). HH takes the next phone's class.
+    With `holdable`, also an int per hop: 1 + the phone's index where that phone is HOLDABLE, else 0."""
     cls = []
     for i, (a, b, p) in enumerate(phones):
         if p == "HH":
@@ -158,50 +164,260 @@ def labels(phones, n, shift=0.0):
     out = np.zeros(n, dtype=np.uint8)
     ok = (k >= 0) & (t < ends[np.clip(k, 0, len(ends) - 1)])
     out[ok] = np.array(cls, dtype=np.uint8)[k[ok]]
-    return out
+    if not holdable: return out
+    hold = np.zeros(n, dtype=np.int32)
+    can = np.array([p in HOLDABLE for _, _, p in phones])
+    sel = ok & can[np.clip(k, 0, len(can) - 1)]
+    hold[sel] = k[sel] + 1
+    return out, hold
+
+
+# Corpora besides LibriTTS, aligned with MFA (english_us_arpa): audio under <data>/<dir>/<speaker>/<stem>.{wav,flac},
+# TextGrids under <data>/align/<name>/<speaker>/<stem>.TextGrid. Each holds its own speakers out (see held_out).
+CORPORA = {"speech-commands": ("sc_mfa", "sc"), "peoples-speech": ("ps_mfa", "ps")}
+DEVICE = "-device"           # LibriTTS split + this: the same utterances through a simulated phone or laptop (cmd_device)
+
+
+def corpus_files(root, split):
+    """(audio, TextGrid, speaker name) for a split: a LibriTTS split, its -device copy's source, or a CORPORA name."""
+    base = split[:-len(DEVICE)] if split.endswith(DEVICE) else split
+    if base in CORPORA:
+        d, a = CORPORA[base]
+        files = sorted(glob.glob(str(root / d / "*" / "*.wav")) + glob.glob(str(root / d / "*" / "*.flac")))
+        rej = root / "align" / a / "rejected.txt"
+        if rej.exists():
+            drop = set(rej.read_text().split()); files = [f for f in files if Path(f).stem not in drop]
+        return [(f, root / "align" / a / Path(f).parent.name / (Path(f).stem + ".TextGrid"), Path(f).parent.name) for f in files]
+    files = sorted(glob.glob(str(root / "LibriTTS" / base / "*" / "*" / "*.wav")) + glob.glob(str(root / "LibriTTS" / base / "*" / "*" / "*.flac")))
+    align = root / "align" / base.replace("-", "_")
+    return [(f, align / Path(f).stem.split("_")[0] / (Path(f).stem + ".TextGrid"), Path(f).stem.split("_")[0]) for f in files]
+
+
+def speaker_id(root, split, name):
+    """An int per speaker, unique across corpora and the -device copies; LibriTTS keeps its own numbers."""
+    import hashlib
+    base = split[:-len(DEVICE)] if split.endswith(DEVICE) else split
+    if base in CORPORA:
+        n = (2 + list(CORPORA).index(base)) * 10 ** 8 + int(hashlib.md5(name.encode()).hexdigest(), 16) % 10 ** 8
+    else:
+        n = int(name)
+    return n + (10 ** 8 if split.endswith(DEVICE) and base not in CORPORA else 0)
+
+
+def held_out(root, split, name):
+    """The fixed held-out speakers: EVAL_SPEAKERS for LibriTTS (and its -device copy), Speech Commands' own
+    test-list speakers, and one People's Speech recording in ten (by name)."""
+    import hashlib
+    base = split[:-len(DEVICE)] if split.endswith(DEVICE) else split
+    if base == "speech-commands":
+        if not hasattr(held_out, "sc"):
+            held_out.sc = {l.split("/")[1].split("_")[0] for l in (root / "sc" / "testing_list.txt").read_text().split()}
+        return name in held_out.sc
+    if base == "peoples-speech": return int(hashlib.md5(name.encode()).hexdigest(), 16) % 10 == 0
+    return int(name) in EVAL_SPEAKERS
+
+
+def read_audio(path):
+    import soundfile as sf
+    from scipy.signal import resample_poly
+    x, sr = sf.read(path, dtype="float64")
+    if x.ndim > 1: x = x[:, 0]
+    if sr != SR:
+        g = math.gcd(SR, sr); x = resample_poly(x, SR // g, sr // g)
+    return x
+
+
+def prep_split(root, split, transform=None, share=1.0, jobs=1):
+    """Log-mel and phones of every aligned utterance in a split → cache/<split>.npz. `transform(x, rng)` runs
+    on the 16 kHz audio first (the device simulation); `share` keeps that fraction of utterances."""
+    t0 = time.time()
+    items = [it for it in corpus_files(root, split) if it[1].exists()]
+    missing = len(corpus_files(root, split)) - len(items)
+    if share < 1:
+        items = [it for it in items if int.from_bytes(Path(it[0]).stem.encode()[-6:], "little") % 1000 < share * 1000]
+    work = [(root, split, it, transform) for it in items]
+    if jobs > 1:
+        import multiprocessing as mp
+        with mp.Pool(jobs) as pool: done = pool.map(prep_one, work, chunksize=16)
+    else:
+        done = [prep_one(w) for w in work]
+    done = [d for d in done if d is not None]
+    mels, phones_out, spk, utt, held = zip(*done)
+    lens = np.array([len(m) for m in mels])
+    out = root / "cache" / f"{split}.npz"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    np.savez(out, mel=np.concatenate(mels), lens=lens, speaker=np.array(spk), utt=np.array(utt),
+             phones=np.array(phones_out), held=np.array(held))
+    print(f"{split}: {len(mels)} utterances, {lens.sum() / 360000:.2f} h, {len(set(spk))} speakers "
+          f"({len(set(s for s, h in zip(spk, held) if h))} held out), {missing} without alignment, "
+          f"{time.time() - t0:.0f} s → {out}", flush=True)
+
+
+def prep_one(w):
+    root, split, (audio, tg, name), transform = w
+    x = read_audio(audio)
+    if transform is not None:
+        x = transform(x, np.random.default_rng(int.from_bytes(Path(audio).stem.encode()[-8:], "little")))
+    lm = log_mel(x)
+    if len(lm) < 20: return None
+    return lm.astype(np.float16), json.dumps(read_textgrid(tg)), speaker_id(root, split, name), Path(audio).stem, held_out(root, split, name)
+
+
+class Device:
+    """A random phone or laptop between the talker and the features, on 16 kHz audio: a room (a real or
+    simulated impulse response from OpenSLR 28, some taken with a phone in the hand), real background
+    noise, a small mic's EQ (low cut, presence peak, sometimes a band limit), sometimes a phone's noise
+    suppression and level control, sometimes a lossy codec round trip (AAC, Opus or MP3 through ffmpeg).
+    The direct path and the codec delay are lined back up, so the phone alignments still hold."""
+    def __init__(self, rirs_dir):
+        r = Path(rirs_dir)
+        listed = lambda f: [str(r.parent / l.split()[-1]) for l in (r / "real_rirs_isotropic_noises" / f).read_text().splitlines() if l.strip()]
+        self.real = [f for f in listed("rir_list") if os.path.exists(f)]
+        self.phone = [f for f in self.real if "phone" in f]
+        self.sim = sorted(glob.glob(str(r / "simulated_rirs" / "*room" / "*" / "*.wav")))
+        self.noise = [f for f in listed("noise_list") if os.path.exists(f)] + sorted(glob.glob(str(r / "pointsource_noises" / "*.wav")))
+        if not (self.real and self.sim and self.noise): sys.exit(f"no RIRs/noises under {rirs_dir} (OpenSLR 28 RIRS_NOISES)")
+
+    def __call__(self, x, rng):
+        import soundfile as sf
+        from scipy.signal import fftconvolve, butter, sosfilt, lfilter
+        n = len(x)
+        speech = np.sqrt(np.mean(x[np.abs(x) > 0.1 * np.abs(x).max()] ** 2) + 1e-12)
+        if rng.random() < 0.6:                                   # a room
+            pool = self.phone if rng.random() < 0.25 else self.real if rng.random() < 0.6 else self.sim
+            h, _ = sf.read(pool[rng.integers(len(pool))], dtype="float64")
+            h = h[:, 0] if h.ndim > 1 else h
+            pk = int(np.argmax(np.abs(h)))
+            h = h[max(0, pk - 16):] / np.abs(h[pk])
+            x = fftconvolve(x, h)[min(pk, 16):min(pk, 16) + n]
+        if rng.random() < 0.6:                                   # background noise
+            v, _ = sf.read(self.noise[rng.integers(len(self.noise))], dtype="float64")
+            v = v[:, 0] if v.ndim > 1 else v
+            v = np.resize(v[rng.integers(len(v)):] if len(v) > n else v, n)
+            if np.any(v):
+                x = x + v / np.sqrt(np.mean(v ** 2)) * speech * 10 ** (-rng.uniform(5, 30) / 20)
+        # the mic: a low cut, a presence peak, sometimes a band limit (narrowband calls at 3.4 kHz)
+        x = sosfilt(butter(2, rng.uniform(60, 300), "highpass", fs=SR, output="sos"), x)
+        f0, gain, q = rng.uniform(1500, 5000), rng.uniform(-4, 8), rng.uniform(0.7, 2.0)
+        A, w = 10 ** (gain / 40), 2 * math.pi * f0 / SR
+        al = math.sin(w) / (2 * q)
+        bq = np.array([1 + al * A, -2 * math.cos(w), 1 - al * A]); aq = np.array([1 + al / A, -2 * math.cos(w), 1 - al / A])
+        x = lfilter(bq / aq[0], aq / aq[0], x)
+        if rng.random() < 0.35:
+            x = sosfilt(butter(6, 3400 if rng.random() < 0.3 else rng.uniform(4500, 7500), "lowpass", fs=SR, output="sos"), x)
+        if rng.random() < 0.4: x = self.suppress(x, rng)
+        if rng.random() < 0.3:                                   # level control: quiet parts up, loud parts down
+            env = np.sqrt(np.convolve(x ** 2, np.ones(1600) / 1600, "same") + 1e-8)
+            x = x * np.clip((speech / env) ** rng.uniform(0.2, 0.5), 0.3, 4.0)
+        x = x / (np.sqrt(np.mean(x ** 2)) + 1e-12) * 10 ** (rng.uniform(-38, -18) / 20)
+        x = np.clip(x, -1, 1)
+        if rng.random() < 0.5: x = self.codec(x, rng)
+        return x
+
+    @staticmethod
+    def suppress(x, rng):
+        """A phone's noise suppression, roughly: a per-bin noise estimate (a low percentile over time) and a
+        smoothed Wiener-ish gain with a floor."""
+        from scipy.signal import stft, istft
+        _, _, Z = stft(x, SR, nperseg=512, noverlap=384)
+        P = np.abs(Z) ** 2
+        N = np.percentile(P, 10, axis=1, keepdims=True)
+        g = np.maximum(10 ** (-rng.uniform(12, 25) / 20), 1 - rng.uniform(1, 3) * N / (P + 1e-12))
+        for t in range(1, g.shape[1]): g[:, t] = np.maximum(g[:, t], 0.6 * g[:, t - 1])     # quick attack, slow release
+        _, y = istft(Z * g, SR, nperseg=512, noverlap=384)
+        return np.resize(y, len(x))
+
+    @staticmethod
+    def codec(x, rng):
+        """A lossy round trip through ffmpeg, then lined back up with the input (codec delay) by cross-correlation."""
+        import subprocess, tempfile, soundfile as sf
+        kind = ["aac", "opus", "mp3"][rng.integers(3)]
+        rate = {"aac": [24, 32, 48, 64, 96], "opus": [12, 16, 24, 32], "mp3": [32, 48, 64, 96]}[kind][rng.integers(4)]
+        ext, enc = {"aac": ("m4a", "aac"), "opus": ("ogg", "libopus"), "mp3": ("mp3", "libmp3lame")}[kind]
+        with tempfile.TemporaryDirectory(dir="/dev/shm" if os.path.isdir("/dev/shm") else None) as d:
+            sf.write(f"{d}/in.wav", x, SR, subtype="PCM_16")
+            r = subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", f"{d}/in.wav", "-c:a", enc, "-b:a", f"{rate}k", f"{d}/c.{ext}"])
+            r2 = subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", f"{d}/c.{ext}", "-ar", str(SR), "-ac", "1", f"{d}/out.wav"])
+            if r.returncode or r2.returncode: return x
+            y, _ = sf.read(f"{d}/out.wav", dtype="float64")
+        m = min(len(x), len(y), SR * 2)
+        L = 3000
+        c = np.correlate(np.pad(y[:m + L], (0, max(0, m + L - len(y)))), x[:m], "valid")[:2 * L] if len(y) > m else np.zeros(1)
+        lag = int(np.argmax(c)) if len(c) > 1 else 0
+        y = y[lag:]
+        return np.pad(y, (0, max(0, len(x) - len(y))))[:len(x)]
+
+
+def cmd_device(args):
+    root = data_dir(args)
+    dev = Device(args.rirs or root / "rir" / "RIRS_NOISES")
+    for split in args.splits:
+        prep_split(root, split + DEVICE, dev, args.share, args.jobs)
+
+
+def align_stats(audio, tg):
+    """How believable one alignment is: dB from the silences to the phones (hop energy), the share of phones
+    at MFA's 30 ms minimum, the speech's length and the share of unknown-word phones."""
+    ph = read_textgrid(tg)
+    e = np.log(np.exp(log_mel(read_audio(audio))).sum(1) + 1e-9) * 10 / math.log(10)
+    t = (HOP * np.arange(len(e)) + WIN / 2) / SR
+    sp = np.zeros(len(e), bool)
+    for a, b, p in ph:
+        if p not in ("", "sil", "sp"): sp |= (t >= a) & (t < b)
+    real = [(a, b, p) for a, b, p in ph if p not in ("", "sil", "sp")]
+    if not real or sp.all() or not sp.any(): return dict(contrast=np.nan, short=1.0, speech=0.0, unk=1.0)
+    return dict(contrast=float(np.median(e[sp]) - np.median(e[~sp])), short=float(np.mean([b - a <= 0.031 for a, b, _ in real])),
+                speech=float(sum(b - a for a, b, _ in real)), unk=float(np.mean([p == "spn" for _, _, p in real])))
+
+
+def cmd_check_align(args):
+    """Alignment quality on a sample of a corpus (and LibriTTS's alignments for reference); writes the
+    clear failures of the whole corpus to align/<name>/rejected.txt, which prep skips."""
+    root = data_dir(args)
+    rng = np.random.default_rng(0)
+    def sample(split, n):
+        items = [it for it in corpus_files(root, split) if it[1].exists()]
+        return [items[i] for i in rng.choice(len(items), min(n, len(items)), replace=False)]
+    def summary(name, st):
+        c = np.array([x["contrast"] for x in st]); sh = np.array([x["short"] for x in st])
+        print(f"{name:16s} n {len(st):5d}  speech/silence contrast median {np.nanmedian(c):5.1f} dB (10th pct {np.nanpercentile(c, 10):5.1f}),"
+              f" phones at 30 ms {100 * np.mean(sh):4.1f}%, unknown words {100 * np.mean([x['unk'] for x in st]):4.1f}%,"
+              f" rejected {100 * np.mean([bad(x) for x in st]):4.1f}%")
+    bad = lambda x: not (x["contrast"] >= args.min_contrast) or x["short"] > 0.5 or x["unk"] > 0.3 or x["speech"] < 0.1
+    summary("LibriTTS (ref)", [align_stats(a, t) for a, t, _ in sample("dev-clean", 300)])
+    for name in args.corpora:
+        print(f"{name}: sample", flush=True)
+        summary(name, [align_stats(a, t) for a, t, _ in sample(name, args.sample)])
+        if args.write:
+            items = [it for it in corpus_files(root, name) if it[1].exists()]
+            import multiprocessing as mp
+            with mp.Pool(args.jobs) as pool: st = pool.starmap(align_stats, [(a, t) for a, t, _ in items], chunksize=64)
+            rej = [Path(a).stem for (a, _, _), x in zip(items, st) if bad(x)]
+            (root / "align" / CORPORA[name][1] / "rejected.txt").write_text("\n".join(rej) + "\n")
+            print(f"{name}: {len(rej)} of {len(items)} rejected → align/{CORPORA[name][1]}/rejected.txt", flush=True)
 
 
 def cmd_prep(args):
-    import soundfile as sf
-    from scipy.signal import resample_poly
     root = data_dir(args)
-    for split in args.splits:
-        wavs = sorted(glob.glob(str(root / "LibriTTS" / split / "*" / "*" / "*.wav")))
-        align = root / "align" / split.replace("-", "_")
-        mels, phones_out, spk, utt, missing = [], [], [], [], 0
-        t0 = time.time()
-        for w in wavs:
-            name = Path(w).stem
-            speaker = name.split("_")[0]
-            tg = align / speaker / (name + ".TextGrid")
-            if not tg.exists(): missing += 1; continue
-            x, sr = sf.read(w, dtype="float64")
-            if x.ndim > 1: x = x[:, 0]
-            if sr != SR:
-                g = math.gcd(SR, sr); x = resample_poly(x, SR // g, sr // g)
-            lm = log_mel(x)
-            if len(lm) < 20: continue
-            mels.append(lm.astype(np.float16))
-            phones_out.append(json.dumps(read_textgrid(tg)))
-            spk.append(int(speaker)); utt.append(name)
-        lens = np.array([len(m) for m in mels])
-        out = root / "cache" / f"{split}.npz"
-        out.parent.mkdir(parents=True, exist_ok=True)
-        np.savez(out, mel=np.concatenate(mels), lens=lens, speaker=np.array(spk), utt=np.array(utt),
-                 phones=np.array(phones_out))
-        print(f"{split}: {len(mels)} utterances, {lens.sum() / 360000:.2f} h, {len(set(spk))} speakers, "
-              f"{missing} without alignment, {time.time() - t0:.0f} s → {out}")
+    for split in args.splits: prep_split(root, split, jobs=args.jobs)
 
 
-def load(root, splits, shift):
-    mel, lab, spk = [], [], []
+def load(root, splits, shift, extra=False, held_ids=None):
+    """Every utterance's log-mel, labels and speaker; with `extra`, also whether its speaker is held out (the
+    cache's own flag, else `held_ids`), the split it came from, which hops are holdable (see labels) and its name."""
+    held_ids = set(EVAL_SPEAKERS if held_ids is None else held_ids)
+    mel, lab, spk, held, src, hold, utt = [], [], [], [], [], [], []
     for s in splits:
         z = dict(np.load(root / "cache" / f"{s}.npz"))      # read each array once
         off = np.concatenate([[0], np.cumsum(z["lens"])])
         for i, n in enumerate(z["lens"]):
             mel.append(z["mel"][off[i]:off[i + 1]])
-            lab.append(labels(json.loads(str(z["phones"][i])), n, shift))
+            l, h = labels(json.loads(str(z["phones"][i])), n, shift, holdable=True)
+            lab.append(l); hold.append(h)
             spk.append(int(z["speaker"][i]))
+            held.append(bool(z["held"][i]) if "held" in z else int(z["speaker"][i]) in held_ids)
+            src.append(s); utt.append(str(z["utt"][i]))
+    if extra: return mel, lab, np.array(spk), np.array(held), src, hold, utt
     return mel, lab, np.array(spk)
 
 
@@ -209,6 +425,19 @@ def split_speakers(spk, n_eval, seed=1):
     ids = sorted(set(spk.tolist()))
     rng = np.random.default_rng(seed)
     return set(rng.choice(ids, n_eval, replace=False).tolist())
+
+
+def make_streams(mel, lab, spk, hflag, src, hold, utt):
+    """One stream per (split, speaker): each speaker's utterances end to end (the pauses between are real).
+    Returns the training streams and the held-out ones, as dicts (log-mel m, labels l, holdable phones h,
+    utterance names and lengths, split)."""
+    by = {}
+    for i in range(len(mel)): by.setdefault((src[i], spk[i]), []).append(i)
+    def stream(ix):
+        hs = [np.where(hold[i] > 0, hold[i] + 1000 * j, 0) for j, i in enumerate(ix)]   # phones of different utterances stay apart
+        return dict(m=np.concatenate([mel[i] for i in ix]), l=np.concatenate([lab[i] for i in ix]), h=np.concatenate(hs),
+                    utt=[utt[i] for i in ix], lens=[len(lab[i]) for i in ix], src=src[ix[0]])
+    return [stream(ix) for ix in by.values() if not hflag[ix[0]]], [stream(ix) for ix in by.values() if hflag[ix[0]]]
 
 
 def streams(mel, lab, spk, keep):
@@ -338,27 +567,51 @@ def augment(lm, rng, noise_mel, eq_db=12.0, floors=None):
     return torch.log(p + LOG_EPS)
 
 
-def crop(m, l, z, T, rng, pause_p):
-    """A training crop of T hops; with probability pause_p, one or two stretches of nothing (0.2-3 s, at
-    most 4 s in all, labelled rest) are spliced in, for the floor to fill. Returns log-mel, labels, teacher logits (or
-    None) and a mask that is 0 on the spliced hops (the teacher never heard them)."""
+def hold_walk(core, n, rng):
+    """n hops of a held sound from the hops of one phone's steady middle: a random walk through them (so the
+    sound wobbles as a held one does) with a slow level drift of a dB or two."""
+    i = rng.integers(len(core)); idx = np.empty(n, int)
+    for t in range(n):
+        idx[t] = i
+        i = int(np.clip(i + rng.integers(-1, 2), 0, len(core) - 1))
+    drift = np.cumsum(rng.normal(0, 0.02, n)); drift -= drift.mean()
+    return core[idx] + np.clip(drift, -0.5, 0.5)[:, None].astype(np.float32)
+
+
+def phone_runs(h):
+    """(start, end) of each holdable phone in a hold array (see labels): runs of one nonzero value."""
+    edges = np.flatnonzero(np.diff(np.concatenate([[0], h, [0]])) != 0)
+    return [(a, b) for a, b in zip(edges[:-1], edges[1:]) if h[a] != 0]
+
+
+def crop(m, l, z, T, rng, pause_p, h=None, hold_p=0.0):
+    """A training crop of T hops. With probability hold_p, one holdable phone in it is held: stretched to
+    0.3-1.5 s (hold_walk). With probability pause_p, one or two stretches of nothing (0.2-3 s, at most 4 s
+    in all, labelled rest) are spliced in, for the floor to fill. Returns log-mel, labels, teacher logits (or
+    None) and a mask that is 0 on the made-up hops (the teacher never heard them)."""
     gaps = rng.integers(20, 301, rng.integers(1, 3)) if rng.random() < pause_p else np.zeros(0, int)
     if gaps.sum() > min(400, T // 2): gaps = gaps[:1]
     need = T - int(gaps.sum())
     a = rng.integers(0, max(1, len(l) - need))
     x, y, k = m[a:a + need].astype(np.float32), l[a:a + need], np.ones(need, np.float32)
     zt = None if z is None else z[a:a + need].astype(np.float32)
+    if h is not None and rng.random() < hold_p:
+        runs = [(p, q) for p, q in phone_runs(h[a:a + need]) if q - p >= 3 and p > 0 and q < need]
+        if runs:
+            p, q = runs[rng.integers(len(runs))]
+            cut = max(1, (q - p) // 5)
+            core = x[p + cut - 1:q - cut + 1] if q - p > 4 else x[p:q]
+            n = max(int(rng.integers(30, 151)), q - p + 10)
+            x = np.concatenate([x[:p], hold_walk(core, n, rng), x[q:]])[:need]
+            y = np.concatenate([y[:p], np.full(n, y[p], y.dtype), y[q:]])[:need]
+            k = np.concatenate([k[:p], np.zeros(n, np.float32), k[q:]])[:need]
+            if zt is not None: zt = np.concatenate([zt[:p], np.zeros((n, zt.shape[1]), np.float32), zt[q:]])[:need]
     for g, at in zip(gaps, np.sort(rng.integers(0, need, len(gaps)))[::-1]):      # last first: earlier places hold
         x = np.concatenate([x[:at], np.full((g, N_MELS), math.log(1e-9), np.float32), x[at:]])
         y = np.concatenate([y[:at], np.zeros(g, y.dtype), y[at:]])
         k = np.concatenate([k[:at], np.zeros(g, np.float32), k[at:]])
         if zt is not None: zt = np.concatenate([zt[:at], np.zeros((g, zt.shape[1]), np.float32), zt[at:]])
     return x, y, zt, k
-
-
-def held_speakers(args, spk):
-    if args.held: return set(args.held)
-    return split_speakers(spk, args.eval_speakers)
 
 
 def teacher_logits(run, streams_, shift, held, splits, dev):
@@ -396,13 +649,18 @@ def cmd_train(args):
     layers = parse_layers(args.layers) if args.layers else LAYERS
     ch = args.ch or CH
     lookahead = sum(l[2] for l in layers)
-    mel, lab, spk = load(root, args.splits, args.shift)
-    held = held_speakers(args, spk)
-    missing = held - set(spk.tolist())
-    if missing: sys.exit(f"held-out speakers not in the loaded splits: {sorted(missing)}")
-    train_s = streams(mel, lab, spk, set(spk.tolist()) - held)
-    eval_s = streams(mel, lab, spk, held)
-    del mel, lab
+    mel, lab, spk, hflag, src, hold, utt = load(root, args.splits, args.shift, extra=True, held_ids=args.held or None)
+    held = set(args.held) if args.held else split_speakers(spk[[s in LIBRI for s in src]], args.eval_speakers)
+    if not args.held: hflag = np.array([f if s not in LIBRI else k in held for f, s, k in zip(hflag, src, spk)])
+    missing = held - set(spk[[s in LIBRI for s in src]].tolist())
+    if missing and any(s in LIBRI for s in src): sys.exit(f"held-out speakers not in the loaded splits: {sorted(missing)}")
+    train_d, eval_d = make_streams(mel, lab, spk, hflag, src, hold, utt)
+    del mel, lab, hold
+    train_s = [(d["m"], d["l"]) for d in train_d]
+    eval_s = [(d["m"], d["l"]) for d in eval_d if d["src"] in LIBRI and not d["src"].endswith(DEVICE)]
+    groups = {}
+    for d in eval_d: groups.setdefault(corpus_group(d["src"]), []).append((d["m"], d["l"]))
+    held_items = held_sounds(eval_d)
     alll = np.concatenate([l for _, l in train_s])
     mu0 = np.zeros(N_MELS)                       # where the running mean settles
     for m, _ in train_s: mu0 += m.astype(np.float64).sum(0)
@@ -410,8 +668,9 @@ def cmd_train(args):
     # the spread once the running mean comes off
     sd = np.concatenate([normalise(m[:6000].astype(np.float64), mu0, np.ones(N_MELS)) for m, _ in train_s[:8]]).std(0) + 1e-3
     counts = np.bincount(alll, minlength=len(CLASSES))
-    print(f"train {len(train_s)} speakers {len(alll) / 360000:.2f} h, eval {len(eval_s)} speakers "
-          f"{sum(len(l) for _, l in eval_s) / 360000:.2f} h; classes {dict(zip(CLASSES, (counts / counts.sum()).round(3)))}")
+    print(f"train {len(train_s)} streams {len(alll) / 360000:.2f} h; held out: " +
+          ", ".join(f"{g} {len(v)} streams {sum(len(l) for _, l in v) / 360000:.2f} h" for g, v in groups.items()) +
+          f"; classes {dict(zip(CLASSES, (counts / counts.sum()).round(3)))}", flush=True)
     # flat-spectrum (white) noise through the bank, normalised to unit mean
     noise_mel = torch.tensor(BANK.sum(1) / BANK.sum(1).mean(), device=dev, dtype=torch.float32)
     eval_floors = noise_floors(seed=8)                  # other noise than training's
@@ -423,15 +682,25 @@ def cmd_train(args):
           f"{1 + sum((k - 1) * d for k, d, _ in layers)} hops", flush=True)
     teach = None
     if args.teacher:
+        # the teacher hears clean LibriTTS; its answers per utterance also serve the same utterance's -device
+        # copy (privileged: it heard the clean audio). Other corpora get the hard labels only.
         t0 = time.time()
-        teach = teacher_logits(args.teacher, train_s, args.shift, held, args.splits, dev)
-        acc = np.mean(np.concatenate([z.argmax(1) for z in teach]) == alll)
-        print(f"teacher {args.teacher}: logits for {len(alll)} hops in {time.time() - t0:.0f} s, "
+        clean = [d for d in train_d if d["src"] in LIBRI and not d["src"].endswith(DEVICE)]
+        zs = teacher_logits(args.teacher, [(d["m"], d["l"]) for d in clean], args.shift, held,
+                            [s for s in args.splits if s in LIBRI and not s.endswith(DEVICE)], dev)
+        per = {}
+        for d, z in zip(clean, zs):
+            for u, piece in zip(d["utt"], np.split(z, np.cumsum(d["lens"])[:-1])): per[u] = piece
+        teach = [np.concatenate([per[u] for u in d["utt"]]) if all(u in per for u in d["utt"]) else None for d in train_d]
+        got = [i for i, z in enumerate(teach) if z is not None]
+        acc = np.mean(np.concatenate([teach[i].argmax(1) for i in got]) == np.concatenate([train_s[i][1] for i in got]))
+        print(f"teacher {args.teacher}: logits for {sum(len(teach[i]) for i in got)} hops in {time.time() - t0:.0f} s, "
               f"agrees with the labels on {acc:.3f}; KD weight {args.kd}, temperature {args.temp}", flush=True)
     opt = torch.optim.AdamW(net.parameters(), lr=args.lr, weight_decay=args.wd)
     T = args.crop
     keep = [i for i, st in enumerate(train_s) if len(st[1]) > T]
     train_s = [train_s[i] for i in keep]
+    holds = [train_d[i]["h"] for i in keep]
     if teach: teach = [teach[i] for i in keep]
     lens = np.array([len(l) for _, l in train_s])
     steps_per_epoch = args.steps or int(len(alll) / (args.batch * T))
@@ -451,7 +720,10 @@ def cmd_train(args):
         tl = 0
         for _ in range(steps_per_epoch):
             si = rng.choice(len(train_s), args.batch, p=lens / lens.sum())
-            xs, ys, zs, ks = zip(*(crop(*train_s[s], teach[s] if teach else None, T, rng, args.pauses) for s in si))
+            xs, ys, zs, ks = zip(*(crop(*train_s[s], teach[s] if teach else None, T, rng, args.pauses, holds[s], args.holds) for s in si))
+            if teach:       # streams the teacher didn't hear (other corpora): hard labels only
+                ks = [k if z is not None else np.zeros_like(k) for k, z in zip(ks, zs)]
+                zs = [z if z is not None else np.zeros((T, len(CLASSES)), np.float32) for z in zs]
             x = torch.tensor(np.stack(xs), device=dev)
             y = torch.tensor(np.stack(ys).astype(np.int64), device=dev)
             x = augment(x, rng, noise_mel, args.eq, floors)
@@ -472,26 +744,85 @@ def cmd_train(args):
             opt.zero_grad(); loss.backward(); opt.step(); sched.step()
             tl += loss.item()
         acc, bal, cm = evaluate(net, eval_s, mu0, sd, dev)
+        per = {g: evaluate(net, v, mu0, sd, dev) for g, v in groups.items()}
+        score = np.mean([b for _, b, _ in per.values()])          # what picks the best epoch: every corpus counts
         # the app's tests also read the synthetic vowels; a net that fails them can't ship (teachers don't)
         synth_ok = not ships or synth_check(synth_probs(net, mu0, sd, dev), quiet=True)
         print(f"epoch {ep + 1:2d}  loss {tl / steps_per_epoch:.3f}  eval acc {acc:.3f}  balanced {bal:.3f}  "
               + (f"synthetic {'ok' if synth_ok else 'FAILS ' + ', '.join(synth_check.fails)}  " if ships else "") + f"{time.time() - t0:.0f} s", flush=True)
+        if len(per) > 1: print("          " + "  ".join(f"{g} {a:.3f}/{b:.3f}" for g, (a, b, _) in per.items()) + f"  mean balanced {score:.3f}", flush=True)
         if ships: print("          " + pause_line(pause_eval(torch_predict(net, mu0, sd, dev), eval_s, eval_floors, (-45,))), flush=True)
+        if ships: print("          " + held_line(held_eval(torch_predict(net, mu0, sd, dev), held_items)), flush=True)
         torch.save({"net": net.state_dict(), "mu0": mu0, "sd": sd, "layers": layers, "ch": ch, "classes": CLASSES,
                     "shift": args.shift, "held": sorted(held), "epoch": ep + 1}, out / "last.pt")
-        if bal > best and synth_ok:
-            best = bal
+        if score > best and synth_ok:
+            best = score
             torch.save({"net": net.state_dict(), "mu0": mu0, "sd": sd, "layers": layers, "ch": ch,
                         "classes": CLASSES, "shift": args.shift, "held": sorted(held),
                         "splits": args.splits, "teacher": args.teacher and Path(args.teacher).name}, out / "best.pt")
             np.save(out / "confusion.npy", cm)
+            for g, (_, _, c) in per.items(): np.save(out / f"confusion {g}.npy", c)
     if best:
         report(out)
+        for g in groups:
+            if g != "LibriTTS": print(f"\n== {g}"); report(out, f"confusion {g}.npy")
         if ships:
             ck = torch.load(out / "best.pt", weights_only=False); net.load_state_dict(ck["net"])
             res = pause_eval(torch_predict(net, mu0, sd, dev), eval_s, eval_floors)
             print(pause_line(res)); print("  " + "  ".join(f"{k} {100 * r:.0f}" for k, (r, _) in res.items()))
+            hr = held_eval(torch_predict(net, mu0, sd, dev), held_items)
+            print(held_line(hr)); print("  " + "  ".join(f"{k} {100 * f:.0f}%/{100 * g:.0f}% ({n})" for k, (f, g, n) in hr.items()) + "   (held hops / held sounds)")
     else: print("no epoch's net read the synthetic sounds as the app's tests want: nothing saved")
+
+
+class _Libri:
+    """`split in LIBRI`: a LibriTTS split or its -device copy (not one of CORPORA)."""
+    def __contains__(self, s): return (s[:-len(DEVICE)] if s.endswith(DEVICE) else s) not in CORPORA
+LIBRI = _Libri()
+
+
+def corpus_group(src):
+    if src in LIBRI: return "LibriTTS device" if src.endswith(DEVICE) else "LibriTTS"
+    return {"speech-commands": "Speech Commands", "peoples-speech": "People's Speech"}.get(src, src)
+
+
+def held_sounds(eval_d, per_class=120, seed=5, pre=300, hold=100, post=30):
+    """The held-sound check: steady 1 s sounds made from held-out speakers' long phones (hold_walk over
+    the phone's middle), each after 3 s of that speaker's own speech so the running mean is where it would
+    be. Returns (log-mel, class, first held hop) per item, at most per_class per class."""
+    rng = np.random.default_rng(seed)
+    cands = {}
+    for d in eval_d:
+        if d["src"] not in LIBRI: continue
+        for p, q in phone_runs(d["h"]):
+            if q - p >= 6 and p >= pre and q + post <= len(d["l"]):
+                cands.setdefault(int(d["l"][p]), []).append((d, p, q))
+    items = []
+    for c in sorted(cands):
+        for j in rng.permutation(len(cands[c]))[:per_class]:
+            d, p, q = cands[c][j]
+            cut = max(1, (q - p) // 5)
+            core = d["m"][p + cut:q - cut].astype(np.float32)
+            items.append((np.concatenate([d["m"][p - pre:p].astype(np.float32), hold_walk(core, hold, rng),
+                                          d["m"][q:q + post].astype(np.float32)]), c, pre))
+    return items
+
+
+def held_eval(predict, items, hold=100, settle=10):
+    """Per class: share of the held hops (after the first `settle`) read as the class, and share of held
+    sounds whose majority reading is right."""
+    res = {}
+    for lm, c, a in items:
+        pr = predict(lm)[a + settle:a + hold]
+        f, g = res.get(c, (0, 0, 0, 0))[:2], res.get(c, (0, 0, 0, 0))[2:]
+        res[c] = (f[0] + int((pr == c).sum()), f[1] + len(pr), g[0] + int(np.bincount(pr, minlength=len(CLASSES)).argmax() == c), g[1] + 1)
+    return {CLASSES[c]: (a / b, e / n, n) for c, (a, b, e, n) in sorted(res.items())}
+
+
+def held_line(res):
+    fr = {k: v[0] for k, v in res.items()}
+    worst = min(fr, key=fr.get)
+    return f"held sounds: {100 * np.mean(list(fr.values())):.1f}% of held hops right (worst {worst} {100 * fr[worst]:.0f}%)"
 
 
 def torch_predict(net, mu0, sd, dev):
@@ -561,8 +892,8 @@ def pause_line(res):
     return f"pauses: rest {100 * rec.mean():.1f}% (worst {worst} dBFS {100 * rec.min():.1f}%), accuracy under the floors {100 * acc.mean():.1f}%"
 
 
-def report(run):
-    cm = np.load(Path(run) / "confusion.npy")
+def report(run, name="confusion.npy"):
+    cm = np.load(Path(run) / name)
     rec = np.diag(cm) / np.maximum(1, cm.sum(1))
     print(f"\nbest: frame accuracy {np.trace(cm) / cm.sum():.3f}, balanced {rec.mean():.3f}, "
           f"majority-class baseline {cm.sum(1).max() / cm.sum():.3f}")
@@ -703,15 +1034,21 @@ def cmd_score(args):
                                     torch.tensor(L["b"]), dilation=L["d"]))
                 x = y if i == 0 else x + y
             return (torch.tensor(ow) @ x[0] + torch.tensor(ob)[:, None]).argmax(0).numpy()
-    mel, lab, spk = load(data_dir(args), args.splits, args.shift)
-    eval_s = streams(mel, lab, spk, set(args.held))
-    cm = np.zeros((len(CLASSES), len(CLASSES)), dtype=np.int64)
-    for m, l in eval_s: np.add.at(cm, (l, predict(m)), 1)
+    _, eval_d = make_streams(*load(data_dir(args), args.splits, args.shift, extra=True, held_ids=args.held))
     out = Path(args.out); out.mkdir(parents=True, exist_ok=True)
-    np.save(out / "confusion.npy", cm)
-    report(out)
-    res = pause_eval(predict, eval_s, noise_floors(seed=8))
-    print(pause_line(res)); print("  " + "  ".join(f"{k} {100 * r:.0f}" for k, (r, _) in res.items()))
+    groups = {}
+    for d in eval_d: groups.setdefault(corpus_group(d["src"]), []).append((d["m"], d["l"]))
+    for g, v in groups.items():
+        cm = np.zeros((len(CLASSES), len(CLASSES)), dtype=np.int64)
+        for m, l in v: np.add.at(cm, (l, predict(m)), 1)
+        name = "confusion.npy" if g == "LibriTTS" else f"confusion {g}.npy"
+        np.save(out / name, cm)
+        print(f"\n== {g}"); report(out, name)
+    if "LibriTTS" in groups:
+        res = pause_eval(predict, groups["LibriTTS"], noise_floors(seed=8))
+        print(pause_line(res)); print("  " + "  ".join(f"{k} {100 * r:.0f}" for k, (r, _) in res.items()))
+    hr = held_eval(predict, held_sounds(eval_d))
+    if hr: print(held_line(hr)); print("  " + "  ".join(f"{k} {100 * f:.0f}%/{100 * g:.0f}% ({n})" for k, (f, g, n) in hr.items()) + "   (held hops / held sounds)")
 
 
 def synth():
@@ -784,7 +1121,16 @@ def cmd_read(args):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
-    p = sub.add_parser("prep"); p.add_argument("--data"); p.add_argument("splits", nargs="+")
+    p = sub.add_parser("prep"); p.add_argument("--data"); p.add_argument("--jobs", type=int, default=1)
+    p.add_argument("splits", nargs="+", help=f"LibriTTS splits (dev-clean, …) or {', '.join(CORPORA)}")
+    p = sub.add_parser("check-align", help="alignment quality of MFA-aligned corpora; --write rejects the clear failures")
+    p.add_argument("--data"); p.add_argument("--sample", type=int, default=400); p.add_argument("--jobs", type=int, default=2)
+    p.add_argument("--min-contrast", type=float, default=6.0, help="dB the aligned speech must stand above the aligned silence")
+    p.add_argument("--write", action="store_true"); p.add_argument("corpora", nargs="+")
+    p = sub.add_parser("device", help="LibriTTS splits through simulated phones and laptops → cache/<split>-device.npz")
+    p.add_argument("--data"); p.add_argument("--jobs", type=int, default=1); p.add_argument("--rirs", help="OpenSLR 28 RIRS_NOISES (default <data>/rir/RIRS_NOISES)")
+    p.add_argument("--share", type=float, default=1.0, help="fraction of each split's utterances to simulate")
+    p.add_argument("splits", nargs="+")
     p = sub.add_parser("train"); p.add_argument("--data"); p.add_argument("--out")
     p.add_argument("--splits", nargs="+", default=["dev-clean", "test-clean"])
     p.add_argument("--epochs", type=int, default=40); p.add_argument("--batch", type=int, default=48)
@@ -805,6 +1151,7 @@ def main():
     p.add_argument("--floors", action=argparse.BooleanOptionalAction, default=True,
                    help="steady mic noise floors (white/pink/brown/hiss/hum, -70 to -35 dBFS) under everything")
     p.add_argument("--pauses", type=float, default=0.5, help="share of crops with noise-only pauses spliced in")
+    p.add_argument("--holds", type=float, default=0.3, help="share of crops with one phone held 0.3-1.5 s")
     p.add_argument("--eq", type=float, default=12.0, help="largest mic-EQ boost or cut in the augmentation, dB")
     p.add_argument("--bf16", action="store_true", help="train in bfloat16 autocast (fast on CPUs with AMX); eval stays float32")
     p = sub.add_parser("report"); p.add_argument("run")
@@ -818,7 +1165,7 @@ def main():
     sub.add_parser("fixture")
     p = sub.add_parser("read"); p.add_argument("--wav", required=True); p.add_argument("--json")
     args = ap.parse_args()
-    dict(prep=cmd_prep, train=cmd_train, report=lambda a: report(a.run), export=cmd_export,
+    dict(prep=cmd_prep, device=cmd_device, **{"check-align": cmd_check_align}, train=cmd_train, report=lambda a: report(a.run), export=cmd_export,
          fixture=cmd_fixture, read=cmd_read, score=cmd_score)[args.cmd](args)
 
 

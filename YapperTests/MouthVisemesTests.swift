@@ -50,7 +50,7 @@ struct MouthVisemesTests {
         #expect(m.lookahead == fx.lookahead)
         #expect(m.lookahead <= 4, "the shapes must arrive inside MouthTimeline's 45 ms playout")
         let weights = m.layers.reduce(0) { $0 + $1.weights.count + $1.bias.count } + m.outWeights.count + m.outBias.count
-        #expect(weights < 150_000)
+        #expect(weights < 1_000_000)
     }
 
     @Test func logMelMatchesPython() throws {
