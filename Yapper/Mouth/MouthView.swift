@@ -220,9 +220,9 @@ struct MouthDirector {
             // with the viseme net running, its shapes set the lips; the reader's jaw still sets how open
             let lips = raw.hasShape ? shaper.step(raw.shape, dt: dt) : nil
             if lips == nil { shaper.reset() }
-            let acted = performance.step(J: d.J, W: lips?.W ?? d.W, T: d.T, dt: dt)
+            let acted = performance.step(J: d.J, W: lips.map(MouthShaper.width) ?? d.W, T: d.T, dt: dt)
             pose = acted.pose; head = acted.head; squash = acted.squash
-            if let lips { MouthShaper.apply(close: lips.close, fv: lips.fv, part: lips.part, to: &pose) }
+            if let lips { MouthShaper.apply(lips, to: &pose) }
             // a breath before the next words: the lips part and the head lifts as the first word nears
             var lead: Double?
             if quiet > Self.slowAfter {

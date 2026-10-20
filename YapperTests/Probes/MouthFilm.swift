@@ -11,8 +11,9 @@ import UniformTypeIdentifiers
 /// YAPPER_MOUTH_FILM=<output folder> (TEST_RUNNER_… through xcodebuild) writes PNGs to
 /// <folder>/frames and, per frame, the jaw's opening and the shape the net hears to
 /// <folder>/jaw.csv; YAPPER_MOUTH_FILM_AUDIO picks the speech (default site/audio/river-1.mp3),
-/// YAPPER_MOUTH_FILM_FPS the frame rate (default 60) and YAPPER_MOUTH_SHAPES=0 leaves out the
-/// viseme net. Join the frames with the audio using ffmpeg.
+/// YAPPER_MOUTH_FILM_FPS the frame rate (default 60), YAPPER_MOUTH_FILM_TRUTH a file of the shapes
+/// really said (one MouthShape index per 10 ms hop) to use in place of the net's, and
+/// YAPPER_MOUTH_SHAPES=0 leaves out the viseme net. Join the frames with the audio using ffmpeg.
 struct MouthFilm {
     nonisolated static let env = ProcessInfo.processInfo.environment
     nonisolated static let outDir = env["YAPPER_MOUTH_FILM"]
@@ -31,21 +32,32 @@ struct MouthFilm {
         let model = MouthModel(asset: asset, springs: 0.5)
         let reader = MouthReader(sampleRate: MouthLive.rate)
         // the viseme net picks the lips' shapes, as in the app; YAPPER_MOUTH_SHAPES=0 films the reader alone
-        let visemes = Self.env["YAPPER_MOUTH_SHAPES"] == "0" ? nil : MouthVisemes(model: try MouthVisemesTests.model())
+        // YAPPER_MOUTH_FILM_TRUTH=<file>: the shapes really said, one MouthShape index per 10 ms hop, in
+        // place of the net's, to judge the poses apart from the hearing
+        let truth = try Self.env["YAPPER_MOUTH_FILM_TRUTH"].map { try String(contentsOfFile: $0, encoding: .utf8).split(separator: "\n").compactMap { Int($0) } }
+        let visemes = Self.env["YAPPER_MOUTH_SHAPES"] == "0" || truth != nil ? nil : MouthVisemes(model: try MouthVisemesTests.model())
+        var hops = 0
         var timeline = MouthTimeline()
         var director = MouthDirector()
 
         // The mic hands over 10 ms at a time and each is read 2 ms later, as in the app.
         let hop = Int(MouthLive.rate * 0.01)
         var fed = 0
-        var jawTrace = "t,J,shape,p\n"
+        var jawTrace = "t,J,shape,p,wide,pucker,funnel,part,close,fv\n"
         let talk = Double(audio.count) / MouthLive.rate + 0.3
         let total = talk + 0.9 + 0.7
         for f in 0..<Int(total * fps) {
             let now = Double(f) / fps
             while fed + hop <= audio.count, Double(fed + hop) / MouthLive.rate + 0.002 <= now {
                 let chunk = Array(audio[fed..<(fed + hop)])
-                let made = MouthDrive.zip(reader.feed(chunk), visemes?.feed(chunk))
+                var made = MouthDrive.zip(reader.feed(chunk), visemes?.feed(chunk))
+                if let truth {
+                    for k in made.indices {
+                        var s = MouthShapes(); s[truth.indices.contains(hops + k) ? truth[hops + k] : 0] = 1
+                        made[k].shape = s
+                    }
+                }
+                hops += made.count
                 fed += hop
                 timeline.add(made, at: Double(fed) / MouthLive.rate + 0.002, shapeLag: visemes?.lookahead ?? 0)
             }
@@ -56,7 +68,8 @@ struct MouthFilm {
             model.pose(frame.pose, dt: frame.dt)
             let heard = timeline.drive(at: now).shape            // what the net hears at this frame
             let top = MouthShape.allCases.max { heard[$0.rawValue] < heard[$1.rawValue] }!
-            jawTrace += "\(now),\(frame.pose.J),\(heard.sum() > 0.5 ? "\(top)" : "-"),\(heard[top.rawValue])\n"
+            let q = frame.pose
+            jawTrace += "\(now),\(q.J),\(heard.sum() > 0.5 ? "\(top)" : "-"),\(heard[top.rawValue]),\(q.wide),\(q.pucker),\(q.funnel),\(q.part),\(q.close),\(q.fv)\n"
             let image = try #require(renderer.image(model, framing: framing, width: 480, height: 300))
             let url = out.appendingPathComponent(String(format: "%05d.png", f))
             let dst = try #require(CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil))

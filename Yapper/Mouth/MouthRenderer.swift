@@ -24,12 +24,15 @@ final class MouthModel {
     let rig: MouthRig
     var followThrough: MouthFollowThrough
     private(set) var matrices: [simd_float4x4]
+    /// The tongue rides the jaw, plus its own lift.
+    private(set) var tongue = matrix_identity_float4x4
 
     init(asset: MouthAsset, springs: Float = 0.5) {
         self.asset = asset
         rig = MouthRig(asset)
         followThrough = MouthFollowThrough(strength: springs)
         matrices = rig.matrices(rig.targets(MouthPose()))
+        tongue = matrices[rig.jawBone]
     }
 
     /// Moves the mouth to `pose`, `dt` seconds after the last one (0: snap there, no follow-through).
@@ -42,6 +45,7 @@ final class MouthModel {
             followThrough.reset()
             matrices = rig.matrices(t)
         }
+        tongue = rig.tongueMatrix(t, jaw: matrices[rig.jawBone])
     }
 }
 
@@ -253,7 +257,7 @@ final class MouthRenderer {
 
         func draw(_ i: Int, outline: Bool) {
             let mesh = asset.meshes[i], g = meshes[i]
-            let bone = mesh.binding == .jaw ? model.matrices[model.rig.jawBone] : matrix_identity_float4x4
+            let bone = mesh.binding == .jaw ? (mesh.name == "Tongue" ? model.tongue : model.matrices[model.rig.jawBone]) : matrix_identity_float4x4
             var d = Draw(model: head * bone, viewProj: vp, light: light,
                          misc: SIMD4(outline ? (mesh.outline?.thickness ?? 0) : 0, asset.view.diffuse, asset.view.ambient, 0))
             let pos = g.skin?.ring[slot].positions ?? g.positions
