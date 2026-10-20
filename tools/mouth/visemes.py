@@ -413,14 +413,18 @@ def cmd_train(args):
             opt.zero_grad(); loss.backward(); opt.step(); sched.step()
             tl += loss.item()
         acc, bal, cm = evaluate(net, eval_s, mu0, sd, dev)
-        print(f"epoch {ep + 1:2d}  loss {tl / steps_per_epoch:.3f}  eval acc {acc:.3f}  balanced {bal:.3f}  {time.time() - t0:.0f} s", flush=True)
-        if bal > best:
+        # the app's tests also read the synthetic vowels; a net that fails them can't ship
+        synth_ok = synth_check(synth_probs(net, mu0, sd, dev), quiet=True)
+        print(f"epoch {ep + 1:2d}  loss {tl / steps_per_epoch:.3f}  eval acc {acc:.3f}  balanced {bal:.3f}  "
+              f"synthetic {'ok' if synth_ok else 'FAILS'}  {time.time() - t0:.0f} s", flush=True)
+        if bal > best and synth_ok:
             best = bal
             torch.save({"net": net.state_dict(), "mu0": mu0, "sd": sd, "layers": layers, "ch": ch,
                         "classes": CLASSES, "shift": args.shift, "held": sorted(held),
                         "splits": args.splits, "teacher": args.teacher and Path(args.teacher).name}, out / "best.pt")
             np.save(out / "confusion.npy", cm)
-    report(out)
+    if best: report(out)
+    else: print("no epoch's net read the synthetic sounds as the app's tests want: nothing saved")
 
 
 def evaluate(net, eval_s, mu0, sd, dev, clean=True):
@@ -595,7 +599,15 @@ def synth():
     return np.asarray(s(), dtype=np.float64)
 
 
-def synth_check(probs):
+def synth_probs(net, mu0, sd, dev):
+    """The net's shapes for the synthetic test signal, batch torch (what Stream gives, hop for hop)."""
+    import torch
+    net.eval()
+    x = torch.tensor(normalise(log_mel(synth()), mu0, sd), dtype=torch.float32, device=dev).T[None]
+    with torch.no_grad(): return torch.softmax(net(x)[0], 0).T.cpu().numpy()
+
+
+def synth_check(probs, quiet=False):
     """MouthVisemesTests.soundsComeOutAsTheirShapes on the Python side: each synthetic sound's mean shape."""
     sys.path.insert(0, str(Path(__file__).parent))
     from reader_live import SYNTH
@@ -609,7 +621,7 @@ def synth_check(probs):
         want = {"a": (p[c["AH"]], 0.5), "i": (p[c["EE"]], 0.5), "u": (p[c["OO"]] + p[c["OH"]], 0.5),
                 "s": (p[c["teeth"]] + p[c["SH"]], 0.4)}.get(name, (p[c["rest"]], 0.5))
         ok &= bool(want[0] > want[1])
-        print(f"  {name:>3}: {want[0]:.2f} (needs > {want[1]})" + ("" if want[0] > want[1] else "  FAILS"))
+        if not quiet: print(f"  {name:>3}: {want[0]:.2f} (needs > {want[1]})" + ("" if want[0] > want[1] else "  FAILS"))
     return ok
 
 
