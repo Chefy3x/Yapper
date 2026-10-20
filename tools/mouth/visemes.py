@@ -268,6 +268,9 @@ def ema_norm_torch(lm, mu0, sd):
     return out
 
 
+FLOOR_SNR = 20.0       # dB
+
+
 def noise_floors(seconds=20, seed=7):
     """Mel power per hop of steady mic noise at 0 dBFS RMS, one (hops, N_MELS) array per colour: white,
     pink, brown, a high hiss and 50/60 Hz hum. Made as waveforms, so each band's hop-to-hop wobble is
@@ -285,15 +288,16 @@ def noise_floors(seconds=20, seed=7):
     return {k: (np.exp(log_mel(v / np.sqrt(np.mean(v ** 2)))) - LOG_EPS).astype(np.float32) for k, v in x.items()}
 
 
-def floor_under(n, rng, floors, kind=None, db=None):
-    """n hops of one floor (a random colour, sometimes two, at -70 to -35 dBFS), mel power."""
+def floor_under(n, rng, floors, kind=None, db=None, cap=np.inf):
+    """n hops of one floor (a random colour, sometimes two, at -70 to -35 dBFS), mel power, turned down
+    if need be so its mean power (summed over the bands) stays under `cap`."""
     kinds = sorted(floors)
     out = np.zeros((n, N_MELS), np.float32)
     for k in ([kind] if kind else [kinds[i] for i in rng.choice(len(kinds), 1 + (rng.random() < 0.3), replace=False)]):
         F = floors[k]
         idx = (rng.integers(0, len(F)) + np.arange(n)) % len(F)
         out += F[idx] * 10 ** ((db if db is not None else rng.uniform(-70, -35)) / 10)
-    return out
+    return out * min(1.0, cap / out.sum(1).mean())
 
 
 def augment(lm, rng, noise_mel, eq_db=12.0, floors=None):
@@ -324,7 +328,12 @@ def augment(lm, rng, noise_mel, eq_db=12.0, floors=None):
     level = torch.exp(lm).mean((1, 2), keepdim=True) * torch.tensor(10 ** (-snr / 10), device=dev, dtype=torch.float32)
     if floors is not None:
         level = level * torch.tensor(rng.random((B, 1, 1)) < 0.3, device=dev, dtype=torch.float32)
-        p = p + torch.tensor(np.stack([floor_under(T, rng, floors) for _ in range(B)]), device=dev)
+        # at least FLOOR_SNR under the speech's loud half: a floor that drowns the voice isn't a pause's floor,
+        # and a noise burst a vowel's height from it is a fricative
+        e = p.sum(-1)
+        loud = (e * (e >= e.median(1, keepdim=True).values)).sum(1) / (e >= e.median(1, keepdim=True).values).sum(1)
+        cap = loud.cpu().numpy() * 10 ** (-FLOOR_SNR / 10)
+        p = p + torch.tensor(np.stack([floor_under(T, rng, floors, cap=c) for c in cap]), device=dev)
     p = p + level * torch.exp(gain) * noise_mel[None, None] * torch.tensor(rng.uniform(0.5, 1.5, (B, T, 1)), device=dev, dtype=torch.float32)
     return torch.log(p + LOG_EPS)
 
@@ -466,8 +475,10 @@ def cmd_train(args):
         # the app's tests also read the synthetic vowels; a net that fails them can't ship (teachers don't)
         synth_ok = not ships or synth_check(synth_probs(net, mu0, sd, dev), quiet=True)
         print(f"epoch {ep + 1:2d}  loss {tl / steps_per_epoch:.3f}  eval acc {acc:.3f}  balanced {bal:.3f}  "
-              + (f"synthetic {'ok' if synth_ok else 'FAILS'}  " if ships else "") + f"{time.time() - t0:.0f} s", flush=True)
+              + (f"synthetic {'ok' if synth_ok else 'FAILS ' + ', '.join(synth_check.fails)}  " if ships else "") + f"{time.time() - t0:.0f} s", flush=True)
         if ships: print("          " + pause_line(pause_eval(torch_predict(net, mu0, sd, dev), eval_s, eval_floors, (-45,))), flush=True)
+        torch.save({"net": net.state_dict(), "mu0": mu0, "sd": sd, "layers": layers, "ch": ch, "classes": CLASSES,
+                    "shift": args.shift, "held": sorted(held), "epoch": ep + 1}, out / "last.pt")
         if bal > best and synth_ok:
             best = bal
             torch.save({"net": net.state_dict(), "mu0": mu0, "sd": sd, "layers": layers, "ch": ch,
@@ -724,7 +735,7 @@ def synth_check(probs, quiet=False):
     from reader_live import SYNTH
     c = {k: CLASSES.index(k) for k in ("rest", "OO", "OH", "EE", "AH", "teeth", "SH")}
     t = (np.arange(len(probs)) * HOP + WIN / 2) / SR
-    ok, start = True, 0.0
+    ok, start, fails = True, 0.0, []
     for name, dur in SYNTH:
         lo, hi = start + min(0.06, 0.3 * dur), start + dur - 0.04
         start += dur
@@ -732,7 +743,9 @@ def synth_check(probs, quiet=False):
         want = {"a": (p[c["AH"]], 0.5), "i": (p[c["EE"]], 0.5), "u": (p[c["OO"]] + p[c["OH"]], 0.5),
                 "s": (p[c["teeth"]] + p[c["SH"]], 0.4)}.get(name, (p[c["rest"]], 0.5))
         ok &= bool(want[0] > want[1])
+        if want[0] <= want[1]: fails.append(f"{name} {want[0]:.2f}")
         if not quiet: print(f"  {name:>3}: {want[0]:.2f} (needs > {want[1]})" + ("" if want[0] > want[1] else "  FAILS"))
+    synth_check.fails = fails
     return ok
 
 
