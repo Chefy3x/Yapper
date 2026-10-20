@@ -19,3 +19,5 @@ epoch  4  loss 0.843  eval acc 0.822  balanced 0.815  synthetic FAILS u 0.19, u 
           held sounds: 47.6% of held hops right (worst OO 18%)
 epoch  5  loss 0.806  eval acc 0.833  balanced 0.814  synthetic FAILS u 0.27, u 0.08  4633 s
           LibriTTS 0.833/0.814  LibriTTS device 0.739/0.693  Speech Commands 0.808/0.699  People's Speech 0.723/0.677  mean balanced 0.721
+          pauses: rest 98.0% (worst hiss -45 dBFS 97.5%), accuracy under the floors 85.2%
+          held sounds: 49.8% of held hops right (worst OO 13%)

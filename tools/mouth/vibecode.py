@@ -606,6 +606,9 @@ def crop(m, l, z, T, rng, pause_p, h=None, hold_p=0.0, focus=(), focus_p=0.0):
         pick = [r for r in runs if y[r[0]] in focus]
         if pick and rng.random() < focus_p: runs = pick
         if runs:
+            # a class first, evenly, then one of its phones: being held must say nothing about which shape it is
+            cs = sorted({int(y[r[0]]) for r in runs}); c = cs[rng.integers(len(cs))]
+            runs = [r for r in runs if y[r[0]] == c]
             p, q = runs[rng.integers(len(runs))]
             cut = max(1, (q - p) // 5)
             core = x[p + cut - 1:q - cut + 1] if q - p > 4 else x[p:q]
@@ -1164,7 +1167,9 @@ def main():
     p.add_argument("--pauses", type=float, default=0.5, help="share of crops with noise-only pauses spliced in")
     p.add_argument("--holds", type=float, default=0.3, help="share of crops with one phone held 0.3-1.5 s")
     p.add_argument("--hold-classes", default="MBP,FV,L_TH", help="classes the held phone is drawn from first (m, f/v, th/l)")
-    p.add_argument("--hold-focus", type=float, default=0.7, help="how often the held phone comes from --hold-classes when the crop has one")
+    p.add_argument("--hold-focus", type=float, default=0.0,
+                   help="how often the held phone comes from --hold-classes when the crop has one (otherwise: any class, evenly). "
+                        "0.7 taught the net that a held sound is one of them")
     p.add_argument("--class-weight", default="", help='extra loss weight per class, e.g. "MBP:2,FV:2,L_TH:1.5"')
     p.add_argument("--eq", type=float, default=12.0, help="largest mic-EQ boost or cut in the augmentation, dB")
     p.add_argument("--bf16", action="store_true", help="train in bfloat16 autocast (fast on CPUs with AMX); eval stays float32")

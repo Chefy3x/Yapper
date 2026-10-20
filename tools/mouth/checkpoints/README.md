@@ -23,4 +23,5 @@ also has `epoch`. Optimizer and scheduler state were not saved, so a run can be 
 | `quick-cap` | 4-epoch test of floors capped 20 dB under the speech |
 | `s0`, `lead30` | floors capped, pauses: the runs PR 3 shipped from (`last.pt`, epoch 20) |
 | `s0-ship`, `lead30-ship` | exactly what PR 3 shipped (`visemes.bin` / `visemes-lead30.bin` there) |
-| `rm` | PR 4's real-mic student: 8 × 192, 819k weights, 40 ms look-ahead, on LibriTTS + device copies + Speech Commands + People's Speech, held sounds, MBP/FV/L_TH weighted. Pushed while still training |
+| `rm-focus70` | PR 4's first real-mic student: 8 × 192, 819k weights, 40 ms look-ahead, on LibriTTS + device copies + Speech Commands + People's Speech, MBP/FV/L_TH weighted, held sounds drawn 70% from m, f/v, th/l. Stopped after epoch 5: it learned that any held sound is m, f/v or th (held oo read as th 48%, held sh as f 41%) |
+| `rm` | the same with held sounds drawn evenly from every shape (`--hold-focus 0`); the run PR 4 ships from, pushed when it ends |
