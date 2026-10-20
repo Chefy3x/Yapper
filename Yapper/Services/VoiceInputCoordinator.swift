@@ -515,6 +515,18 @@ final class VoiceInputCoordinator: ObservableObject {
         paste(text, announce: "Pasted your last transcript again")
     }
 
+    /// Types `text` into whatever is focused and says whether the app took it: the note under the
+    /// pill reports either way, so a second try is never a guess.
+    func pasteAgain(_ text: String) async -> Bool {
+        guard state == .idle, !priming, !text.isEmpty else { return false }
+        do {
+            try await delivery.deliver(text)
+            return true
+        } catch {
+            return false
+        }
+    }
+
     /// Types `text` into whatever is focused, the way a dictation would. Settings → Dictations
     /// uses it to paste an older one again.
     func paste(_ text: String, announce: String) {

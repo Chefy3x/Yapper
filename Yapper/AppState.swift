@@ -52,6 +52,8 @@ final class AppState: ObservableObject {
     let media = MediaController()
     let editWatcher = EditWatcher()
     let formatter = SmartFormatter()
+    /// The clickable note under the pill: a learned word, a missed paste.
+    let toast = VoiceToastPresenter()
     /// Every dictation, for Settings → Dictations. Not the read-aloud `history`.
     let dictations = DictationHistoryStore()
     let snippets = SnippetStore()
@@ -217,7 +219,10 @@ final class AppState: ObservableObject {
             self.vocabulary.applyLearned(learned)
             let names = learned.map { "“\($0.typed)”" }.joined(separator: ", ")
             self.lastEvent = "Learned \(names) from your edit"
+            if self.settings.dictationHUD { self.toast.learned(learned.map(\.typed)) }
         }
+        toast.onUndoLearned = { [weak self] in self?.vocabulary.undoLearned() }
+        toast.onPaste = { [weak self] text in await self?.voiceInput.pasteAgain(text) ?? false }
         voiceInput.$state.sink { [weak self] in self?.voiceInputState = $0 }.store(in: &voiceInputCancellables)
 
         // Other apps' media pauses while the user talks or Yapper reads, and comes back once
@@ -232,6 +237,7 @@ final class AppState: ObservableObject {
                 }
                 // A new dictation ends the watch on the last one: learn from what's there now.
                 if state.isListening {
+                    self.toast.close()
                     self.editWatcher.finish()
                     if self.settings.smartFormattingEnabled {
                         self.formatter.warmUp(bundleID: NSWorkspace.shared.frontmostApplication?.bundleIdentifier,
@@ -313,6 +319,7 @@ final class AppState: ObservableObject {
     /// adds to the lag.
     private func turnFinished(_ report: TurnReport) {
         recordingHUD?.finish(report.outcome)
+        if case .copied = report.outcome, settings.dictationHUD { toast.missedPaste(report.text) }
         if settings.dictationSounds {
             switch report.outcome {
             case .pasted: break
@@ -681,7 +688,13 @@ final class AppState: ObservableObject {
         }
         hotkeys.onRepasteLast = { [weak self] in
             Log.hotkey.info("Paste last transcript")
-            self?.voiceInput.repasteLast()
+            guard let self else { return }
+            guard self.voiceInput.state == .idle, !self.voiceInput.priming else { return }
+            guard let text = self.vocabulary.lastTranscript?.delivered, !text.isEmpty else {
+                self.lastEvent = "Nothing to paste yet"
+                return
+            }
+            self.toast.paste(text)
         }
         hotkeys.onPushToTalkEnded = { [weak self] in self?.voiceInput.endPushToTalk() }
         hotkeys.onPushToTalkCancelled = { [weak self] in self?.voiceInput.cancelPushToTalk() }

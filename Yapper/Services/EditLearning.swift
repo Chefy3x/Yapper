@@ -171,22 +171,41 @@ final class EditWatcher {
     /// Words learned from a finished watch, already filtered by `EditLearner`.
     var onLearned: (([LearnedWord]) -> Void)?
 
+    /// How long the field may take to show the pasted words. Electron composers (Claude, Slack)
+    /// update their accessible text a beat after the paste lands, so the read right after it
+    /// often doesn't have them yet; requiring them meant no edit there was ever learned.
+    static let baselineWait: TimeInterval = 3
+
     private var task: Task<Void, Never>?
-    private var current: (delivered: String, baseline: String, latest: String)?
+    /// `baseline` is nil until the field is seen holding the pasted words.
+    private var current: (delivered: String, baseline: String?, latest: String)?
 
     func watch(_ receipt: DeliveryReceipt, delivered: String) {
         finish()
-        guard let field = receipt.field, !field.isSecure, let baseline = receipt.valueAfter,
-              baseline.contains(delivered) else { return }
-        current = (delivered, baseline, baseline)
+        guard let field = receipt.field, !field.isSecure else { return }
+        let after = receipt.valueAfter.flatMap { $0.contains(delivered) ? $0 : nil }
+        current = (delivered, after, after ?? "")
         task = Task { [weak self] in
             let started = Date()
+            var poll = after == nil ? 0.25 : Self.pollEvery
             while Date().timeIntervalSince(started) < Self.watchFor {
-                try? await Task.sleep(for: .seconds(Self.pollEvery))
+                try? await Task.sleep(for: .seconds(poll))
                 if Task.isCancelled { return }
                 let snapshot = await Self.read(field)
                 guard let self, !Task.isCancelled else { return }
                 guard let value = snapshot else { break }   // focus moved to another app, or the field went away
+                if self.current?.baseline == nil {
+                    if value.contains(delivered) {
+                        self.current?.baseline = value
+                        self.current?.latest = value
+                        poll = Self.pollEvery
+                    } else if Date().timeIntervalSince(started) > Self.baselineWait {
+                        Log.voice.notice("Edit watch: the field never showed the pasted words")
+                        self.current = nil
+                        break
+                    }
+                    continue
+                }
                 if value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { break }   // sent
                 self.current?.latest = value
             }
@@ -200,10 +219,13 @@ final class EditWatcher {
         task = nil
         guard let watched = current else { return }
         current = nil
-        let learned = EditLearner.learn(delivered: watched.delivered, baseline: watched.baseline,
+        guard let baseline = watched.baseline else { return }
+        let learned = EditLearner.learn(delivered: watched.delivered, baseline: baseline,
                                         edited: watched.latest, isDictionaryWord: { WordKnowledge.isDictionaryWord($0) })
+        if watched.latest != baseline {
+            Log.voice.notice("Edit watch: the dictation was edited; learned \(learned.count, privacy: .public) word(s)")
+        }
         guard !learned.isEmpty else { return }
-        Log.voice.info("Learned \(learned.count, privacy: .public) word(s) from an edit")
         onLearned?(learned)
     }
 
