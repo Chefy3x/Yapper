@@ -268,14 +268,19 @@ def ema_norm_torch(lm, mu0, sd):
     return out
 
 
-def augment(lm, rng, noise_mel):
-    """Mic conditions in the mel-power domain: gain, a spectral tilt, a bit of room, a noise floor."""
+def augment(lm, rng, noise_mel, eq_db=6.0):
+    """Mic conditions in the mel-power domain: gain, a spectral tilt, a mic's EQ, a bit of room, a noise
+    floor. The tilt and EQ also start the running mean off-colour, as a new mic does."""
     import torch
     B, T, M = lm.shape
     dev = lm.device
     gain = torch.tensor(rng.uniform(-18, 12, (B, 1, 1)) * math.log(10) / 10, device=dev, dtype=torch.float32)
     tilt = torch.tensor(rng.uniform(-1, 1, (B, 1, 1)), device=dev, dtype=torch.float32) * torch.linspace(-1, 1, M, device=dev)[None, None]
-    p = torch.exp(lm + gain + 0.8 * tilt)
+    # a few smooth boosts and cuts across the bands
+    m = np.arange(M)[None, None]
+    c, wd, a = rng.uniform(0, M, (B, 3, 1)), rng.uniform(2, 8, (B, 3, 1)), rng.uniform(-eq_db, eq_db, (B, 3, 1))
+    eq = torch.tensor((a * np.exp(-0.5 * ((m - c) / wd) ** 2)).sum(1)[:, None] * math.log(10) / 10, device=dev, dtype=torch.float32)
+    p = torch.exp(lm + gain + 0.8 * tilt + eq)
     # late reverb on the power envelope: an exponential tail, sometimes
     rt = rng.uniform(0.0, 0.35, B) * (rng.uniform(0, 1, B) < 0.5)
     if rt.max() > 0:
@@ -384,7 +389,7 @@ def cmd_train(args):
                 if teach: zs.append(teach[s][a:a + T].astype(np.float32))
             x = torch.tensor(np.stack(xs), device=dev)
             y = torch.tensor(np.stack(ys).astype(np.int64), device=dev)
-            x = augment(x, rng, noise_mel)
+            x = augment(x, rng, noise_mel, args.eq)
             # the running mean starts from the training mean plus whatever the mic did to it
             x = ema_norm_torch(x, mu0_t, sd_t)
             with torch.autocast(dev.type, dtype=torch.bfloat16, enabled=args.bf16):
@@ -653,6 +658,7 @@ def main():
     p.add_argument("--kd", type=float, default=0.7, help="weight of the teacher term")
     p.add_argument("--temp", type=float, default=2.0, help="softmax temperature for distillation")
     p.add_argument("--seed", type=int, default=0); p.add_argument("--threads", type=int)
+    p.add_argument("--eq", type=float, default=6.0, help="largest mic-EQ boost or cut in the augmentation, dB")
     p.add_argument("--bf16", action="store_true", help="train in bfloat16 autocast (fast on CPUs with AMX); eval stays float32")
     p = sub.add_parser("report"); p.add_argument("run")
     p = sub.add_parser("export"); p.add_argument("--data"); p.add_argument("--run", required=True)
