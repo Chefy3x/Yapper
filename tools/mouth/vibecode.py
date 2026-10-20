@@ -584,9 +584,14 @@ def phone_runs(h):
     return [(a, b) for a, b in zip(edges[:-1], edges[1:]) if h[a] != 0]
 
 
-def crop(m, l, z, T, rng, pause_p, h=None, hold_p=0.0):
+def class_factors(spec):
+    """"MBP:2,FV:2" → {class index: factor}"""
+    return {CLASSES.index(k): float(v) for k, v in (kv.split(":") for kv in spec.split(","))} if spec else {}
+
+
+def crop(m, l, z, T, rng, pause_p, h=None, hold_p=0.0, focus=(), focus_p=0.0):
     """A training crop of T hops. With probability hold_p, one holdable phone in it is held: stretched to
-    0.3-1.5 s (hold_walk). With probability pause_p, one or two stretches of nothing (0.2-3 s, at most 4 s
+    0.3-1.5 s (hold_walk), with probability focus_p one of the `focus` classes when the crop has one. With probability pause_p, one or two stretches of nothing (0.2-3 s, at most 4 s
     in all, labelled rest) are spliced in, for the floor to fill. Returns log-mel, labels, teacher logits (or
     None) and a mask that is 0 on the made-up hops (the teacher never heard them)."""
     gaps = rng.integers(20, 301, rng.integers(1, 3)) if rng.random() < pause_p else np.zeros(0, int)
@@ -597,6 +602,8 @@ def crop(m, l, z, T, rng, pause_p, h=None, hold_p=0.0):
     zt = None if z is None else z[a:a + need].astype(np.float32)
     if h is not None and rng.random() < hold_p:
         runs = [(p, q) for p, q in phone_runs(h[a:a + need]) if q - p >= 3 and p > 0 and q < need]
+        pick = [r for r in runs if y[r[0]] in focus]
+        if pick and rng.random() < focus_p: runs = pick
         if runs:
             p, q = runs[rng.integers(len(runs))]
             cut = max(1, (q - p) // 5)
@@ -707,9 +714,11 @@ def cmd_train(args):
     total = steps_per_epoch * args.epochs
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, args.lr, total_steps=total, pct_start=0.1)
     w = torch.tensor((counts.sum() / (counts + 1)) ** args.balance, device=dev, dtype=torch.float32)
+    for c, f in class_factors(args.class_weight).items(): w[c] *= f
     w = w / (w * torch.tensor(counts / counts.sum(), device=dev, dtype=torch.float32)).sum()
     rng = np.random.default_rng(args.seed)
     torch.manual_seed(args.seed)
+    focus = {CLASSES.index(c) for c in args.hold_classes.split(",")} if args.hold_classes else set()
     mu0_t = torch.tensor(mu0, device=dev); sd_t = torch.tensor(sd, device=dev, dtype=torch.float32)
     out = Path(args.out or root / "runs" / time.strftime("%m%d-%H%M"))
     out.mkdir(parents=True, exist_ok=True)
@@ -720,7 +729,8 @@ def cmd_train(args):
         tl = 0
         for _ in range(steps_per_epoch):
             si = rng.choice(len(train_s), args.batch, p=lens / lens.sum())
-            xs, ys, zs, ks = zip(*(crop(*train_s[s], teach[s] if teach else None, T, rng, args.pauses, holds[s], args.holds) for s in si))
+            xs, ys, zs, ks = zip(*(crop(*train_s[s], teach[s] if teach else None, T, rng, args.pauses, holds[s], args.holds,
+                                        focus, args.hold_focus) for s in si))
             if teach:       # streams the teacher didn't hear (other corpora): hard labels only
                 ks = [k if z is not None else np.zeros_like(k) for k, z in zip(ks, zs)]
                 zs = [z if z is not None else np.zeros((T, len(CLASSES)), np.float32) for z in zs]
@@ -1152,6 +1162,9 @@ def main():
                    help="steady mic noise floors (white/pink/brown/hiss/hum, -70 to -35 dBFS) under everything")
     p.add_argument("--pauses", type=float, default=0.5, help="share of crops with noise-only pauses spliced in")
     p.add_argument("--holds", type=float, default=0.3, help="share of crops with one phone held 0.3-1.5 s")
+    p.add_argument("--hold-classes", default="MBP,FV,L_TH", help="classes the held phone is drawn from first (m, f/v, th/l)")
+    p.add_argument("--hold-focus", type=float, default=0.7, help="how often the held phone comes from --hold-classes when the crop has one")
+    p.add_argument("--class-weight", default="", help='extra loss weight per class, e.g. "MBP:2,FV:2,L_TH:1.5"')
     p.add_argument("--eq", type=float, default=12.0, help="largest mic-EQ boost or cut in the augmentation, dB")
     p.add_argument("--bf16", action="store_true", help="train in bfloat16 autocast (fast on CPUs with AMX); eval stays float32")
     p = sub.add_parser("report"); p.add_argument("run")
