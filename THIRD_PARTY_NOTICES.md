@@ -15,4 +15,4 @@ Yapper is built on these projects and models. Speech and formatting models are d
 
 Parakeet TDT is by NVIDIA, licensed under [Creative Commons Attribution 4.0](https://creativecommons.org/licenses/by/4.0/); Yapper uses FluidAudio's Core ML conversion unmodified.
 
-The Loud Mouth's mouth-shape model (`Yapper/Resources/visemes.bin`) was trained by Yapper on LibriTTS by Heiga Zen et al. (Google), derived from LibriSpeech and LibriVox, licensed under [Creative Commons Attribution 4.0](https://creativecommons.org/licenses/by/4.0/), with phone alignments from cdminix/libritts-aligned (CC BY 4.0). No audio from the corpus ships with Yapper.
+The Loud Mouth's mouth-shape model (`Yapper/Resources/visemes.bin`, and the experimental `tools/mouth/visemes-lead30.bin`) was trained by Yapper on the dev-clean, test-clean and train-clean-100 subsets of LibriTTS by Heiga Zen et al. (Google), derived from LibriSpeech and LibriVox, licensed under [Creative Commons Attribution 4.0](https://creativecommons.org/licenses/by/4.0/), with phone alignments from cdminix/libritts-aligned (CC BY 4.0). No audio from the corpus ships with Yapper.
