@@ -196,14 +196,12 @@ struct VoiceToastCapsule: View {
 
     private var message: String {
         switch kind {
-        case .learned(let words):
-            let names = words.map { "“\($0)”" }.joined(separator: ", ")
-            return "Added \(names) to your dictionary"
-        case .missedPaste: return "Didn't paste. Click where it goes, then"
+        case .learned(let words): return "Learned " + words.map { "“\($0)”" }.joined(separator: ", ")
+        case .missedPaste: return "Didn't paste"
         case .pasting: return "Pasting…"
         case .pasted: return "Pasted"
-        case .copied: return "Copied. Press ⌘V where it goes"
-        case .stillMissed: return "Still didn't take it. It's copied: press ⌘V"
+        case .copied: return "Copied"
+        case .stillMissed: return "Copied instead. Press ⌘V"
         }
     }
 
