@@ -1,0 +1,7 @@
+train 312 speakers 68.09 h, eval 14 speakers 2.77 h; classes {'rest': np.float64(0.116), 'MBP': np.float64(0.056), 'FV': np.float64(0.036), 'OO': np.float64(0.034), 'OH': np.float64(0.103), 'EE': np.float64(0.116), 'AH': np.float64(0.186), 'teeth': np.float64(0.276), 'L_TH': np.float64(0.052), 'SH': np.float64(0.024)}
+net: 136234 weights, 88 channels, lookahead 4 hops, receptive field 67 hops
+teacher $YAPPER_MOUTH_DATA/runs/teacher: logits for 24514031 hops in 872 s, agrees with the labels on 0.904; KD weight 0.7, temperature 2.0
+epoch  1  loss 1.518  eval acc 0.691  balanced 0.610  224 s
+epoch  2  loss 1.162  eval acc 0.728  balanced 0.657  449 s
+epoch  3  loss 1.068  eval acc 0.747  balanced 0.692  659 s
+epoch  4  loss 1.022  eval acc 0.749  balanced 0.688  861 s

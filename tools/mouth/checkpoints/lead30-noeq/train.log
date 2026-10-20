@@ -1,0 +1,38 @@
+train 312 speakers 68.09 h, eval 14 speakers 2.77 h; classes {'rest': np.float64(0.116), 'MBP': np.float64(0.056), 'FV': np.float64(0.036), 'OO': np.float64(0.034), 'OH': np.float64(0.103), 'EE': np.float64(0.116), 'AH': np.float64(0.186), 'teeth': np.float64(0.276), 'L_TH': np.float64(0.052), 'SH': np.float64(0.024)}
+net: 136234 weights, 88 channels, lookahead 4 hops, receptive field 67 hops
+teacher $YAPPER_MOUTH_DATA/runs/teacher: logits for 24514031 hops in 841 s, agrees with the labels on 0.904; KD weight 0.7, temperature 2.0
+epoch  1  loss 1.596  eval acc 0.692  balanced 0.618  219 s
+epoch  2  loss 1.159  eval acc 0.732  balanced 0.661  454 s
+epoch  3  loss 1.058  eval acc 0.746  balanced 0.705  691 s
+epoch  4  loss 1.011  eval acc 0.754  balanced 0.702  928 s
+epoch  5  loss 0.986  eval acc 0.761  balanced 0.713  1169 s
+epoch  6  loss 0.969  eval acc 0.762  balanced 0.711  1407 s
+epoch  7  loss 0.954  eval acc 0.765  balanced 0.722  1644 s
+epoch  8  loss 0.942  eval acc 0.768  balanced 0.719  1882 s
+epoch  9  loss 0.932  eval acc 0.767  balanced 0.727  2120 s
+epoch 10  loss 0.924  eval acc 0.769  balanced 0.732  2356 s
+epoch 11  loss 0.914  eval acc 0.770  balanced 0.727  2586 s
+epoch 12  loss 0.908  eval acc 0.772  balanced 0.731  2819 s
+epoch 13  loss 0.901  eval acc 0.774  balanced 0.732  3056 s
+epoch 14  loss 0.898  eval acc 0.773  balanced 0.732  3295 s
+epoch 15  loss 0.892  eval acc 0.775  balanced 0.732  3529 s
+epoch 16  loss 0.886  eval acc 0.776  balanced 0.736  3762 s
+epoch 17  loss 0.884  eval acc 0.776  balanced 0.734  3994 s
+epoch 18  loss 0.882  eval acc 0.776  balanced 0.735  4233 s
+epoch 19  loss 0.879  eval acc 0.776  balanced 0.736  4463 s
+epoch 20  loss 0.878  eval acc 0.776  balanced 0.735  4693 s
+
+best: frame accuracy 0.776, balanced 0.736, majority-class baseline 0.273
+confusion (rows: truth, % of row; cols: predicted)
+         rest   MBP    FV    OO    OH    EE    AH teeth  L_TH    SH   share
+   rest    89     1     1     0     0     0     1     6     1     0   12.0%
+    MBP     3    71     2     2     1     1     2    15     3     0    5.6%
+     FV     2     7    70     1     2     1     2    12     3     1    3.7%
+     OO     2     2     1    65     8     7     6     4     6     0    3.5%
+     OH     1     1     1     3    71     2    14     2     4     0   10.3%
+     EE     2     0     0     2     2    77    11     4     1     1   11.2%
+     AH     1     1     1     1     6     7    77     4     2     0   18.8%
+  teeth     2     3     2     1     1     2     3    83     2     2   27.3%
+   L_TH     2     3     5     2     6     2     6    13    61     0    5.3%
+     SH     2     0     2     0     0     2     1    22     0    71    2.3%
+recall   88.8  70.9  69.9  65.0  71.2  77.2  76.9  83.4  61.4  71.1

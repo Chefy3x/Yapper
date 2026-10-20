@@ -1,0 +1,25 @@
+train 312 speakers 68.09 h, eval 14 speakers 2.77 h; classes {'rest': np.float64(0.115), 'MBP': np.float64(0.056), 'FV': np.float64(0.036), 'OO': np.float64(0.035), 'OH': np.float64(0.103), 'EE': np.float64(0.116), 'AH': np.float64(0.186), 'teeth': np.float64(0.276), 'L_TH': np.float64(0.052), 'SH': np.float64(0.024)}
+net: 1830922 weights, 256 channels, lookahead 20 hops, receptive field 97 hops
+epoch  1  loss 1.154  eval acc 0.797  balanced 0.778  880 s
+epoch  2  loss 0.845  eval acc 0.834  balanced 0.802  1757 s
+epoch  3  loss 0.773  eval acc 0.870  balanced 0.852  2623 s
+epoch  4  loss 0.731  eval acc 0.876  balanced 0.873  3490 s
+epoch  5  loss 0.702  eval acc 0.882  balanced 0.880  4363 s
+epoch  6  loss 0.677  eval acc 0.890  balanced 0.883  5244 s
+epoch  7  loss 0.655  eval acc 0.894  balanced 0.892  6138 s
+epoch  8  loss 0.646  eval acc 0.896  balanced 0.893  7025 s
+
+best: frame accuracy 0.896, balanced 0.893, majority-class baseline 0.273
+confusion (rows: truth, % of row; cols: predicted)
+         rest   MBP    FV    OO    OH    EE    AH teeth  L_TH    SH   share
+   rest    93     1     0     0     0     1     1     3     1     0   11.8%
+    MBP     1    91     1     0     1     1     1     4     1     0    5.6%
+     FV     0     3    89     0     1     1     1     3     2     0    3.7%
+     OO     1     1     0    86     4     2     3     1     2     0    3.5%
+     OH     0     0     0     1    90     1     5     1     1     0   10.3%
+     EE     1     0     0     1     1    88     6     2     1     0   11.2%
+     AH     0     0     0     1     4     4    87     2     1     0   18.8%
+  teeth     1     1     1     0     1     1     2    91     1     1   27.3%
+   L_TH     1     1     2     1     3     1     3     4    85     0    5.3%
+     SH     1     0     1     0     0     0     0     4     0    93    2.3%
+recall   93.3  90.6  88.6  85.8  89.7  87.8  87.2  91.2  85.1  93.2

@@ -1,0 +1,60 @@
+train 312 speakers 68.09 h, eval 14 speakers 2.77 h; classes {'rest': np.float64(0.116), 'MBP': np.float64(0.056), 'FV': np.float64(0.036), 'OO': np.float64(0.034), 'OH': np.float64(0.103), 'EE': np.float64(0.116), 'AH': np.float64(0.186), 'teeth': np.float64(0.276), 'L_TH': np.float64(0.052), 'SH': np.float64(0.024)}
+net: 136234 weights, 88 channels, lookahead 4 hops, receptive field 67 hops
+teacher $YAPPER_MOUTH_DATA/runs/teacher: logits for 24514031 hops in 3 s, agrees with the labels on 0.904; KD weight 0.7, temperature 2.0
+epoch  1  loss 1.526  eval acc 0.700  balanced 0.608  synthetic ok  421 s
+          pauses: rest 95.8% (worst hiss -45 dBFS 93.9%), accuracy under the floors 73.9%
+epoch  2  loss 1.161  eval acc 0.726  balanced 0.676  synthetic FAILS a 0.28, s 0.14, s 0.32, a 0.29  745 s
+          pauses: rest 97.9% (worst hiss -45 dBFS 96.7%), accuracy under the floors 75.7%
+epoch  3  loss 1.065  eval acc 0.745  balanced 0.683  synthetic ok  1073 s
+          pauses: rest 96.2% (worst hiss -45 dBFS 94.9%), accuracy under the floors 77.8%
+epoch  4  loss 1.022  eval acc 0.754  balanced 0.708  synthetic FAILS s 0.15, s 0.31  1401 s
+          pauses: rest 97.3% (worst hiss -45 dBFS 96.2%), accuracy under the floors 78.7%
+epoch  5  loss 0.997  eval acc 0.756  balanced 0.715  synthetic FAILS s 0.05, s 0.16  1732 s
+          pauses: rest 98.5% (worst hiss -45 dBFS 97.9%), accuracy under the floors 78.9%
+epoch  6  loss 0.980  eval acc 0.753  balanced 0.718  synthetic FAILS s 0.14, s 0.22  2060 s
+          pauses: rest 98.3% (worst hiss -45 dBFS 97.4%), accuracy under the floors 78.5%
+epoch  7  loss 0.967  eval acc 0.763  balanced 0.713  synthetic FAILS a 0.37, s 0.19, a 0.43  2379 s
+          pauses: rest 98.1% (worst hiss -45 dBFS 97.4%), accuracy under the floors 79.5%
+epoch  8  loss 0.959  eval acc 0.765  balanced 0.725  synthetic FAILS a 0.43, s 0.17, a 0.50  2693 s
+          pauses: rest 98.0% (worst hiss -45 dBFS 96.9%), accuracy under the floors 79.6%
+epoch  9  loss 0.950  eval acc 0.768  balanced 0.734  synthetic FAILS s 0.06  3010 s
+          pauses: rest 98.4% (worst hiss -45 dBFS 97.6%), accuracy under the floors 79.8%
+epoch 10  loss 0.943  eval acc 0.770  balanced 0.732  synthetic FAILS s 0.04  3325 s
+          pauses: rest 98.0% (worst hiss -45 dBFS 97.1%), accuracy under the floors 80.0%
+epoch 11  loss 0.937  eval acc 0.771  balanced 0.728  synthetic FAILS s 0.18, s 0.32  3640 s
+          pauses: rest 98.5% (worst hiss -45 dBFS 97.9%), accuracy under the floors 80.2%
+epoch 12  loss 0.929  eval acc 0.770  balanced 0.732  synthetic FAILS s 0.08, s 0.16  3956 s
+          pauses: rest 98.4% (worst hiss -45 dBFS 97.8%), accuracy under the floors 80.0%
+epoch 13  loss 0.924  eval acc 0.775  balanced 0.734  synthetic FAILS s 0.12, s 0.27  4276 s
+          pauses: rest 98.0% (worst hiss -45 dBFS 97.3%), accuracy under the floors 80.5%
+epoch 14  loss 0.919  eval acc 0.775  balanced 0.734  synthetic FAILS s 0.04, s 0.20  4600 s
+          pauses: rest 98.5% (worst hiss -45 dBFS 97.7%), accuracy under the floors 80.5%
+epoch 15  loss 0.916  eval acc 0.776  balanced 0.733  synthetic FAILS s 0.12, s 0.32  4925 s
+          pauses: rest 98.4% (worst hiss -45 dBFS 97.7%), accuracy under the floors 80.6%
+epoch 16  loss 0.911  eval acc 0.776  balanced 0.738  synthetic FAILS s 0.05, s 0.18  5242 s
+          pauses: rest 98.4% (worst hiss -45 dBFS 97.8%), accuracy under the floors 80.6%
+epoch 17  loss 0.907  eval acc 0.778  balanced 0.737  synthetic FAILS s 0.10, s 0.29  5565 s
+          pauses: rest 98.4% (worst hiss -45 dBFS 97.7%), accuracy under the floors 80.7%
+epoch 18  loss 0.906  eval acc 0.778  balanced 0.739  synthetic FAILS s 0.07, s 0.23  5898 s
+          pauses: rest 98.4% (worst hiss -45 dBFS 97.8%), accuracy under the floors 80.7%
+epoch 19  loss 0.905  eval acc 0.778  balanced 0.739  synthetic FAILS s 0.10, s 0.27  6223 s
+          pauses: rest 98.4% (worst hiss -45 dBFS 97.8%), accuracy under the floors 80.7%
+epoch 20  loss 0.903  eval acc 0.778  balanced 0.739  synthetic FAILS s 0.09, s 0.29  6545 s
+          pauses: rest 98.3% (worst hiss -45 dBFS 97.6%), accuracy under the floors 80.7%
+
+best: frame accuracy 0.745, balanced 0.683, majority-class baseline 0.273
+confusion (rows: truth, % of row; cols: predicted)
+         rest   MBP    FV    OO    OH    EE    AH teeth  L_TH    SH   share
+   rest    86     1     0     0     1     0     2     9     0     0   12.0%
+    MBP     3    65     2     2     1     1     4    21     1     0    5.6%
+     FV     2     8    61     1     2     1     4    18     2     1    3.7%
+     OO     2     3     1    56    11     8    10     5     4     0    3.5%
+     OH     1     1     1     4    66     2    20     3     3     0   10.3%
+     EE     1     0     0     1     2    70    18     5     1     1   11.2%
+     AH     1     1     1     1     6     5    80     4     2     0   18.8%
+  teeth     1     4     1     1     1     2     5    82     1     2   27.3%
+   L_TH     2     4     4     4    10     2    10    17    46     0    5.3%
+     SH     1     0     1     0     0     1     2    24     0    69    2.3%
+recall   86.4  64.5  61.2  56.2  66.4  70.1  80.3  82.3  46.1  69.2
+pauses: rest 95.9% (worst pink -35 dBFS 89.6%), accuracy under the floors 77.0%
+  brown -60 98  brown -45 97  brown -35 95  hiss -60 95  hiss -45 95  hiss -35 96  hum50 -60 97  hum50 -45 96  hum50 -35 96  hum60 -60 97  hum60 -45 96  hum60 -35 96  pink -60 98  pink -45 96  pink -35 90  white -60 98  white -45 97  white -35 94

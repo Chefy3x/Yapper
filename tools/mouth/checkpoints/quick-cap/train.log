@@ -1,0 +1,29 @@
+warning: The `UV_NATIVE_TLS` environment variable is deprecated and will be removed in a future release. Use `UV_SYSTEM_CERTS` instead.
+train 312 speakers 68.09 h, eval 14 speakers 2.77 h; classes {'rest': np.float64(0.115), 'MBP': np.float64(0.056), 'FV': np.float64(0.036), 'OO': np.float64(0.035), 'OH': np.float64(0.103), 'EE': np.float64(0.116), 'AH': np.float64(0.186), 'teeth': np.float64(0.276), 'L_TH': np.float64(0.052), 'SH': np.float64(0.024)}
+net: 136234 weights, 88 channels, lookahead 4 hops, receptive field 67 hops
+teacher $YAPPER_MOUTH_DATA/runs/teacher: logits for 24514031 hops in 2 s, agrees with the labels on 0.905; KD weight 0.7, temperature 2.0
+epoch  1  loss 1.448  eval acc 0.720  balanced 0.650  synthetic FAILS s 0.31  74 s
+          pauses: rest 97.6% (worst hiss -45 dBFS 96.0%), accuracy under the floors 75.2%
+epoch  2  loss 1.092  eval acc 0.743  balanced 0.692  synthetic FAILS a 0.49  186 s
+          pauses: rest 97.6% (worst hiss -45 dBFS 96.0%), accuracy under the floors 77.6%
+epoch  3  loss 1.011  eval acc 0.761  balanced 0.713  synthetic ok  291 s
+          pauses: rest 95.6% (worst hiss -45 dBFS 94.5%), accuracy under the floors 78.9%
+epoch  4  loss 0.971  eval acc 0.767  balanced 0.720  synthetic ok  400 s
+          pauses: rest 97.4% (worst hiss -45 dBFS 95.8%), accuracy under the floors 79.5%
+
+best: frame accuracy 0.767, balanced 0.720, majority-class baseline 0.273
+confusion (rows: truth, % of row; cols: predicted)
+         rest   MBP    FV    OO    OH    EE    AH teeth  L_TH    SH   share
+   rest    91     1     0     0     0     0     1     5     0     0   11.8%
+    MBP     3    69     1     2     1     1     2    18     2     0    5.6%
+     FV     2    10    61     1     2     1     2    17     3     1    3.7%
+     OO     1     3     1    63     9     8     7     4     5     0    3.5%
+     OH     1     1     1     4    69     3    14     3     5     0   10.3%
+     EE     1     1     0     2     2    77    11     5     1     1   11.2%
+     AH     1     1     0     1     7     7    76     4     2     0   18.8%
+  teeth     2     4     1     1     1     2     3    83     1     2   27.3%
+   L_TH     2     5     4     4     7     3     5    15    55     0    5.3%
+     SH     1     0     1     0     0     1     1    19     0    77    2.3%
+recall   90.8  69.0  60.6  62.7  69.1  76.6  76.3  83.4  55.1  76.6
+pauses: rest 97.2% (worst pink -35 dBFS 94.1%), accuracy under the floors 78.8%
+  brown -60 99  brown -45 98  brown -35 97  hiss -60 95  hiss -45 96  hiss -35 97  hum50 -60 98  hum50 -45 97  hum50 -35 97  hum60 -60 98  hum60 -45 97  hum60 -35 97  pink -60 99  pink -45 98  pink -35 94  white -60 98  white -45 98  white -35 97

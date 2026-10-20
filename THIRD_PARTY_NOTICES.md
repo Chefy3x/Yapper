@@ -12,6 +12,10 @@ Yapper is built on these projects and models. Speech and formatting models are d
 | [Sparkle](https://github.com/sparkle-project/Sparkle) | App updates | MIT |
 | [mediaremote-adapter](https://github.com/ungive/mediaremote-adapter) | Pausing other apps' media | BSD-3-Clause |
 | [LibriTTS](https://www.openslr.org/60/) with [Montreal Forced Aligner alignments](https://huggingface.co/datasets/cdminix/libritts-aligned) | Training data for the Loud Mouth's mouth-shape model (bundled weights only, no audio) | CC-BY-4.0 |
+| [Speech Commands v0.02](https://www.tensorflow.org/datasets/catalog/speech_commands) (Warden, Google) | Training data for the mouth-shape model; its MFA alignments are in `tools/mouth/alignments/` (no audio) | CC-BY-4.0 |
+| [The People's Speech](https://huggingface.co/datasets/MLCommons/peoples_speech) (MLCommons), "clean" subset | Training data for the mouth-shape model; its MFA alignments, which include its transcripts, are in `tools/mouth/alignments/` (no audio) | CC-BY (2.0–4.0) |
+| [OpenSLR 28 room impulse responses and noises](https://www.openslr.org/28/) (RWCP, REVERB 2014, AIR; MUSAN noises) | Simulated phones and rooms for training the mouth-shape model (nothing ships) | Apache-2.0 |
+| [Montreal Forced Aligner](https://montreal-forced-aligner.readthedocs.io/) with its english_us_arpa models | Aligning the new training corpora (a tool, nothing ships) | MIT / CC-BY-4.0 |
 
 Parakeet TDT is by NVIDIA, licensed under [Creative Commons Attribution 4.0](https://creativecommons.org/licenses/by/4.0/); Yapper uses FluidAudio's Core ML conversion unmodified.
 

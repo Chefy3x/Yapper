@@ -1,0 +1,21 @@
+train 3116 streams 115.83 h; held out: LibriTTS 14 streams 2.77 h, LibriTTS device 14 streams 2.77 h, Speech Commands 249 streams 0.70 h, People's Speech 23 streams 1.83 h; classes {'rest': np.float64(0.151), 'MBP': np.float64(0.053), 'FV': np.float64(0.036), 'OO': np.float64(0.033), 'OH': np.float64(0.099), 'EE': np.float64(0.11), 'AH': np.float64(0.182), 'teeth': np.float64(0.265), 'L_TH': np.float64(0.049), 'SH': np.float64(0.022)}
+net: 819082 weights, 192 channels, lookahead 4 hops, receptive field 133 hops
+teacher $YAPPER_MOUTH_DATA/runs/teacher: logits for 32138922 hops in 686 s, agrees with the labels on 0.904; KD weight 0.7, temperature 2.0
+epoch  1  loss 1.382  eval acc 0.750  balanced 0.736  synthetic ok  835 s
+          LibriTTS 0.750/0.736  LibriTTS device 0.646/0.615  Speech Commands 0.711/0.601  People's Speech 0.650/0.620  mean balanced 0.643
+          pauses: rest 97.5% (worst hiss -45 dBFS 96.2%), accuracy under the floors 77.3%
+          held sounds: 41.4% of held hops right (worst SH 11%)
+epoch  2  loss 0.999  eval acc 0.801  balanced 0.768  synthetic FAILS u 0.42, u 0.18  1803 s
+          LibriTTS 0.801/0.768  LibriTTS device 0.706/0.644  Speech Commands 0.764/0.657  People's Speech 0.697/0.645  mean balanced 0.678
+          pauses: rest 96.8% (worst hiss -45 dBFS 95.8%), accuracy under the floors 82.8%
+          held sounds: 48.9% of held hops right (worst OO 14%)
+epoch  3  loss 0.896  eval acc 0.813  balanced 0.796  synthetic FAILS i 0.49, u 0.48, u 0.16  2741 s
+          LibriTTS 0.813/0.796  LibriTTS device 0.713/0.677  Speech Commands 0.795/0.674  People's Speech 0.707/0.675  mean balanced 0.706
+          pauses: rest 98.1% (worst hiss -45 dBFS 97.4%), accuracy under the floors 83.5%
+          held sounds: 47.4% of held hops right (worst OO 14%)
+epoch  4  loss 0.843  eval acc 0.822  balanced 0.815  synthetic FAILS u 0.19, u 0.02  3721 s
+          LibriTTS 0.822/0.815  LibriTTS device 0.723/0.694  Speech Commands 0.791/0.694  People's Speech 0.713/0.684  mean balanced 0.722
+          pauses: rest 98.0% (worst hiss -45 dBFS 97.3%), accuracy under the floors 84.0%
+          held sounds: 47.6% of held hops right (worst OO 18%)
+epoch  5  loss 0.806  eval acc 0.833  balanced 0.814  synthetic FAILS u 0.27, u 0.08  4633 s
+          LibriTTS 0.833/0.814  LibriTTS device 0.739/0.693  Speech Commands 0.808/0.699  People's Speech 0.723/0.677  mean balanced 0.721
