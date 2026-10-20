@@ -181,10 +181,12 @@ final class AppState: ObservableObject {
             let cleanup = self.settings.cleanUpSpeech
             let tidied = cleanup ? Disfluency.clean(text) : text
             let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+            let mode = FormatMode.forApp(bundleID: bundleID)
             // "First, … second, …" is laid out by rule: reliable where the model is a coin flip.
-            if let listed = SpokenLists.format(tidied, mode: FormatMode.forApp(bundleID: bundleID)) { return listed }
-            guard self.settings.smartFormattingEnabled, !tidied.isEmpty else { return tidied }
-            return await self.formatter.format(tidied, bundleID: bundleID, cleanup: cleanup)
+            if let listed = SpokenLists.format(tidied, mode: mode) { return Punctuation.finish(listed, mode: mode) }
+            guard self.settings.smartFormattingEnabled, !tidied.isEmpty else { return Punctuation.finish(tidied, mode: mode) }
+            let formatted = await self.formatter.format(tidied, bundleID: bundleID, cleanup: cleanup)
+            return Punctuation.finish(formatted, mode: mode)
         }
         voiceInput.expandSnippets = { [weak self] text in self?.snippets.expand(text) ?? text }
         recordingHUD = RecordingHUDController(state: self)

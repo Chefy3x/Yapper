@@ -162,11 +162,14 @@ enum EditLearner {
 
 /// Watches the field a transcript was pasted into for a minute, then learns from what the user
 /// changed. Polls instead of subscribing to AX notifications: Electron apps fire value changes
-/// inconsistently, and one read every 1.5 s costs nothing.
+/// inconsistently, and a read every 0.75 s costs nothing.
+///
+/// Learns only from text that sat still between two reads. A read taken mid-word ("twe" on the
+/// way to "tweak", then Return) once taught Yapper the fragment.
 @MainActor
 final class EditWatcher {
     static let watchFor: TimeInterval = 60
-    static let pollEvery: TimeInterval = 1.5
+    static let pollEvery: TimeInterval = 0.75
 
     /// Words learned from a finished watch, already filtered by `EditLearner`.
     var onLearned: (([LearnedWord]) -> Void)?
@@ -177,6 +180,8 @@ final class EditWatcher {
     static let baselineWait: TimeInterval = 3
 
     private var task: Task<Void, Never>?
+    /// The previous read, to tell settled text from text still being typed.
+    private var lastRead: String?
     /// `baseline` is nil until the field is seen holding the pasted words.
     private var current: (delivered: String, baseline: String?, latest: String)?
 
@@ -185,6 +190,7 @@ final class EditWatcher {
         guard let field = receipt.field, !field.isSecure else { return }
         let after = receipt.valueAfter.flatMap { $0.contains(delivered) ? $0 : nil }
         current = (delivered, after, after ?? "")
+        lastRead = after
         task = Task { [weak self] in
             let started = Date()
             var poll = after == nil ? 0.25 : Self.pollEvery
@@ -198,6 +204,7 @@ final class EditWatcher {
                     if value.contains(delivered) {
                         self.current?.baseline = value
                         self.current?.latest = value
+                        self.lastRead = value
                         poll = Self.pollEvery
                     } else if Date().timeIntervalSince(started) > Self.baselineWait {
                         Log.voice.notice("Edit watch: the field never showed the pasted words")
@@ -207,7 +214,8 @@ final class EditWatcher {
                     continue
                 }
                 if value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { break }   // sent
-                self.current?.latest = value
+                if value == self.lastRead { self.current?.latest = value }   // settled
+                self.lastRead = value
             }
             self?.finish()
         }
