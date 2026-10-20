@@ -5,6 +5,9 @@ struct FormatCuesTests {
     @Test func spotsSelfCorrections() {
         #expect(FormatCues.needsFormatting("Let's meet at 3, no wait, 4 tomorrow."))
         #expect(FormatCues.needsFormatting("Send it to Mike, I mean Sarah, today."))
+        #expect(!FormatCues.hasCorrection("It's okay if it's slow. I mean, I'm doing other things anyway."))
+        #expect(!FormatCues.hasCorrection("I mean, that works for me."))
+        #expect(FormatCues.hasCorrection("Use the red one. I meant the blue one."))
         #expect(FormatCues.needsFormatting("Check the logs and, scratch that, restart it."))
         #expect(FormatCues.afterLastCorrection("at 2, no wait, 3, no wait, 4 today") == ", 4 today")
     }

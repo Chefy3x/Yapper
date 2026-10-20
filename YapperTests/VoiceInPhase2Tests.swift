@@ -203,6 +203,17 @@ struct RespellTests {
     @Test func leavesAmbiguousMatchesAlone() {
         #expect(respell("ping Jonn today", ["Jon", "John"]) == "ping Jonn today")
     }
+
+    @Test func keepsAnAcronymsCapitals() {
+        #expect(respell("use the signal MCP today", ["Mcp"]) == "use the signal MCP today")
+        #expect(respell("ask yapper about it", ["YAPPER"]) == "ask YAPPER about it")
+    }
+
+    @Test func neverRespellsAFarOffWord() {
+        // A day of real dictations: "vibecode" came out as "viseme" because it was on screen.
+        #expect(respell("you can just vibecode any app", ["viseme"]) == "you can just vibecode any app")
+        #expect(respell("deploy to Vercelll today", ["Vercel"]) == "deploy to Vercel today")
+    }
 }
 
 // MARK: - Wispr Flow import

@@ -253,15 +253,26 @@ enum TranscriptCorrector {
             guard p.core.count >= 3 else { continue }
             let lower = p.core.lowercased()
             if let match = byLower[lower] {
-                if match != p.core, !isDictionaryWord(lower) { tokens[index] = p.lead + match + p.trail }
+                // An acronym as said ("MCP") keeps its capitals: "Mcp" on screen is a label's styling.
+                let isAcronym = p.core.count >= 2 && p.core.allSatisfy { $0.isUppercase || $0.isNumber }
+                if match != p.core, !isAcronym, !isDictionaryWord(lower) { tokens[index] = p.lead + match + p.trail }
                 continue
             }
             guard p.core.count >= 4, !isDictionaryWord(p.core), !isDictionaryWord(lower) else { continue }
-            let close = single.filter { EditLearner.similar(lower, $0.lowercased()) }
+            let close = single.filter { isNearMiss(lower, $0.lowercased()) }
             let distinct = Set(close.map { $0.lowercased() })
             if distinct.count == 1, let match = close.first { tokens[index] = p.lead + match + p.trail }
         }
         return tokens.joined(separator: " ")
+    }
+
+    /// The same name misheard: a letter or two off and about the same length. Much tighter than
+    /// learning from edits, because nobody approves a respell: "Vercell" is Vercel, but
+    /// "vibecode" is not "viseme" just because that word was on screen.
+    static func isNearMiss(_ a: String, _ b: String) -> Bool {
+        guard abs(a.count - b.count) <= 2 else { return false }
+        let distance = EditLearner.levenshtein(Array(a), Array(b))
+        return distance <= (max(a.count, b.count) >= 7 ? 2 : 1)
     }
 
     /// Whisper's prompt is "text that came before": a comma-separated list of the user's

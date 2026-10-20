@@ -4,15 +4,16 @@ import QuartzCore
 
 /// One moment of the mouth as the voice reader hears it: jaw J (0 shut … 1 a big "ah"), width W
 /// (negative is round) and teeth together T, plus the shape the Vibecode net hears (all zero when it
-/// isn't running or hasn't caught up).
+/// isn't running or hasn't caught up), and whether the reader counts it as speech (1) or a pause (0).
 struct MouthDrive: Sendable, Equatable {
     var J: Float = 0, W: Float = 0, T: Float = 0
     var shape = MouthShapes()
+    var speaking: Float = 0
     static let rest = MouthDrive()
 
     func mixed(with other: MouthDrive, _ k: Float) -> MouthDrive {
         MouthDrive(J: J + (other.J - J) * k, W: W + (other.W - W) * k, T: T + (other.T - T) * k,
-                   shape: shape + (other.shape - shape) * k)
+                   shape: shape + (other.shape - shape) * k, speaking: speaking + (other.speaking - speaking) * k)
     }
 
     /// Whether the Vibecode net said anything about this moment.
@@ -23,7 +24,8 @@ struct MouthDrive: Sendable, Equatable {
     /// it back where it belongs (`add(_:at:shapeLag:)`).
     static func zip(_ frames: [MouthFrame], _ shapes: [MouthShapes?]?) -> [MouthDrive] {
         frames.enumerated().map { k, f in
-            MouthDrive(J: f.J, W: f.W, T: f.T, shape: (shapes?.indices.contains(k) ?? false ? shapes![k] : nil) ?? MouthShapes())
+            MouthDrive(J: f.J, W: f.W, T: f.T, shape: (shapes?.indices.contains(k) ?? false ? shapes![k] : nil) ?? MouthShapes(),
+                       speaking: f.speaking ? 1 : 0)
         }
     }
 }
@@ -41,14 +43,17 @@ extension MouthVoiceReading {
 }
 
 /// The live reader (`MouthReader`), remembering what it learns about your voice and mic between
-/// turns so the mouth starts tuned, and the Vibecode net for the lips' shapes (without its weights,
-/// the reader alone drives the mouth).
+/// turns so the mouth starts tuned, and the Vibecode net for the lips' shapes (without it, the reader
+/// alone drives the mouth).
 final class MouthReaderVoice: MouthVoiceReading {
     static let statsKey = "mouthSpeakerStats"
+    /// The Vibecode net is off unless this is set: on a real iPhone-mic voice it read background hiss as
+    /// an "s" and parted the lips over the teeth in every pause, so it waits for a model that passes.
+    static let shapesKey = "mouthShapes"
     private let reader: MouthReader
     private let vibecode: MouthVibecode?
 
-    init(shapes: Bool = true) {
+    init(shapes: Bool = UserDefaults.standard.bool(forKey: MouthReaderVoice.shapesKey)) {
         let saved = UserDefaults.standard.data(forKey: Self.statsKey).flatMap { try? JSONDecoder().decode(SpeakerStats.self, from: $0) }
         reader = MouthReader(sampleRate: MouthLive.rate, stats: saved)
         vibecode = shapes ? (try? MouthVibecodeModel.bundled()).map(MouthVibecode.init(model:)) : nil

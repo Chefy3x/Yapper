@@ -255,6 +255,7 @@ final class VoiceInputCoordinator: ObservableObject {
             return   // the hold path opens the mic itself, with its fallback and its error message
         }
         priming = true
+        warmTranscriber()
         leadTrim = Int(trimLead * AudioCapture.targetSampleRate)
         listeningSince = Date()
         captureOpenedAt = listeningSince
@@ -394,6 +395,11 @@ final class VoiceInputCoordinator: ObservableObject {
         return true
     }
 
+    private func warmTranscriber() {
+        guard let transcriber else { return }
+        Task { await transcriber.warm() }
+    }
+
     private func startListening(_ mode: Mode) {
         leadTrim = 0
         do {
@@ -415,6 +421,7 @@ final class VoiceInputCoordinator: ObservableObject {
         resetSilentWatch()
         vad = mode == .handsFree ? VoiceActivityDetector(config: vadConfig) : nil
         state = .listening(mode)
+        warmTranscriber()
         readScreen()
         onEvent?(mode == .pushToTalk ? "Listening… release to type" : "Listening…")
         Log.voice.info("Listening (\(mode == .pushToTalk ? "push-to-talk" : "hands-free", privacy: .public))")
@@ -506,6 +513,18 @@ final class VoiceInputCoordinator: ObservableObject {
             return
         }
         paste(text, announce: "Pasted your last transcript again")
+    }
+
+    /// Types `text` into whatever is focused and says whether the app took it: the note under the
+    /// pill reports either way, so a second try is never a guess.
+    func pasteAgain(_ text: String) async -> Bool {
+        guard state == .idle, !priming, !text.isEmpty else { return false }
+        do {
+            try await delivery.deliver(text)
+            return true
+        } catch {
+            return false
+        }
     }
 
     /// Types `text` into whatever is focused, the way a dictation would. Settings → Dictations

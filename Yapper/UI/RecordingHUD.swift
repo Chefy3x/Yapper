@@ -100,11 +100,12 @@ final class RecordingHUDController {
     }
 
     /// The turn reported how it ended. The mouth grins when the words landed and grimaces when
-    /// nothing did, then the pill closes; the bars just close.
+    /// they didn't (a missed paste included: the note under the pill offers them back), then the
+    /// pill closes; the bars just close.
     func finish(_ outcome: TurnReport.Outcome) {
         switch outcome {
-        case .pasted, .copied: presenter.react(.done)
-        case .empty, .failed: presenter.react(.cancel)
+        case .pasted: presenter.react(.done)
+        case .copied, .empty, .failed: presenter.react(.cancel)
         }
     }
 

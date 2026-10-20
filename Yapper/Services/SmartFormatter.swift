@@ -168,6 +168,12 @@ final class SmartFormatter: ObservableObject {
         return result.text
     }
 
+    /// The app is quitting: give the model back now, while llama.cpp can still free it cleanly.
+    func shutdown() {
+        idleTask?.cancel()
+        runner?.unloadNow()
+    }
+
     private func scheduleUnload() {
         idleTask?.cancel()
         idleTask = Task { [weak self] in
