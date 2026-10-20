@@ -234,7 +234,8 @@ def prep_split(root, split, transform=None, share=1.0, jobs=1):
     items = [it for it in corpus_files(root, split) if it[1].exists()]
     missing = len(corpus_files(root, split)) - len(items)
     if share < 1:
-        items = [it for it in items if int.from_bytes(Path(it[0]).stem.encode()[-6:], "little") % 1000 < share * 1000]
+        import hashlib
+        items = [it for it in items if int(hashlib.md5(Path(it[0]).stem.encode()).hexdigest(), 16) % 1000 < share * 1000]
     work = [(root, split, it, transform) for it in items]
     if jobs > 1:
         import multiprocessing as mp
