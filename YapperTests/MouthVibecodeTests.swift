@@ -1,15 +1,15 @@
 import Testing
 import Foundation
 
-/// The viseme net against its Python reference (`Stream` in tools/mouth/visemes.py). Both read the
+/// The Vibecode net against its Python reference (`Stream` in tools/mouth/vibecode.py). Both read the
 /// reader's synthetic a/i/u/s signal through the bundled weights; the Python wrote its log-mel bands
-/// and shapes to Fixtures/mouth_visemes_synth.json (regenerate it with `visemes.py fixture` after
+/// and shapes to Fixtures/mouth_vibecode_synth.json (regenerate it with `vibecode.py fixture` after
 /// retraining) and the Swift port must read the same.
-struct MouthVisemesTests {
+struct MouthVibecodeTests {
     static let repo = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
 
-    static func model() throws -> MouthVisemeModel {
-        try MouthVisemeModel(data: Data(contentsOf: repo.appendingPathComponent("Yapper/Resources/visemes.bin")))
+    static func model() throws -> MouthVibecodeModel {
+        try MouthVibecodeModel(data: Data(contentsOf: repo.appendingPathComponent("Yapper/Resources/vibecode.bin")))
     }
 
     private struct Fixture {
@@ -20,7 +20,7 @@ struct MouthVisemesTests {
     }
 
     private func fixture() throws -> Fixture {
-        let url = Self.repo.appendingPathComponent("YapperTests/Fixtures/mouth_visemes_synth.json")
+        let url = Self.repo.appendingPathComponent("YapperTests/Fixtures/mouth_vibecode_synth.json")
         let json = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
         return Fixture(samples: try #require(json["samples"] as? Int), hops: try #require(json["hops"] as? Int),
                        lookahead: try #require(json["lookahead"] as? Int),
@@ -31,7 +31,7 @@ struct MouthVisemesTests {
     }
 
     /// Feeds `samples` in chunks of the given sizes, cycling through them.
-    private func read(_ v: MouthVisemes, _ samples: [Float], chunks: [Int] = [250]) -> [MouthShapes?] {
+    private func read(_ v: MouthVibecode, _ samples: [Float], chunks: [Int] = [250]) -> [MouthShapes?] {
         var out: [MouthShapes?] = []
         var i = 0, c = 0
         while i < samples.count {
@@ -55,7 +55,7 @@ struct MouthVisemesTests {
 
     @Test func logMelMatchesPython() throws {
         let fx = try fixture()
-        let v = MouthVisemes(model: try Self.model())
+        let v = MouthVibecode(model: try Self.model())
         let x = MouthReaderTests.synth().map(Double.init)
         let h = v.model.header
         #expect(x.count == fx.samples)
@@ -68,7 +68,7 @@ struct MouthVisemesTests {
 
     @Test func shapesMatchPython() throws {
         let fx = try fixture()
-        let v = MouthVisemes(model: try Self.model())
+        let v = MouthVibecode(model: try Self.model())
         let out = read(v, MouthReaderTests.synth())
         #expect(out.count == fx.hops)
         #expect(out.prefix(fx.lookahead).allSatisfy { $0 == nil })
@@ -86,7 +86,7 @@ struct MouthVisemesTests {
     }
 
     @Test func soundsComeOutAsTheirShapes() throws {
-        let v = MouthVisemes(model: try Self.model())
+        let v = MouthVibecode(model: try Self.model())
         let shapes = read(v, MouthReaderTests.synth()).compactMap { $0 }
         // hop i's window centre is at (160 i + 200) / 16000 s
         var start = 0.0
@@ -112,13 +112,13 @@ struct MouthVisemesTests {
     @Test func chunkSizeDoesNotChangeTheOutput() throws {
         let m = try Self.model()
         let x = MouthReaderTests.synth()
-        let whole = read(MouthVisemes(model: m), x, chunks: [x.count])
-        let ragged = read(MouthVisemes(model: m), x, chunks: [1, 7, 160, 333, 4096, 399])
+        let whole = read(MouthVibecode(model: m), x, chunks: [x.count])
+        let ragged = read(MouthVibecode(model: m), x, chunks: [1, 7, 160, 333, 4096, 399])
         #expect(whole == ragged)
     }
 
     @Test func resetClearsTheLayersButKeepsTheMean() throws {
-        let v = MouthVisemes(model: try Self.model())
+        let v = MouthVibecode(model: try Self.model())
         let x = MouthReaderTests.synth()
         _ = read(v, x)
         let mean = v.mean

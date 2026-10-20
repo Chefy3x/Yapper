@@ -2,7 +2,7 @@
 # requires-python = ">=3.11"
 # dependencies = ["numpy", "scipy", "soundfile", "torch"]
 # ///
-"""Viseme reader: a small causal net that reads mouth SHAPES from mic audio, one per 10 ms hop.
+"""Vibecode reader: a small causal net that reads mouth SHAPES from mic audio, one per 10 ms hop.
 
 The live reader (reader_live.py) already knows how open the mouth is (J), how wide or round (W) and
 whether the teeth meet (T). This adds what it can't hear from loudness and formants: lips sealed for
@@ -14,8 +14,8 @@ bands, then a running per-band mean (3 s) is taken off so mic gain and EQ drop o
 stack of 1-D convolutions that hears 350 ms of the past and LOOKAHEAD hops (40 ms) of the future, so
 its answer for a hop comes 40 ms after the reader's, inside MouthTimeline's 45 ms playout.
 
-Yapper/Mouth/MouthVisemes.swift is a line-for-line port of `Features` and `Net.stream`;
-YapperTests/MouthVisemesTests.swift checks the two agree on the reader's synthetic test signal.
+Yapper/Mouth/MouthVibecode.swift is a line-for-line port of `Features` and `Net.stream`;
+YapperTests/MouthVibecodeTests.swift checks the two agree on the reader's synthetic test signal.
 Regenerate its fixture with `fixture` after retraining.
 
 Training data is LibriTTS (CC BY 4.0, openslr.org/60) with the Montreal Forced Aligner phone
@@ -31,13 +31,13 @@ The shipped net is distilled: a big teacher that may look further ahead (it neve
 first, then the app-sized student learns from the teacher's softened answers plus the hard labels.
 
 Usage (from the repo root):
-  uv run tools/mouth/visemes.py prep  --data DIR dev-clean test-clean train-clean-100
-  uv run tools/mouth/visemes.py train --data DIR [--epochs 40] [--out DIR/runs/name]
-  uv run tools/mouth/visemes.py train --data DIR --layers K:D:LA,… --ch N …   (a teacher: any size or look-ahead)
-  uv run tools/mouth/visemes.py train --data DIR --teacher DIR/runs/teacher …  (a student distilled from it)
-  uv run tools/mouth/visemes.py export --data DIR --run DIR/runs/name     (writes Yapper/Resources/visemes.bin)
-  uv run tools/mouth/visemes.py fixture                                    (writes YapperTests/Fixtures/mouth_visemes_synth.json)
-  uv run tools/mouth/visemes.py read --wav in.wav                          (prints the classes per hop)
+  uv run tools/mouth/vibecode.py prep  --data DIR dev-clean test-clean train-clean-100
+  uv run tools/mouth/vibecode.py train --data DIR [--epochs 40] [--out DIR/runs/name]
+  uv run tools/mouth/vibecode.py train --data DIR --layers K:D:LA,… --ch N …   (a teacher: any size or look-ahead)
+  uv run tools/mouth/vibecode.py train --data DIR --teacher DIR/runs/teacher …  (a student distilled from it)
+  uv run tools/mouth/vibecode.py export --data DIR --run DIR/runs/name     (writes Yapper/Resources/vibecode.bin)
+  uv run tools/mouth/vibecode.py fixture                                    (writes YapperTests/Fixtures/mouth_vibecode_synth.json)
+  uv run tools/mouth/vibecode.py read --wav in.wav                          (prints the classes per hop)
 """
 import argparse, glob, json, math, os, re, struct, sys, time
 from pathlib import Path
@@ -45,10 +45,10 @@ from pathlib import Path
 import numpy as np
 
 REPO = Path(__file__).resolve().parents[2]
-RESOURCE = REPO / "Yapper/Resources/visemes.bin"
-FIXTURE = REPO / "YapperTests/Fixtures/mouth_visemes_synth.json"
+RESOURCE = REPO / "Yapper/Resources/vibecode.bin"
+FIXTURE = REPO / "YapperTests/Fixtures/mouth_vibecode_synth.json"
 
-# ---- features (mirrored in MouthVisemes.swift) ----
+# ---- features (mirrored in MouthVibecode.swift) ----
 SR, WIN, HOP, NFFT = 16000, 400, 160, 512
 N_MELS, F_MIN, F_MAX = 40, 60.0, 7600.0
 LOG_EPS = 1e-6
@@ -75,7 +75,7 @@ PHONE_CLASS = {
 LAYERS = [(5, 1, 2), (3, 1, 1), (3, 2, 1), (3, 4, 0), (3, 8, 0)]
 LOOKAHEAD = sum(l[2] for l in LAYERS)
 CH = 80
-# what MouthVisemes.swift and its tests accept: the shapes land inside MouthTimeline's 45 ms playout
+# what MouthVibecode.swift and its tests accept: the shapes land inside MouthTimeline's 45 ms playout
 MAX_LOOKAHEAD, MAX_WEIGHTS = 4, 1_000_000
 
 # The fixed held-out speakers (all from dev-clean and test-clean): never trained on, always scored, so
@@ -1067,7 +1067,7 @@ def synth_probs(net, mu0, sd, dev):
 
 
 def synth_check(probs, quiet=False):
-    """MouthVisemesTests.soundsComeOutAsTheirShapes on the Python side: each synthetic sound's mean shape."""
+    """MouthVibecodeTests.soundsComeOutAsTheirShapes on the Python side: each synthetic sound's mean shape."""
     sys.path.insert(0, str(Path(__file__).parent))
     from reader_live import SYNTH
     c = {k: CLASSES.index(k) for k in ("rest", "FV", "OO", "OH", "EE", "AH", "teeth", "SH")}
@@ -1093,7 +1093,7 @@ def cmd_fixture(args):
     st = Stream(RESOURCE)
     lookahead = sum(L["la"] for L in st.layers)
     probs = [p for p in (st.feed(r) for r in lm) if p is not None]
-    if not synth_check(np.array(probs)): print("the synthetic sounds don't come out as their shapes: MouthVisemesTests will fail")
+    if not synth_check(np.array(probs)): print("the synthetic sounds don't come out as their shapes: MouthVibecodeTests will fail")
     fx = dict(samples=len(x), hops=len(lm), lookahead=lookahead,
               logMel=[[round(float(v), 5) for v in lm[i]] for i in (0, 50, 150, len(lm) - 1)],
               logMelRows=[0, 50, 150, len(lm) - 1],

@@ -1,7 +1,7 @@
 import Accelerate
 import Foundation
 
-/// The mouth shapes the viseme net tells apart: what the rig can show for each sound.
+/// The mouth shapes the Vibecode net tells apart: what the rig can show for each sound.
 enum MouthShape: Int, CaseIterable, Sendable {
     case rest, mbp, fv, oo, oh, ee, ah, teeth, lth, sh
 }
@@ -10,13 +10,13 @@ enum MouthShape: Int, CaseIterable, Sendable {
 /// nothing is known (no net, or not read yet).
 typealias MouthShapes = SIMD16<Float>
 
-/// The viseme net's weights and feature settings, exported by `tools/mouth/visemes.py export`.
+/// The Vibecode net's weights and feature settings, exported by `tools/mouth/vibecode.py export`.
 ///
 /// File layout: "MVIS", UInt32 version, UInt32 header length, the JSON header, then little-endian
 /// float32 arrays: the running mean's start and the spread per mel band, then each conv layer's
 /// weights (out, in, kernel) and bias (BatchNorm already folded in), then the output layer's
 /// weights (classes, channels) and bias.
-struct MouthVisemeModel: Sendable {
+struct MouthVibecodeModel: Sendable {
     struct Header: Decodable, Sendable {
         struct Layer: Decodable, Sendable { var kernel: Int; var dilation: Int; var lookahead: Int }
         var sampleRate: Double
@@ -78,15 +78,15 @@ struct MouthVisemeModel: Sendable {
         guard at == floats.count else { throw LoadError.missing }
     }
 
-    static func bundled() throws -> MouthVisemeModel {
-        guard let url = Bundle.main.url(forResource: "visemes", withExtension: "bin") else { throw LoadError.missing }
-        return try MouthVisemeModel(data: Data(contentsOf: url))
+    static func bundled() throws -> MouthVibecodeModel {
+        guard let url = Bundle.main.url(forResource: "vibecode", withExtension: "bin") else { throw LoadError.missing }
+        return try MouthVibecodeModel(data: Data(contentsOf: url))
     }
 }
 
 /// Reads mouth shapes from the voice: 16 kHz mono in, one `MouthShapes` per 10 ms hop out, `lookahead`
-/// hops (40 ms) after that hop was heard. A port of `Features` and `Stream` in tools/mouth/visemes.py;
-/// MouthVisemesTests checks the two agree.
+/// hops (40 ms) after that hop was heard. A port of `Features` and `Stream` in tools/mouth/vibecode.py;
+/// MouthVibecodeTests checks the two agree.
 ///
 /// Per hop: a 25 ms Hamming window, a 512-point power spectrum, 40 log-mel bands, the running mean
 /// of each band (about 3 s) taken off so the mic's gain and colour drop out. Then a stack of 1-D
@@ -94,8 +94,8 @@ struct MouthVisemeModel: Sendable {
 ///
 /// Hops line up with `MouthReader`'s when both are fed the same samples from a reset. Not
 /// thread-safe: create it and feed it from one serial queue.
-final class MouthVisemes {
-    let model: MouthVisemeModel
+final class MouthVibecode {
+    let model: MouthVibecodeModel
     private let hamming: [Double]
     private let bank: [Double]          // (mels, nfft/2 + 1)
     private let fftSetup: FFTSetupD
@@ -106,7 +106,7 @@ final class MouthVisemes {
     private var history: [[Float]]      // per layer: its last (k-1)*d+1 inputs, oldest first, flattened
     private var hops = 0
 
-    init(model: MouthVisemeModel) {
+    init(model: MouthVibecodeModel) {
         self.model = model
         let h = model.header
         hamming = (0..<h.win).map { 0.54 - 0.46 * cos(2 * Double.pi * Double($0) / Double(h.win - 1)) }
@@ -151,7 +151,7 @@ final class MouthVisemes {
     // MARK: - Features
 
     /// HTK mel triangles from `fmin` to `fmax` over the power spectrum's bins (`mel_bank`).
-    static func melBank(_ h: MouthVisemeModel.Header) -> [Double] {
+    static func melBank(_ h: MouthVibecodeModel.Header) -> [Double] {
         func mel(_ f: Double) -> Double { 2595 * log10(1 + f / 700) }
         func hz(_ m: Double) -> Double { 700 * (pow(10, m / 2595) - 1) }
         let lo = mel(h.fmin), hi = mel(h.fmax), bins = h.nfft / 2 + 1
@@ -248,7 +248,7 @@ final class MouthVisemes {
     }
 }
 
-/// Acts out the viseme net's shapes: the reader's syllable jaw still decides how open the mouth is,
+/// Acts out the Vibecode net's shapes: the reader's syllable jaw still decides how open the mouth is,
 /// the shapes decide what the lips do. Each lip channel goes pose to pose (`MouthMoveFollower`), and
 /// a seal or an f/v is held long enough to read.
 struct MouthShaper: Sendable {

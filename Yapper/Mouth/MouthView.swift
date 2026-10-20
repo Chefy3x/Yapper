@@ -169,7 +169,7 @@ struct MouthDirector {
     private var smoother = MouthDriveSmoother()
     /// The jaw goes pose to pose; width and teeth ease on a spring.
     private var jawMoves = MouthMoveFollower()
-    /// The lips act out the viseme net's shapes, when it runs.
+    /// The lips act out the Vibecode net's shapes, when it runs.
     private var shaper = MouthShaper()
     /// The last frame (pose, head turn, squash), and the mode it was made in.
     private struct Shown { var pose = MouthPose(), head = SIMD3<Float>.zero, squash: Float = 0 }
@@ -195,7 +195,7 @@ struct MouthDirector {
             let raw = drive(now)
             var d = smoother.step(raw, dt: dt)
             d.J = jawMoves.step(raw.J, dt: dt)
-            // with the viseme net running, its shapes set the lips; the reader's jaw still sets how open
+            // with the Vibecode net running, its shapes set the lips; the reader's jaw still sets how open
             let lips = raw.hasShape ? shaper.step(raw.shape, dt: dt) : nil
             if lips == nil { shaper.reset() }
             let acted = performance.step(J: d.J, W: lips?.W ?? d.W, T: d.T, dt: dt)

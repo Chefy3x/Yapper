@@ -3,7 +3,7 @@ import AVFoundation
 import QuartzCore
 
 /// One moment of the mouth as the voice reader hears it: jaw J (0 shut … 1 a big "ah"), width W
-/// (negative is round) and teeth together T, plus the shape the viseme net hears (all zero when it
+/// (negative is round) and teeth together T, plus the shape the Vibecode net hears (all zero when it
 /// isn't running or hasn't caught up).
 struct MouthDrive: Sendable, Equatable {
     var J: Float = 0, W: Float = 0, T: Float = 0
@@ -15,10 +15,10 @@ struct MouthDrive: Sendable, Equatable {
                    shape: shape + (other.shape - shape) * k)
     }
 
-    /// Whether the viseme net said anything about this moment.
+    /// Whether the Vibecode net said anything about this moment.
     var hasShape: Bool { shape.sum() > 0.5 }
 
-    /// The reader's frames with the viseme net's answers from the same samples. The net answers for
+    /// The reader's frames with the Vibecode net's answers from the same samples. The net answers for
     /// the hop `lookahead` hops back, so `shape` here belongs to an earlier drive: MouthTimeline puts
     /// it back where it belongs (`add(_:at:shapeLag:)`).
     static func zip(_ frames: [MouthFrame], _ shapes: [MouthShapes?]?) -> [MouthDrive] {
@@ -41,30 +41,30 @@ extension MouthVoiceReading {
 }
 
 /// The live reader (`MouthReader`), remembering what it learns about your voice and mic between
-/// turns so the mouth starts tuned, and the viseme net for the lips' shapes (without its weights,
+/// turns so the mouth starts tuned, and the Vibecode net for the lips' shapes (without its weights,
 /// the reader alone drives the mouth).
 final class MouthReaderVoice: MouthVoiceReading {
     static let statsKey = "mouthSpeakerStats"
     private let reader: MouthReader
-    private let visemes: MouthVisemes?
+    private let vibecode: MouthVibecode?
 
     init(shapes: Bool = true) {
         let saved = UserDefaults.standard.data(forKey: Self.statsKey).flatMap { try? JSONDecoder().decode(SpeakerStats.self, from: $0) }
         reader = MouthReader(sampleRate: MouthLive.rate, stats: saved)
-        visemes = shapes ? (try? MouthVisemeModel.bundled()).map(MouthVisemes.init(model:)) : nil
+        vibecode = shapes ? (try? MouthVibecodeModel.bundled()).map(MouthVibecode.init(model:)) : nil
     }
 
-    var shapeLag: Int { visemes?.lookahead ?? 0 }
+    var shapeLag: Int { vibecode?.lookahead ?? 0 }
 
     func feed(_ samples: UnsafeBufferPointer<Float>) -> [MouthDrive] {
-        MouthDrive.zip(reader.feed(samples), visemes?.feed(samples))
+        MouthDrive.zip(reader.feed(samples), vibecode?.feed(samples))
     }
 
     /// A new turn: keep what was learned (saved for next launch too), clear the moment-to-moment state.
     func reset() {
         if let data = try? JSONEncoder().encode(reader.stats) { UserDefaults.standard.set(data, forKey: Self.statsKey) }
         reader.reset()
-        visemes?.reset()
+        vibecode?.reset()
     }
 }
 
@@ -79,7 +79,7 @@ struct MouthTimeline: Sendable {
     static let playout: CFTimeInterval = 0.045
 
     private(set) var drives: [(t: CFTimeInterval, d: MouthDrive)] = []
-    /// The viseme net's shapes, stamped with their drive's time. They arrive a few hops after it.
+    /// The Vibecode net's shapes, stamped with their drive's time. They arrive a few hops after it.
     private(set) var shapes: [(t: CFTimeInterval, s: MouthShapes)] = []
     /// Seconds of audio the reader has turned into drives.
     private var heard: Double = 0
