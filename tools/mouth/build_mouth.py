@@ -613,14 +613,21 @@ gum_lower = gum_band("GumLower", -0.07, -0.75, low_y - 0.01, 0.06, 0.92)
 gum_upper = gum_band("GumUpper", 0.95, 0.35, 0.26, 0.05, 1.1)
 
 # the tongue: a broad pink mound behind the lower teeth, its top near their tips, with a dip at the
-# middle of its top edge; on a big open it fills the bottom of the hole
-m_tongue2 = toon("Tongue2", srgb(0xF06A66), srgb(0xC23E40), cut=0.2)
+# middle of its top edge; on a big open it fills the bottom of the hole. Read from the reference
+# video: a groove runs down its middle (a pressed-in crease and a fine darker line), its rounded tip
+# catches the light and it darkens towards the back and the sides.
+TONGUE_STROKES = [(0.25, 0.60, 0.93, 0.0)]          # the centre line, in the sphere's (u, v): u 0.25 faces the camera
+m_tongue2 = matte("Tongue2", srgb(0xA8303A), srgb(0xF06A66), srgb(0xFF9C90), 0.12, 0.25,
+                  strokes=TONGUE_STROKES, stroke_col=srgb(0xB3343C))
 bpy.ops.mesh.primitive_uv_sphere_add(segments=32, ring_count=16, radius=1)
 tongue = bpy.context.active_object; tongue.name = "Tongue"
-tongue.scale = (0.72, 0.05, 0.36); tongue.location = (0, 0.555, 0.10)
+tongue.data.uv_layers[0].name = "st"                 # the materials read their strokes from "st"
+tongue.scale = (0.72, 0.06, 0.36); tongue.location = (0, 0.555, 0.10)
 bpy.ops.object.transform_apply(location=True, scale=True)
 for v in tongue.data.vertices:
-    x, z = v.co.x, v.co.z
+    x, y, z = v.co.x, v.co.y, v.co.z
+    if y < 0.555:                                                    # the front face: the groove down the middle
+        v.co.y += 0.02 * math.exp(-(x / 0.06) ** 2) * min(1.0, max(0.0, (z + 0.1) / 0.3))
     v.co.y += wrap(x) * 0.8                                          # follow the curve of the face
     v.co.z -= 0.07 * math.exp(-(x / 0.10) ** 2) * max(0.0, z - 0.1) / 0.4
 ink_shell(tongue, m_tongue2); tongue.parent = rig
@@ -635,15 +642,31 @@ def hole(s):                                  # a narrow bump at the centre: a r
     return ell(s, 0.24)
 def hole_o(s):                                # the round hole of an O: the sides stay sealed
     return ell(s, 0.34)
+JAW_LIMIT = 1.7                               # the jaw's full range: past the reader's loudest syllable (1.2), wide-open vowels
+O_PUSH = 0.08                                 # how far an O pushes the lips forward
+# the top front teeth's tips, the bottom front teeth's tips at rest and their distance from the hinge
+UPPER_TOOTH_TIP, LOWER_TOOTH_TOP, LOWER_TOOTH_ARM = -0.17, 0.29, 2.95
+def o_ring(s, outer, top, bot, tooth_top):
+    """Where a lip point sits in an O (x, z): the lip edge on a round hole whose top lip just covers
+    the top teeth's tips and whose bottom lip just covers the bottom teeth's (tooth_top, where the jaw
+    has swung them), the outer edge on a ring round it. s runs corner to corner."""
+    rz = max(0.03, 0.65 * (UPPER_TOOTH_TIP - tooth_top)); rx = 0.04 + 0.9 * rz
+    zc = 0.5 * (UPPER_TOOTH_TIP + tooth_top)
+    ex, ez = (rx + 0.45, rz + 0.32) if outer else (rx, rz)
+    th = math.pi * (1 - s)
+    sign = 1.0 if top else (-1.0 if bot else 0.0)
+    return ex * math.cos(th), zc + sign * ez * math.sin(th)
 def anat_targets(J=0.0, wide=0.0, pucker=0.0, funnel=0.0, part=0.0, close=0.0, slide=0.0, roll_u=0.0, roll_l=0.0,
                  smile=(0.0, 0.0), upper_up=(0.0, 0.0), lower_down=(0.0, 0.0), fv=0.0, shift=0.0):
-    """fv: F/V. The jaw nearly shut; the lower lip's centre rolls up and back and tucks under the
+    """(The app also lifts the tongue's tip for L/TH, on top of the jaw: MouthRig.tongueMatrix. The
+    tongue stays rigid on the jaw here; no still uses the lift.)
+    fv: F/V. The jaw nearly shut; the lower lip's centre rolls up and back and tucks under the
     upper front teeth, which rest on it; the upper lip lifts a little so those teeth show. The teeth
     never move for it: only the lips do."""
     J = J + 0.07 * fv * (1 - J)
     """Per-bone targets [angle, ox, oy, oz, sy, sz] plus the jaw. J 0..1.2 (1 = a big 'ah', ~11 deg).
     part: lips part over closed teeth (s, t, ee); close: lips seal over an open jaw (m, b, p)."""
-    J = max(0.0, min(1.2, J))
+    J = max(0.0, min(JAW_LIMIT, J))
     # slide: the jaw comes forward and down as it opens; shift: it moves a little to one side
     u_ = sm(0.25, 1.0, J); slideV = Vector((shift, -0.09 * slide * u_, -0.015 * slide * u_))
     tg = {"_jaw": (J, slideV)}
@@ -694,6 +717,18 @@ def anat_targets(J=0.0, wide=0.0, pucker=0.0, funnel=0.0, part=0.0, close=0.0, s
             off.y += (0.10 if outer else 0.32) * f_
             if not outer: sz *= 1 - 0.25 * f_; sy *= 1 - 0.3 * f_
         off += slideV * FOLLOW[name] / 0.72
+        # an O, as a real mouth makes it: the lip edge settles onto a round hole and the outer edge onto
+        # a ring around it, so the top lip covers the top teeth, the bottom lip rides up over the
+        # bottom ones and the jaw opens a dark hole between them
+        o_ = sm(0.0, 1.0, pucker)
+        if o_ > 0:
+            a_ = JAW_MAX * J * FOLLOW[name]
+            ry, rz_ = p.y - HINGE.y, p.z - HINGE.z
+            swung_z = math.sin(a_) * ry + math.cos(a_) * rz_ + HINGE.z
+            rx_t, rz_t = o_ring(s_, outer, top, bot, LOWER_TOOTH_TOP - LOWER_TOOTH_ARM * math.sin(JAW_MAX * J))
+            off.x += (rx_t - p.x - off.x) * o_
+            off.z += (rz_t - swung_z - off.z) * o_
+            off.y -= O_PUSH * o_ * c_
         if outer: sy, sz = 1.0, 1.0
         tg[name] = [JAW_MAX * J * FOLLOW[name], off.x, off.y, off.z, sy, sz]
     return tg
@@ -902,6 +937,9 @@ def export(rig_path, fix_dir):
             info["band"] = 0.13; info["bandTint"] = [0.58, 0.55, 0.55]
             info["strokes"] = [list(st) for st in (UP_STROKES if m.name == "LipUpper" else LO_STROKES)]
             info["strokeColor"] = list(srgb(0x7A130F)); info["strokeWidth"] = 0.0055
+        if m.name == "Tongue2":
+            info["strokes"] = [list(st) for st in TONGUE_STROKES]
+            info["strokeColor"] = list(srgb(0xB3343C)); info["strokeWidth"] = 0.0055
         return info
 
     mats, mat_ix = [], {}

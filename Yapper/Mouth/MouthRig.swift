@@ -25,6 +25,9 @@ struct MouthPose: Equatable, Sendable {
     var lowerDown = SIMD2<Float>(0, 0)
     /// F/V: the lower lip tucks under the upper front teeth. The teeth never move for it.
     var fv: Float = 0
+    /// The tongue on top of the jaw it rides: lifted towards the top teeth (ee, l), and brought
+    /// forward over the bottom teeth (ah, th).
+    var tongue: Float = 0, tongueOut: Float = 0
 
     /// `a` at 0, `b` at 1, every channel straight between.
     static func mix(_ a: MouthPose, _ b: MouthPose, _ t: Float) -> MouthPose {
@@ -35,7 +38,7 @@ struct MouthPose: Equatable, Sendable {
                          slide: m(a.slide, b.slide), shift: m(a.shift, b.shift),
                          rollUpper: m(a.rollUpper, b.rollUpper), rollLower: m(a.rollLower, b.rollLower),
                          smile: m(a.smile, b.smile), upperUp: m(a.upperUp, b.upperUp),
-                         lowerDown: m(a.lowerDown, b.lowerDown), fv: m(a.fv, b.fv))
+                         lowerDown: m(a.lowerDown, b.lowerDown), fv: m(a.fv, b.fv), tongue: m(a.tongue, b.tongue), tongueOut: m(a.tongueOut, b.tongueOut))
     }
 
     /// From the voice reader's two Osipa channels plus teeth: jaw J, width W (negative is round),
@@ -52,6 +55,8 @@ struct MouthPose: Equatable, Sendable {
 struct MouthTargets: Sendable {
     var jaw: Float
     var slide: SIMD3<Float>
+    /// How far the tongue is lifted and brought forward, 0…1.
+    var tongue: Float = 0, tongueOut: Float = 0
     /// Indexed by bone; lanes 0…5 are angle, ox, oy, oz, sy, sz. Root and jaw stay zero.
     var bones: [SIMD8<Float>]
 }
@@ -106,7 +111,7 @@ struct MouthRig: Sendable {
 
     func targets(_ q: MouthPose) -> MouthTargets {
         var J = q.J + 0.07 * q.fv * (1 - q.J)
-        J = min(1.2, max(0, J))
+        J = min(Self.jawLimit, max(0, J))
         let u = Self.smooth(0.25, 1.0, J)
         let slide = SIMD3<Float>(q.shift, -0.09 * q.slide * u, -0.015 * q.slide * u)
         let dropAt = { (f: Float) -> Float in 3.4 * sin(jawMax * J * f) }
@@ -153,10 +158,24 @@ struct MouthRig: Sendable {
                 if !n.outer { sz *= 1 - 0.25 * f; sy *= 1 - 0.3 * f }
             }
             off += slide * n.follow / 0.72
+            // an O, as a real mouth makes it: the lip edge settles onto a round hole and the outer edge
+            // onto a ring around it, so the top lip covers the top teeth, the bottom lip rides up over
+            // the bottom ones and the jaw opens a dark hole between them
+            let o = Self.smooth(0, 1, q.pucker)
+            if o > 0 {
+                let a = jawMax * J * n.follow
+                let rel = SIMD2(n.p.y - hinge.y, n.p.z - hinge.z)
+                let swung = SIMD2(cos(a) * rel.x - sin(a) * rel.y, sin(a) * rel.x + cos(a) * rel.y) + SIMD2(hinge.y, hinge.z)
+                let ring = Self.oRing(s: s, outer: n.outer, top: n.top, bot: n.bot, toothTop: Self.lowerToothTop - Self.lowerToothArm * sin(jawMax * J))
+                let want = SIMD2(ring.x - n.p.x, ring.y - swung.y)
+                off.x += (want.x - off.x) * o
+                off.z += (want.y - off.z) * o
+                off.y -= Self.oPush * o * c
+            }
             if n.outer { sy = 1; sz = 1 }
             bones[n.bone] = SIMD8(jawMax * J * n.follow, off.x, off.y, off.z, sy, sz, 0, 0)
         }
-        return MouthTargets(jaw: J, slide: slide, bones: bones)
+        return MouthTargets(jaw: J, slide: slide, tongue: min(1, max(0, q.tongue)), tongueOut: min(1, max(0, q.tongueOut)), bones: bones)
     }
 
     /// Skinning matrices, one per bone, in the rig's space. `smear` (per bone: stretch, shift) is
@@ -175,6 +194,39 @@ struct MouthRig: Sendable {
     }
 
     // MARK: shared shapes
+
+    /// The tongue's own move on top of the jaw: lifted towards the top teeth and brought forward over
+    /// the bottom ones, once the jaw has dropped it (Swift-only: the Blender stills never
+    /// move it).
+    func tongueMatrix(_ t: MouthTargets, jaw: simd_float4x4) -> simd_float4x4 {
+        // it lifts as soon as the jaw opens a little, but comes forward only once the jaw has dropped it
+        // clear of the top teeth, or it would come through them
+        let up = Self.smooth(0.1, 0.55, t.jaw), out = Self.smooth(0.3, 0.85, t.jaw)
+        return jaw * Self.translation(SIMD3(0, -Self.tongueForward * t.tongueOut * out, Self.tongueLift * t.tongue * up))
+    }
+    static let tongueLift: Float = 0.5, tongueForward: Float = 0.16
+
+    /// The jaw's full range: past the reader's loudest syllable (1.2), the wide-open vowels go to here.
+    static let jawLimit: Float = 1.7
+
+    /// How far an O pushes the lips forward.
+    static let oPush: Float = 0.08
+
+    /// The top front teeth's tips, and the bottom front teeth's tips at rest and their distance from
+    /// the hinge (they swing down with the jaw), in the rig's space.
+    static let upperToothTip: Float = -0.17, lowerToothTop: Float = 0.29, lowerToothArm: Float = 2.95
+
+    /// Where a lip point sits in an O (x, z): the lip edge on a round hole whose top lip just covers
+    /// the top teeth's tips and whose bottom lip just covers the bottom teeth's (`toothTop`, where
+    /// the jaw has swung them), the outer edge on a ring round it. `s` runs corner to corner.
+    static func oRing(s: Float, outer: Bool, top: Bool, bot: Bool, toothTop: Float) -> SIMD2<Float> {
+        let rz = max(0.03, 0.65 * (upperToothTip - toothTop)), rx = 0.04 + 0.9 * rz   // the hole
+        let zc = 0.5 * (upperToothTip + toothTop)
+        let (ex, ez) = outer ? (rx + 0.45, rz + 0.32) : (rx, rz)
+        let th = Float.pi * (1 - s)
+        let sign: Float = top ? 1 : (bot ? -1 : 0)
+        return SIMD2(ex * cos(th), zc + sign * ez * sin(th))
+    }
 
     static func smooth(_ e0: Float, _ e1: Float, _ v: Float) -> Float {
         let u = min(1, max(0, (v - e0) / (e1 - e0))); return u * u * (3 - 2 * u)

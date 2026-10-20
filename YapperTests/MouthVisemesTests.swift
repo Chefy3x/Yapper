@@ -166,12 +166,52 @@ struct MouthVisemesTests {
             t += dt
         }
         #expect(peak > 0.8, "a quick m should still seal the lips: \(peak)")
-        // oo rounds (negative width), ee spreads
-        var w: Float = 0
-        for _ in 0..<60 { w = shaper.step(oo, dt: dt).W }
-        #expect(w < -0.9)
-        var pose = MouthPose(J: 0.5)
-        MouthShaper.apply(close: 1, fv: 0, part: 0, to: &pose)
-        #expect(pose.close == 1 && pose.J < 0.5)
+        // oo rounds
+        var l = MouthShaper.Lips()
+        for _ in 0..<60 { l = shaper.step(oo, dt: dt) }
+        #expect(MouthShaper.width(l) < -0.9)
+    }
+
+    /// The shapes the reference video shows with the teeth nearly together hold the jaw there
+    /// however loud the syllable is; ah leaves it to the reader.
+    @Test func shapesLimitTheJaw() {
+        func settle(_ shape: MouthShape, readerJ: Float) -> MouthPose {
+            var shaper = MouthShaper()
+            var s = MouthShapes(); s[shape.rawValue] = 1
+            var l = MouthShaper.Lips()
+            for _ in 0..<60 { l = shaper.step(s, dt: 0.01) }
+            var pose = MouthPose(J: readerJ)
+            MouthShaper.apply(l, to: &pose)
+            return pose
+        }
+        let m = settle(.mbp, readerJ: 0.7)
+        #expect(m.J < 0.06 && m.close > 0.95 && m.rollUpper > 0.3)
+        let f = settle(.fv, readerJ: 0.7)
+        #expect(f.J < 0.05 && f.fv > 0.95)
+        let s = settle(.teeth, readerJ: 0.7)
+        #expect(s.J <= MouthShaper.lips(.teeth).jaw + 0.01 && s.part > 0.8 && s.upperUp.x > 0.4)
+        let sh = settle(.sh, readerJ: 0.7)
+        #expect(sh.J <= MouthShaper.lips(.sh).jaw + 0.01 && sh.funnel > 0.9)
+        #expect(settle(.ah, readerJ: 1.5).J == 1.5)                      // a loud ah: the reader's jaw
+        #expect(settle(.ah, readerJ: 0.2).J >= MouthShaper.lips(.ah).open - 0.01)   // a quiet one still opens
+        // an O opens wide enough to show the dark inside, even said quietly
+        let o = settle(.oo, readerJ: 0.2)
+        #expect(o.J >= MouthShaper.lips(.oo).open - 0.01 && o.pucker > 0.5)
+    }
+
+    /// A net that flickers between two shapes every 30 ms doesn't make the mouth flicker: it holds
+    /// one shape at least `minHold`, and a clear new shape still gets through.
+    @Test func shaperHoldsThroughFlicker() {
+        var shaper = MouthShaper()
+        func one(_ s: MouthShape, _ k: Float = 0.6) -> MouthShapes { var v = MouthShapes(); v[s.rawValue] = k; v[MouthShape.rest.rawValue] = 1 - k; return v }
+        var switches = 0, last: MouthShape?
+        for i in 0..<100 {                                   // 1 s of ah / ee flicker, 10 ms steps
+            let c = shaper.commit((i / 3) % 2 == 0 ? one(.ah) : one(.ee), dt: 0.01)
+            if let l = last, l != c { switches += 1 }
+            last = c
+        }
+        #expect(switches <= 1000 / Int(MouthShaper.minHold * 1000), "flicker came through: \(switches) switches")
+        for _ in 0..<30 { last = shaper.commit(one(.oo, 0.9), dt: 0.01) }
+        #expect(last == .oo)
     }
 }
