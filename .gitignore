@@ -41,3 +41,6 @@ CLAUDE.local.md
 
 # Python bytecode (tools/)
 __pycache__/
+
+# Local Claude Code workspace: recordings, videos and session files — never commit
+.claude/
