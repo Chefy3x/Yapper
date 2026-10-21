@@ -168,6 +168,7 @@ struct MouthDirector {
     private var performance = MouthPerformance()
     private var smoother = MouthDriveSmoother()
     /// The jaw goes pose to pose; width and teeth ease on a spring.
+    private var jawMass = MouthJawMass()
     private var jawMoves = MouthMoveFollower()
     /// The lips act out the viseme net's shapes, when it runs.
     private var shaper = MouthShaper()
@@ -206,7 +207,7 @@ struct MouthDirector {
         var head = SIMD3<Float>.zero, squash: Float = 0
         switch mode {
         case .live:
-            if shownMode != .live { smoother.reset(); jawMoves.reset(); shaper.reset(); quiet = 0; behind = 0; breath = 0 }
+            if shownMode != .live { smoother.reset(); jawMoves.reset(); shaper.reset(); jawMass.reset(); quiet = 0; behind = 0; breath = 0 }
             let playhead = now - behind
             let raw = drive(playhead)
             quiet = raw.speaking > 0.5 ? 0 : quiet + Double(dt)
@@ -222,7 +223,7 @@ struct MouthDirector {
             if lips == nil { shaper.reset() }
             let acted = performance.step(J: d.J, W: lips.map(MouthShaper.width) ?? d.W, T: d.T, dt: dt)
             pose = acted.pose; head = acted.head; squash = acted.squash
-            if let lips { MouthShaper.apply(lips, to: &pose) }
+            if let lips { MouthShaper.apply(lips, to: &pose) { jawMass.step($0, dt: dt) } }
             // a breath before the next words: the lips part and the head lifts as the first word nears
             var lead: Double?
             if quiet > Self.slowAfter {

@@ -51,12 +51,13 @@ final class MouthReaderVoice: MouthVoiceReading {
     /// an "s" and parted the lips over the teeth in every pause, so it waits for a model that passes.
     static let shapesKey = "mouthShapes"
     private let reader: MouthReader
-    private let visemes: MouthVisemes?
+    private let visemes: MouthEar?
 
     init(shapes: Bool = UserDefaults.standard.bool(forKey: MouthReaderVoice.shapesKey)) {
         let saved = UserDefaults.standard.data(forKey: Self.statsKey).flatMap { try? JSONDecoder().decode(SpeakerStats.self, from: $0) }
         reader = MouthReader(sampleRate: MouthLive.rate, stats: saved)
-        visemes = shapes ? (try? MouthVisemeModel.bundled()).map(MouthVisemes.init(model:)) : nil
+        // the WavLM ear when it's installed, else the bundled small net
+        visemes = shapes ? MouthWavLM.installed() ?? (try? MouthVisemeModel.bundled()).map(MouthVisemes.init(model:)) : nil
     }
 
     var shapeLag: Int { visemes?.lookahead ?? 0 }
@@ -82,6 +83,11 @@ struct MouthTimeline: Sendable {
     /// How far behind the audio the mouth plays: covers a Bluetooth headset's ~30 ms buffers as
     /// well as the drain's 10 ms.
     static let playout: CFTimeInterval = 0.045
+    /// This timeline's playout: longer for an ear that hears further ahead, so its shapes are in
+    /// before the mouth needs them (the jaw waits with them, keeping the two together).
+    var playout: CFTimeInterval = MouthTimeline.playout
+
+    static func playout(shapeLag: Int) -> CFTimeInterval { max(playout, Double(shapeLag) * hop + 0.005) }
 
     private(set) var drives: [(t: CFTimeInterval, d: MouthDrive)] = []
     /// The viseme net's shapes, stamped with their drive's time. They arrive a few hops after it.
@@ -121,7 +127,7 @@ struct MouthTimeline: Sendable {
 
     /// Where the mouth should be at host time `now`: the readings, a little behind, blended.
     func drive(at now: CFTimeInterval) -> MouthDrive {
-        let t = now - Self.playout
+        let t = now - playout
         guard let last = drives.last else { return .rest }
         var d: MouthDrive
         if t >= last.t {
@@ -223,7 +229,10 @@ struct MouthMoveFollower: Sendable {
 final class MouthLive: @unchecked Sendable {
     static let rate: Double = 16_000
 
-    private let reader: MouthVoiceReading
+    private var reader: MouthVoiceReading
+    /// Builds a new reader when the ear picked in Settings changes.
+    private let makeReader: (() -> MouthVoiceReading)?
+    private var readerEar: String
     private let queue = DispatchQueue(label: "app.yapper.mouth", qos: .userInteractive)
     private var timer: DispatchSourceTimer?
 
@@ -236,14 +245,25 @@ final class MouthLive: @unchecked Sendable {
     // drained on the queue
     private var converter: AVAudioConverter?
     private var inputFormat: AVAudioFormat?
+    /// Made once per turn: allocating while holding `ringLock` stalls the audio thread waiting on
+    /// it, and under memory pressure that stall is long enough to crackle the mic.
+    private var drainBuffer: AVAudioPCMBuffer?
     private let outputFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: MouthLive.rate, channels: 1, interleaved: false)!
 
     // read on the render thread
     private let drivesLock = NSLock()
     private var timeline = MouthTimeline()
 
-    init(reader: MouthVoiceReading = MouthReaderVoice()) {
+    /// The app's: a `MouthReaderVoice`, rebuilt at the next turn when another ear is picked.
+    convenience init() {
+        self.init(reader: MouthReaderVoice(), rebuild: { MouthReaderVoice() })
+    }
+
+    init(reader: MouthVoiceReading, rebuild: (() -> MouthVoiceReading)? = nil) {
         self.reader = reader
+        makeReader = rebuild
+        readerEar = MouthWavLM.chosenHead
+        timeline.playout = MouthTimeline.playout(shapeLag: reader.shapeLag)
         ring = .allocate(capacity: capacity)
         ring.initialize(repeating: 0, count: capacity)
     }
@@ -255,9 +275,14 @@ final class MouthLive: @unchecked Sendable {
         queue.async { [self] in
             inputFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: inputRate, channels: 1, interleaved: false)
             converter = inputFormat.flatMap { AVAudioConverter(from: $0, to: outputFormat) }
+            drainBuffer = inputFormat.flatMap { AVAudioPCMBuffer(pcmFormat: $0, frameCapacity: AVAudioFrameCount(capacity)) }
             reader.reset()
+            if let makeReader, MouthWavLM.chosenHead != readerEar {
+                reader = makeReader()
+                readerEar = MouthWavLM.chosenHead
+            }
             ringLock.lock(); ringWrite = 0; ringCount = 0; ringLock.unlock()
-            drivesLock.lock(); timeline.reset(); drivesLock.unlock()
+            drivesLock.lock(); timeline.reset(); timeline.playout = MouthTimeline.playout(shapeLag: reader.shapeLag); drivesLock.unlock()
             let t = DispatchSource.makeTimerSource(queue: queue)
             t.schedule(deadline: .now(), repeating: .milliseconds(10), leeway: .milliseconds(2))
             t.setEventHandler { [weak self] in self?.drain() }
@@ -286,13 +311,11 @@ final class MouthLive: @unchecked Sendable {
     }
 
     private func drain() {
-        guard let converter, let inputFormat else { return }
+        guard let converter, let inputFormat, let input = drainBuffer else { return }
+        let dst = input.floatChannelData![0]
         ringLock.lock()
         let n = ringCount
-        guard n > 0, let input = AVAudioPCMBuffer(pcmFormat: inputFormat, frameCapacity: AVAudioFrameCount(n)) else {
-            ringLock.unlock(); return
-        }
-        let dst = input.floatChannelData![0]
+        guard n > 0 else { ringLock.unlock(); return }
         let begin = (ringWrite - n + capacity) % capacity
         for i in 0..<n { dst[i] = ring[(begin + i) % capacity] }
         ringCount = 0

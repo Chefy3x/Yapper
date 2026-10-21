@@ -13,7 +13,7 @@ import UniformTypeIdentifiers
 /// <folder>/jaw.csv; YAPPER_MOUTH_FILM_AUDIO picks the speech (default site/audio/river-1.mp3),
 /// YAPPER_MOUTH_FILM_FPS the frame rate (default 60), YAPPER_MOUTH_FILM_TRUTH a file of the shapes
 /// really said (one MouthShape index per 10 ms hop) to use in place of the net's, and
-/// YAPPER_MOUTH_SHAPES=0 leaves out the viseme net. Join the frames with the audio using ffmpeg.
+/// YAPPER_MOUTH_SHAPES=0 leaves out the ear. Join the frames with the audio using ffmpeg.
 struct MouthFilm {
     nonisolated static let env = ProcessInfo.processInfo.environment
     nonisolated static let outDir = env["YAPPER_MOUTH_FILM"]
@@ -35,9 +35,12 @@ struct MouthFilm {
         // YAPPER_MOUTH_FILM_TRUTH=<file>: the shapes really said, one MouthShape index per 10 ms hop, in
         // place of the net's, to judge the poses apart from the hearing
         let truth = try Self.env["YAPPER_MOUTH_FILM_TRUTH"].map { try String(contentsOfFile: $0, encoding: .utf8).split(separator: "\n").compactMap { Int($0) } }
-        let visemes = Self.env["YAPPER_MOUTH_SHAPES"] == "0" || truth != nil ? nil : MouthVisemes(model: try MouthVisemesTests.model())
+        // the app's ear: WavLM when it's installed, else the bundled net
+        if let ear = MouthWavLM.installed() { _ = try ear.encoder.loadNow() }
+        let visemes: MouthEar? = Self.env["YAPPER_MOUTH_SHAPES"] == "0" || truth != nil ? nil : try MouthWavLM.installed() ?? MouthVisemes(model: MouthVisemesTests.model())
         var hops = 0
         var timeline = MouthTimeline()
+        timeline.playout = MouthTimeline.playout(shapeLag: visemes?.lookahead ?? 0)
         var director = MouthDirector()
 
         // The mic hands over 10 ms at a time and each is read 2 ms later, as in the app.

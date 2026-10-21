@@ -2,9 +2,10 @@ import Accelerate
 import Foundation
 import simd
 
-/// The mouth shapes the viseme net tells apart: what the rig can show for each sound.
+/// The mouth shapes the viseme net tells apart: what the rig can show for each sound. The small nets
+/// hear 10 (`l` is l and th together); the WavLM ear hears `th` apart, with the tongue between the teeth.
 enum MouthShape: Int, CaseIterable, Sendable {
-    case rest, mbp, fv, oo, oh, ee, ah, teeth, lth, sh
+    case rest, mbp, fv, oo, oh, ee, ah, teeth, l, sh, th
 }
 
 /// How sure the net is of each `MouthShape` at one moment, in `MouthShape` order. All zero means
@@ -88,6 +89,7 @@ struct MouthVisemeModel: Sendable {
         guard let url = Bundle.main.url(forResource: "visemes", withExtension: "bin") else { throw LoadError.missing }
         return try MouthVisemeModel(data: Data(contentsOf: url))
     }
+
 }
 
 /// Reads mouth shapes from the voice: 16 kHz mono in, one `MouthShapes` per 10 ms hop out, `lookahead`
@@ -334,6 +336,25 @@ struct MouthHum: Sendable {
     }
 }
 
+/// The jaw's weight. The shapes put it wide open for an "ah" and shut for a t or a b, which is right
+/// for a held sound but flaps on fast speech, so it eases there at about `openHz` and `closeHz`: a quick syllable gets
+/// part of the way, a held one all of it.
+struct MouthJawMass: Sendable {
+    static let openHz: Float = 6.5, closeHz: Float = 4
+    private var x: Float?, v: Float = 0
+
+    mutating func reset() { x = nil; v = 0 }
+
+    /// A critically damped spring, in 5 ms substeps.
+    mutating func step(_ target: Float, dt: Float) -> Float {
+        guard var p = x, dt > 0 else { x = target; v = 0; return target }
+        let w = 2 * Float.pi * (target > p ? Self.openHz : Self.closeHz), n = max(1, Int((dt / 0.005).rounded(.up))), h = dt / Float(n)
+        for _ in 0..<n { v += (w * w * (target - p) - 2 * w * v) * h; p += v * h }
+        x = p
+        return p
+    }
+}
+
 /// Acts out the viseme net's shapes, posed from reference video of a real mouth making each sound.
 /// The reader's syllable jaw decides how open the mouth is, up to the most each shape allows: m/b/p,
 /// f/v, s/t and sh are all made with the teeth nearly together however loud they are. The lips do
@@ -358,21 +379,24 @@ struct MouthShaper: Sendable {
         var flare: Float = 0
         /// Corners pulled up and back (ee, s).
         var smile: Float = 0
-        /// The tongue lifted towards the top teeth (ee, l) and brought forward over the bottom ones (ah, th).
+        /// The tongue lifted towards the top teeth (ee, l) and brought forward over the bottom ones (ah).
         var tongue: Float = 0, tongueOut: Float = 0
+        /// The tongue's tip out between the teeth (th).
+        var tongueTip: Float = 0
     }
 
     static func lips(_ s: MouthShape) -> Lips {
         switch s {
         case .rest:  Lips()
         case .mbp:   Lips(close: 1, jaw: 0.04, press: 0.45)
-        case .fv:    Lips(wide: 0.15, fv: 1, jaw: 0, upper: 0.3)
-        case .oo:    Lips(round: 1, open: 1.2, tongueOut: 0.3)
-        case .oh:    Lips(round: 0.75, open: 1.2, tongueOut: 0.3)
+        case .fv:    Lips(wide: 0.15, fv: 1, jaw: 0, upper: 0.9)
+        case .oo:    Lips(round: 1, jaw: 0.75, open: 0.65, tongueOut: 0.1)
+        case .oh:    Lips(round: 0.55, jaw: 1.7, open: 1.4, lower: -1.5, tongueOut: 0.3)
         case .ee:    Lips(wide: 1, part: 1, jaw: 0.75, open: 0.6, upper: 2.6, lower: -5.5, smile: 2.6, tongue: 0.7, tongueOut: 0.3)
         case .ah:    Lips(round: 0.2, jaw: 1.7, open: 1.35, upper: -1.3, lower: -4.5, tongue: 0.8, tongueOut: 1)
         case .teeth: Lips(wide: 0.8, part: 1, jaw: 0.14, upper: 0.9, lower: 1.8, smile: 1.4)
-        case .lth:   Lips(jaw: 1.5, open: 1.2, upper: -1, lower: -4.5, tongue: 1, tongueOut: 0.8)
+        case .l:     Lips(jaw: 1.0, open: 0.7, upper: -0.5, lower: -3, tongue: 1)
+        case .th:    Lips(wide: 0.3, part: 1, jaw: 0.3, open: 0.25, upper: 1.0, lower: 3.0, smile: 0.3, tongue: 0.8, tongueTip: 1)
         case .sh:    Lips(round: 0.3, part: 1, jaw: 0.2, upper: 0.9, lower: 1.8, flare: 1)
         }
     }
@@ -397,7 +421,7 @@ struct MouthShaper: Sendable {
     private var press = MouthMoveFollower(threshold: 0.12, shortest: 0.035, perUnit: 0.03, longest: 0.065)
     private var flare = MouthMoveFollower()
     private var smile = MouthMoveFollower()
-    private var tongue = MouthMoveFollower(), tongueOut = MouthMoveFollower()
+    private var tongue = MouthMoveFollower(), tongueOut = MouthMoveFollower(), tongueTip = MouthMoveFollower()
     private var closeHeld: (v: Float, left: Float) = (0, 0)
     private var fvHeld: (v: Float, left: Float) = (0, 0)
     private var heard: MouthShapes?
@@ -408,7 +432,7 @@ struct MouthShaper: Sendable {
     var committed: MouthShape? { shown }
 
     mutating func reset() {
-        width.reset(); close.reset(); fv.reset(); jaw.reset(); open.reset(); part.reset(); upper.reset(); lower.reset(); press.reset(); flare.reset(); smile.reset(); tongue.reset(); tongueOut.reset()
+        width.reset(); close.reset(); fv.reset(); jaw.reset(); open.reset(); part.reset(); upper.reset(); lower.reset(); press.reset(); flare.reset(); smile.reset(); tongue.reset(); tongueOut.reset(); tongueTip.reset()
         closeHeld = (0, 0); fvHeld = (0, 0)
         heard = nil; shown = nil; shownFor = 0
     }
@@ -423,8 +447,11 @@ struct MouthShaper: Sendable {
         shownFor += dt
         let steady = shapes[MouthShape.steadyLane] > 0.5    // a held sound: keep the shape
         if let now = shown, top != now, !steady {
-            let cutIn = (top == .mbp || top == .fv) && h[top.rawValue] > 0.5
-            if cutIn && h[top.rawValue] > h[now.rawValue] || shownFor >= Self.minHold && h[top.rawValue] > h[now.rawValue] + Self.margin { shown = top; shownFor = 0 }
+            let cutIn = (top == .mbp || top == .fv || top == .ah) && h[top.rawValue] > 0.5
+            // a seal or an f/v is over in a moment: holding it the full `minHold` would keep the
+            // mouth shut through the vowel after it ("my", "but")
+            let least = now == .mbp || now == .fv ? Self.hold : Self.minHold
+            if cutIn && h[top.rawValue] > h[now.rawValue] || shownFor >= least && h[top.rawValue] > h[now.rawValue] + Self.margin { shown = top; shownFor = 0 }
         } else if shown == nil { shown = top; shownFor = 0 }
         return shown!
     }
@@ -437,7 +464,7 @@ struct MouthShaper: Sendable {
         for s in MouthShape.allCases {
             let l = lips(s), k = p[s.rawValue]
             g.wide += k * l.wide; g.round += k * l.round; g.part += k * l.part
-            g.open += k * l.open; g.upper += k * l.upper; g.lower += k * l.lower; g.flare += k * l.flare; g.smile += k * l.smile; g.tongue += k * l.tongue; g.tongueOut += k * l.tongueOut
+            g.open += k * l.open; g.upper += k * l.upper; g.lower += k * l.lower; g.flare += k * l.flare; g.smile += k * l.smile; g.tongue += k * l.tongue; g.tongueOut += k * l.tongueOut; g.tongueTip += k * l.tongueTip
             if s != .mbp && s != .fv { g.jaw += k * l.jaw }
         }
         let m = MouthRig.smooth(0.2, 0.6, p[MouthShape.mbp.rawValue])
@@ -472,7 +499,7 @@ struct MouthShaper: Sendable {
         return Lips(wide: max(0, w), round: max(0, -w), close: close.step(c, dt: dt), fv: fv.step(f, dt: dt),
                     part: part.step(g.part, dt: dt), jaw: jaw.step(cap, dt: dt), open: open.step(g.open, dt: dt), upper: upper.step(g.upper, dt: dt), lower: lower.step(g.lower, dt: dt),
                     press: press.step(Self.lips(.mbp).press * c, dt: dt), flare: flare.step(g.flare, dt: dt),
-                    smile: smile.step(g.smile, dt: dt), tongue: tongue.step(g.tongue, dt: dt), tongueOut: tongueOut.step(g.tongueOut, dt: dt))
+                    smile: smile.step(g.smile, dt: dt), tongue: tongue.step(g.tongue, dt: dt), tongueOut: tongueOut.step(g.tongueOut, dt: dt), tongueTip: tongueTip.step(g.tongueTip, dt: dt))
     }
 
     /// The width to hand `MouthPerformance` in place of the reader's.
@@ -480,10 +507,14 @@ struct MouthShaper: Sendable {
 
     /// Lays the shape over a pose `MouthPerformance` made: the jaw held under the shape's limit, the
     /// round re-made for that jaw (an O opened at least `open`), then the seal, the f/v, the press, the flare and the lips on or off the teeth.
-    static func apply(_ l: Lips, to p: inout MouthPose) {
-        p.J = max(min(p.J, max(0, l.jaw)), l.open)
+    /// `weigh` takes the jaw the shape wants and gives the one shown (the director's `MouthJawMass`);
+    /// the seal and the f/v shut it after that, at their own speed.
+    static func apply(_ l: Lips, to p: inout MouthPose, weigh: (Float) -> Float = { $0 }) {
+        p.J = weigh(max(min(p.J, max(0, l.jaw)), l.open))
         // lips can only seal over a nearly shut jaw: the jaw shuts in step with the seal, not after it
         p.J = min(p.J, Self.lips(.mbp).jaw + max(0, 1 - 1.5 * l.close) * MouthRig.jawLimit)
+        // ... and the bottom lip can only reach the top teeth over one: the same for an f/v
+        p.J = min(p.J, Self.lips(.fv).jaw + max(0, 1 - 1.5 * l.fv) * MouthRig.jawLimit)
         p.pucker = l.round
         p.funnel = l.flare
         p.close = max(p.close, l.close)
@@ -495,6 +526,6 @@ struct MouthShaper: Sendable {
         // the bottom lip only rides up over the bottom teeth as far as the jaw has dropped them
         p.lowerDown = simd_max(p.lowerDown, SIMD2(repeating: l.lower)) + SIMD2(repeating: min(0, l.lower) * MouthRig.smooth(0.3, 0.65, p.J))
         p.smile = simd_max(p.smile, SIMD2(repeating: l.smile))
-        p.tongue = max(p.tongue, l.tongue); p.tongueOut = max(p.tongueOut, l.tongueOut)
+        p.tongue = max(p.tongue, l.tongue); p.tongueOut = max(p.tongueOut, l.tongueOut); p.tongueTip = max(p.tongueTip, l.tongueTip)
     }
 }

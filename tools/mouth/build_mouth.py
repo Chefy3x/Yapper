@@ -438,6 +438,13 @@ add("oc.L", edge(True, 0.0), 0.0); add("oc.R", edge(True, 1.0), 1.0)
 for i in range(1, NODES):
     add(f"u{i}", rim(True, i / NODES), i / NODES); add(f"d{i}", rim(False, i / NODES), i / NODES)
     add(f"ou{i}", edge(True, i / NODES), i / NODES); add(f"od{i}", edge(False, i / NODES), i / NODES)
+# How far apart the lip edges rest at each point along the lip: the closed pose (m, b, p) has to take
+# this up as well as the jaw's drop, or the lips stop short and show a slit of teeth. Outer nodes take
+# their inner node's gap (they move at half, as every mouth-edge move does).
+REST_GAP = {n: 0.0 for n in ("c.L", "c.R", "oc.L", "oc.R")}
+for i in range(1, NODES):
+    for n in (f"u{i}", f"d{i}", f"ou{i}", f"od{i}"): REST_GAP[n] = RING[f"u{i}"].z - RING[f"d{i}"].z
+LIP_PRESS = 0.02                               # sealed lips press a little past meeting, and flatten
 UP_IN = ["c.L"] + [f"u{i}" for i in range(1, NODES)] + ["c.R"]
 LO_IN = ["c.L"] + [f"d{i}" for i in range(1, NODES)] + ["c.R"]
 UP_OUT = ["oc.L"] + [f"ou{i}" for i in range(1, NODES)] + ["oc.R"]
@@ -692,6 +699,8 @@ def anat_targets(J=0.0, wide=0.0, pucker=0.0, funnel=0.0, part=0.0, close=0.0, s
                                + h_ * 0.05 * sm(0.4, 1.0, J)
                                + hole_o(s_) * (0.20 * pucker + 0.10 * funnel) * sm(0.05, 0.4, J))   # the O opens with the jaw
             off.z -= k_edge * c_ * 0.5 * close * drop_at(FOLLOW["d4"])      # meet the lower lip halfway
+            off.z -= k_edge * close * (0.5 * REST_GAP[name] + LIP_PRESS * c_)   # and close the gap they rest with
+            if not outer: sz *= 1 - 0.12 * close * c_
             off.y += 0.06 * roll_u * c_; sy -= 0.25 * roll_u * c_; sz -= 0.3 * roll_u * c_
             off.z += k_edge * 0.11 * fv * c_                               # F/V: lift to show the front teeth
             seal = min(1.0, pucker + funnel) * (1 - hole_o(s_))             # O: the sides close, the middle opens
@@ -703,6 +712,8 @@ def anat_targets(J=0.0, wide=0.0, pucker=0.0, funnel=0.0, part=0.0, close=0.0, s
                                + hole_o(s_) * 0.03 * (funnel + pucker) * sm(0.05, 0.4, J)
                                + ell(s_, 0.5) ** 0.7 * LOOK["oval_drop"] * sm(0.4, 1.1, J) + c_ * 0.05 * sm(0.15, 0.8, J))
             off.z += k_edge * c_ * 0.5 * close * drop_at(FOLLOW[name])      # press up to seal
+            off.z += k_edge * close * (0.5 * REST_GAP[name] + LIP_PRESS * c_)
+            if not outer: sz *= 1 - 0.12 * close * c_
             seal = min(1.0, pucker + funnel) * (1 - hole_o(s_))
             off.z += k_edge * seal * 0.5 * drop_at(FOLLOW["d" + nm_[1:]])
             # the lower lip rolls out and fills as the jaw drops (volume): its outer edge leads

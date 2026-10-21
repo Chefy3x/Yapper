@@ -1453,6 +1453,8 @@ struct VoiceInSection: View {
     @EnvironmentObject private var state: AppState
     @Environment(\.settingsSkin) private var skin
     @State private var inputDevices: [AudioInputDevice] = []
+    @AppStorage(MouthWavLM.earKey) private var mouthEar = MouthWavLM.heads[0]
+    @State private var mouthEars: [(name: String, lookahead: Int)] = []
     @ObservedObject private var formatter: SmartFormatter = AppState.shared.formatter
     @Environment(\.settingsNavigate) private var navigate
 
@@ -1488,6 +1490,10 @@ struct VoiceInSection: View {
                           isOn: $settings.dictationHUD)
                 RowDivider()
                 pillStyleRow
+                if settings.pillStyle == .mouth && mouthEars.count > 1 {
+                    RowDivider()
+                    mouthEarRow
+                }
                 RowDivider()
                 toggleRow(icon: "speaker.wave.2", title: "Sounds",
                           detail: "A soft chime when the mic opens for a hold and when the words land. Yapper takes the chime back out of the recording.",
@@ -1506,6 +1512,7 @@ struct VoiceInSection: View {
         }
         .onAppear {
             inputDevices = AudioInputDevices.list()
+            mouthEars = MouthWavLM.installedHeads()
             state.voiceInput.refreshMicrophonePermission()
         }
     }
@@ -1613,6 +1620,32 @@ struct VoiceInSection: View {
             .labelsHidden()
             .pickerStyle(.segmented)
             .frame(width: 130)
+            .disabled(!settings.voiceInputEnabled || !settings.dictationHUD)
+        }
+    }
+
+    /// Only shown when both WavLM ears are installed: which one reads the lips, and so how far behind
+    /// your voice the mouth runs. Takes effect at the next recording.
+    private var mouthEarRow: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "ear.and.waveform")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(skin.iconTint)
+                .frame(width: 22)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Mouth timing").font(skin.body(13, .semibold))
+                Text("Hearing further ahead gets more sounds right, but the mouth runs that much behind your voice.")
+                    .font(skin.body(11))
+                    .foregroundStyle(Brand.muted)
+            }
+            Spacer()
+            Picker("", selection: $mouthEar) {
+                ForEach(mouthEars, id: \.name) { ear in
+                    Text("\(ear.name) · \(Int(MouthTimeline.playout(shapeLag: ear.lookahead) * 1000)) ms").tag(ear.name)
+                }
+            }
+            .labelsHidden()
+            .frame(width: 170)
             .disabled(!settings.voiceInputEnabled || !settings.dictationHUD)
         }
     }

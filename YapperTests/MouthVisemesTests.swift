@@ -46,7 +46,7 @@ struct MouthVisemesTests {
         let m = try Self.model()
         let fx = try fixture()
         #expect(m.header.classes == fx.classes)
-        #expect(m.header.classes.count == MouthShape.allCases.count)
+        #expect(m.header.classes.count == MouthShape.th.rawValue)   // the small nets predate th
         #expect(m.lookahead == fx.lookahead)
         #expect(m.lookahead <= 4, "the shapes must arrive inside MouthTimeline's 45 ms playout")
         let weights = m.layers.reduce(0) { $0 + $1.weights.count + $1.bias.count } + m.outWeights.count + m.outBias.count
