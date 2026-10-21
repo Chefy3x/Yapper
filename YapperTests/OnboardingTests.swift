@@ -10,7 +10,12 @@ struct OnboardingGateTests {
     private func withSuite(_ body: (UserDefaults) throws -> Void) rethrows {
         let name = "app.yapper.tests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: name)!
-        defer { defaults.removePersistentDomain(forName: name) }
+        defer {
+            defaults.removePersistentDomain(forName: name)
+            // that empties the domain but leaves its plist behind: thousands piled up, one per run
+            try? FileManager.default.removeItem(at: FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent("Library/Preferences/\(name).plist"))
+        }
         try body(defaults)
     }
 
