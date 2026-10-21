@@ -179,7 +179,9 @@ struct PasteDelivery: TextDelivering {
             landed = true
             how = "seen in the field"
         }
+        var retried = false
         if !landed, field?.isTextInput ?? true {
+            retried = true
             // A ⌘V that arrived while focus was still settling, or while a modifier was down,
             // goes nowhere. Wispr Flow and Superwhisper both send it once more; so does Yapper.
             Log.voice.notice("Paste not read after \(Int(retryAfter * 1000), privacy: .public)ms; sending ⌘V again")
@@ -198,7 +200,11 @@ struct PasteDelivery: TextDelivering {
             onLanded()
             let elapsed = Date().timeIntervalSince(postedAt)
             Thread.sleep(forTimeInterval: max(afterReadGrace, minimumSettle - elapsed))
-            restoreIfUnchanged(pb, prior: prior, ourChangeCount: ourChangeCount)
+            var changeCount = ourChangeCount
+            if retried, pb.changeCount == ourChangeCount {
+                changeCount = absorbStrayPaste(pb)
+            }
+            restoreIfUnchanged(pb, prior: prior, ourChangeCount: changeCount)
             Log.voice.info("Paste \(how, privacy: .public) after \(Int(Date().timeIntervalSince(postedAt) * 1000), privacy: .public)ms")
             let readAt = promise.reads.first { $0 >= postedAt } ?? (readsBeforePaste > 0 ? postedAt : nil)
             return DeliveryReceipt(field: field, valueAfter: field?.value, readAt: readAt)
@@ -208,6 +214,31 @@ struct PasteDelivery: TextDelivering {
         restoreIfUnchanged(pb, prior: prior, ourChangeCount: ourChangeCount)
         Log.voice.notice("Paste not read; clipboard put back")
         throw DeliveryError.notPasted
+    }
+
+    /// How long a retried paste's other ⌘V gets to arrive before the old contents return.
+    static let strayPasteWindow: TimeInterval = 1.5
+
+    /// A read after a retry doesn't say which ⌘V made it. When the first was only late (a busy
+    /// or swapping Mac), the retry is still queued behind it and lands after the restore, pasting
+    /// the user's old clipboard into the composer. An empty item takes that ⌘V instead: it pastes
+    /// nothing, and its read says the stray one has come. Returns the change count to restore against.
+    @AXWorker
+    private static func absorbStrayPaste(_ pb: NSPasteboard) -> Int {
+        let sink = PastePromise(text: "")
+        let item = NSPasteboardItem()
+        item.setDataProvider(sink, forTypes: [.string])
+        pb.clearContents()
+        pb.writeObjects([item])
+        let started = Date()
+        while sink.reads.isEmpty, Date().timeIntervalSince(started) < strayPasteWindow {
+            Thread.sleep(forTimeInterval: 0.02)
+        }
+        if !sink.reads.isEmpty {
+            Thread.sleep(forTimeInterval: afterReadGrace)
+            Log.voice.notice("Absorbed the retry's second ⌘V after \(Int(Date().timeIntervalSince(started) * 1000), privacy: .public)ms")
+        }
+        return pb.changeCount
     }
 
     /// Puts the user's clipboard back — but only if nothing has written it since the paste. A
