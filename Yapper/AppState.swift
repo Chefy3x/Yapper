@@ -189,7 +189,9 @@ final class AppState: ObservableObject {
             return Punctuation.finish(formatted, mode: mode)
         }
         voiceInput.expandSnippets = { [weak self] text in self?.snippets.expand(text) ?? text }
-        recordingHUD = RecordingHUDController(state: self)
+        let hud = RecordingHUDController(state: self)
+        recordingHUD = hud
+        toast.follow(hud.presenter.model)
         voiceInput.onLevel = { [weak self] in self?.recordingHUD?.level($0) }
         // The mouth hears the mic only when the pill is on and shows it; it takes effect from the
         // next time the mic opens.

@@ -129,6 +129,36 @@ final class RecordingHUDController {
     }
 }
 
+/// The bottom-centre spot Voice In owns: the pill, and the note that sits on it or, while the pill
+/// is up, just above it. The mini player keeps out of it, so reading aloud never stacks on talking.
+@MainActor
+enum VoiceInSpot {
+    /// Room left between the spot and anything kept out of it.
+    static let gap: CGFloat = 8
+
+    static func rect(in visible: NSRect) -> NSRect {
+        RecordingHUDPresenter.frame(in: visible).union(VoiceToastPresenter.frame(in: visible, lifted: true))
+    }
+
+    /// Where `body` should sit to stay out of the spot: where it is if it's already clear, else the
+    /// shortest move left, right or up that keeps it fully on screen. Nowhere clear (a screen too
+    /// small to hold both) leaves it where it is.
+    static func clear(_ body: NSRect, in visible: NSRect) -> NSPoint {
+        let spot = rect(in: visible).insetBy(dx: -gap, dy: -gap)
+        guard body.intersects(spot) else { return body.origin }
+        let moves = [NSPoint(x: spot.minX - body.width, y: body.minY),
+                     NSPoint(x: spot.maxX, y: body.minY),
+                     NSPoint(x: body.minX, y: spot.maxY)]
+        let distance = { (p: NSPoint) in hypot(p.x - body.minX, p.y - body.minY) }
+        return moves
+            .filter { p in
+                let moved = NSRect(origin: p, size: body.size)
+                return visible.contains(moved) && !moved.intersects(spot)
+            }
+            .min { distance($0) < distance($1) } ?? body.origin
+    }
+}
+
 /// Puts the pill on screen and moves it between phases. Every animation the pill makes starts
 /// here, so the probe that records it drives exactly what the app does.
 @MainActor
@@ -218,10 +248,12 @@ final class RecordingHUDPresenter {
     /// Bottom centre of the screen you're working on, just above the Dock.
     private func position(_ panel: NSPanel) {
         guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
-        let v = screen.visibleFrame
-        let size = Self.panelSize
-        panel.setFrame(NSRect(x: v.midX - size.width / 2, y: v.minY, width: size.width, height: size.height),
-                       display: false)
+        panel.setFrame(Self.frame(in: screen.visibleFrame), display: false)
+    }
+
+    /// The pill's panel within a screen's visible frame.
+    static func frame(in v: NSRect) -> NSRect {
+        NSRect(x: v.midX - panelSize.width / 2, y: v.minY, width: panelSize.width, height: panelSize.height)
     }
 
     /// Where the pill sits on screen, for the probe that records it.

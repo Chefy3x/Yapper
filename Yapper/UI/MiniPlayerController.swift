@@ -120,6 +120,7 @@ final class MiniPlayerController: NSObject {
                     frame.origin.y = min(max(frame.origin.y, v.minY), max(v.maxY - frame.height, v.minY))
                 }
                 panel.setFrame(frame, display: true)
+                self.keepClearOfVoiceIn()
             }
             .store(in: &cancellables)
     }
@@ -162,11 +163,12 @@ final class MiniPlayerController: NSObject {
         // Edge/corner drag finished: fold the final width back into the persisted scale so the
         // Settings slider, the pinch gesture, and the next launch all agree with the screen.
         // The deck's drag surface already resized the panel live; this write is a no-op frame-wise.
-        let onResizeEnd: (CGFloat) -> Void = { [weak state] finalWidth in
+        let onResizeEnd: (CGFloat) -> Void = { [weak self, weak state] finalWidth in
             guard let state else { return }
             let range = SettingsStore.cassetteScaleRange
             let scale = Double(finalWidth / CassetteDeckView.baseWidth)
             state.settings.cassetteScale = min(max(scale, range.lowerBound), range.upperBound)
+            self?.keepClearOfVoiceIn()
         }
 
         let content: AnyView
@@ -319,12 +321,13 @@ final class MiniPlayerController: NSObject {
             return
         }
 
-        let p = NSPanel(
+        let p = PlayerPanel(
             contentRect: NSRect(origin: .zero, size: panelSize),
             styleMask: [.borderless, .nonactivatingPanel, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
+        p.onDragEnded = { [weak self] in self?.keepClearOfVoiceIn() }
         p.isOpaque = false
         p.backgroundColor = .clear
         p.hasShadow = false                 // SwiftUI .shadow provides it
@@ -369,7 +372,8 @@ final class MiniPlayerController: NSObject {
         // All of that is in body coordinates; the panel then sits around the body.
         let saved = persistedOrigin()
         let preferred = (saved.map { isFullyVisible($0, in: visible) } == true) ? saved! : cornerOrigin
-        let bodyOrigin = clampToVisible(preferred, in: visible)
+        let clamped = clampToVisible(preferred, in: visible)
+        let bodyOrigin = VoiceInSpot.clear(NSRect(origin: clamped, size: bodySize), in: visible)
         let finalOrigin = NSPoint(x: bodyOrigin.x - bodyInsets.left, y: bodyOrigin.y - bodyInsets.bottom)
         let startOrigin = NSPoint(x: finalOrigin.x, y: finalOrigin.y - 30)
 
@@ -385,6 +389,27 @@ final class MiniPlayerController: NSObject {
             panel.animator().setFrame(NSRect(origin: finalOrigin, size: panel.frame.size), display: true)
             panel.animator().alphaValue = 1
         }
+    }
+
+    /// After a drag or a resize: if the body ended up in Voice In's spot, ease it just clear, and
+    /// remember it there. Measures the panel as it is on screen, not the saved scale, which a
+    /// resize may not have written yet.
+    private func keepClearOfVoiceIn() {
+        guard let panel, panel.isVisible, let screen = panel.screen ?? NSScreen.main else { return }
+        let i = bodyInsets
+        let body = NSRect(x: panel.frame.minX + i.left, y: panel.frame.minY + i.bottom,
+                          width: panel.frame.width - i.left - i.right,
+                          height: panel.frame.height - i.top - i.bottom)
+        let cleared = VoiceInSpot.clear(body, in: screen.visibleFrame)
+        guard cleared != body.origin else { return }
+        let origin = NSPoint(x: cleared.x - i.left, y: cleared.y - i.bottom)
+        NSAnimationContext.runAnimationGroup({ ctx in
+            ctx.duration = Self.slideDuration
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            panel.animator().setFrame(NSRect(origin: origin, size: panel.frame.size), display: true)
+        }, completionHandler: { [weak self] in
+            self?.persistOrigin(origin)
+        })
     }
 
     private func scheduleAutoDismiss() {
@@ -473,6 +498,17 @@ final class MiniPlayerController: NSObject {
 /// default hosting view treats that click as focus-only and SwiftUI buttons/gestures never fire.
 private final class FirstMouseHostingView: NSHostingView<AnyView> {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+}
+
+/// The player's panel. Both themes move it with `performDrag`, which runs the whole drag and
+/// returns on mouse-up, so this is where a drag ends.
+private final class PlayerPanel: NSPanel {
+    var onDragEnded: (() -> Void)?
+
+    override func performDrag(with event: NSEvent) {
+        super.performDrag(with: event)
+        onDragEnded?()
+    }
 }
 
 /// Lightweight NSWindowDelegate that just forwards the post-move origin to the controller.

@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 
 /// What the note under the pill is saying.
@@ -35,19 +36,46 @@ final class VoiceToastPresenter {
     private var hideTask: Task<Void, Never>?
     /// The words a missed paste is holding.
     private var pending: String?
+    /// The pill is on screen, so the note sits above it rather than on it.
+    private var pillUp = false
+    private var pillWatch: AnyCancellable?
 
     static let panelSize = NSSize(width: 480, height: 64)
+    /// How far the note rises while the pill is up: from the pill's bottom edge to the top of its
+    /// panel, which leaves the mouth its room.
+    static let lift = RecordingHUDPresenter.panelSize.height - RecordingHUDPresenter.pillInset
+
+    /// Keeps the note off the pill. A word learned from your last edit turns up as the next
+    /// dictation opens the pill, so the two do meet: the note rides above while the pill is up and
+    /// settles back when it closes.
+    func follow(_ pill: RecordingHUDModel) {
+        pillWatch = pill.$phase
+            .map { $0 != .hidden }
+            .removeDuplicates()
+            .sink { [weak self] up in self?.pillMoved(up: up) }
+    }
+
+    private func pillMoved(up: Bool) {
+        pillUp = up
+        guard let panel, panel.isVisible, let screen = panel.screen ?? NSScreen.main else { return }
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.2
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            panel.animator().setFrame(Self.frame(in: screen.visibleFrame, lifted: up), display: true)
+        }
+    }
 
     func learned(_ words: [String]) {
         guard !words.isEmpty else { return }
         show(.learned(words), for: 6)
     }
 
-    /// Waits for the pill's reaction to finish, then offers the words back.
+    /// Waits for the pill's reaction to finish and the pill to close (0.7 s + 0.16 s), then offers
+    /// the words back in its place.
     func missedPaste(_ text: String) {
         guard !text.isEmpty else { return }
         pending = text
-        show(.missedPaste, for: 30, after: 0.75)
+        show(.missedPaste, for: 30, after: 0.9)
     }
 
     /// Paste the held words (or `text`) into whatever is focused, and say whether it landed.
@@ -123,10 +151,14 @@ final class VoiceToastPresenter {
     /// Where the pill sits: bottom centre of the screen you're on, just above the Dock.
     private func position(_ panel: NSPanel) {
         guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
-        let v = screen.visibleFrame
-        let size = Self.panelSize
-        panel.setFrame(NSRect(x: v.midX - size.width / 2, y: v.minY + RecordingHUDPresenter.pillInset - 12,
-                              width: size.width, height: size.height), display: false)
+        panel.setFrame(Self.frame(in: screen.visibleFrame, lifted: pillUp), display: false)
+    }
+
+    /// The note's panel: on the pill's spot, or `lift` above it while the pill is up.
+    static func frame(in v: NSRect, lifted: Bool) -> NSRect {
+        NSRect(x: v.midX - panelSize.width / 2,
+               y: v.minY + RecordingHUDPresenter.pillInset - 12 + (lifted ? lift : 0),
+               width: panelSize.width, height: panelSize.height)
     }
 
     private func makePanel() -> NSPanel {
