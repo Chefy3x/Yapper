@@ -1,5 +1,5 @@
 node_modules/
-out/
+out
 stills/
 verify/
 render.log
