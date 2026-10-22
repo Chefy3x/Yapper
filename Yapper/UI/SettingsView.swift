@@ -777,17 +777,13 @@ private struct HotkeysPanel: View {
                 SectionLabel(text: "On the Yapper key")
                 HotkeyList {
                     row(.readLatest, subtitle: "Tap. Pauses and resumes while playing; double-tap reads the focused chat.")
-                    HotkeyListRow(title: "Talk",
-                                  subtitle: "Hold and speak. Let go, or press Return, to type it where you are. You send it.") {
-                        ChordKeys(keys: [.named(settings.yapperKey.keycap)], suffix: "hold")
-                        AddButtonSlot()
-                    }
-                    HotkeyListRow(title: "Keep listening",
-                                  subtitle: "While talking, press Space and let go. Press the key again to finish.",
-                                  last: true) {
-                        ChordKeys(keys: [.named(settings.yapperKey.keycap), .named("Space")])
-                        AddButtonSlot()
-                    }
+                    row(.talk, subtitle: settings.customShortcuts[.talk] == nil
+                        ? "Hold and speak. Let go, or press Return, to type it where you are. You send it."
+                        : "Hold and speak, let go to type. Or tap a shortcut to start and again to finish.")
+                    row(.keepListening, subtitle: settings.customShortcuts[.keepListening] == nil
+                        ? "While talking, press Space and let go. Press the key again to finish."
+                        : "While talking, press Space or a shortcut. A shortcut alone starts listening; press it again to finish.",
+                        last: true)
                 }
             }
 
@@ -807,7 +803,7 @@ private struct HotkeysPanel: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Image(systemName: "plus.circle")
                     .foregroundStyle(Brand.faint)
-                Text("Use + to add your own shortcuts, as many per action as you like. Each needs ⌃, ⌥ or ⌘, or use an F-key on its own.")
+                Text("Use + to add your own shortcuts, as many per action as you like. Each needs ⌃, ⌥ or ⌘, or use an F-key or a mouse's extra button on its own.")
                     .font(skin.body(11))
                     .foregroundStyle(Brand.muted)
                     .fixedSize(horizontal: false, vertical: true)
@@ -860,11 +856,11 @@ private struct HotkeysPanel: View {
         var chord: [KeyCap] = [.named(settings.yapperKey.keycap)]
         if let key = chordKey(action) { chord.append(key) }
         return HotkeyListRow(title: action.title,
-                             subtitle: problems[action] ?? (isRecording ? "Press the shortcut you want. Esc cancels." : subtitle),
+                             subtitle: problems[action] ?? (isRecording ? "Press the shortcut you want, or a mouse button over this window. Esc cancels." : subtitle),
                              warning: problems[action] != nil,
                              last: last) {
             HStack(spacing: 8) {
-                ChordKeys(keys: chord)
+                ChordKeys(keys: chord, suffix: action == .talk ? "hold" : nil)
                 ForEach(extras, id: \.self) { shortcut in
                     OrLabel()
                     ShortcutCap(label: shortcut.parts.joined()) { remove(shortcut, from: action) }
@@ -885,7 +881,8 @@ private struct HotkeysPanel: View {
 
     private func chordKey(_ action: HotkeyAction) -> KeyCap? {
         switch action {
-        case .readLatest:         nil
+        case .readLatest, .talk:  nil
+        case .keepListening:      .named("Space")
         case .readSelection:      .letter("S")
         case .repasteLast:        .letter("V")
         case .toggleConversation: .symbol("return")
@@ -908,7 +905,7 @@ private struct HotkeysPanel: View {
         problems[action] = nil
         recording = action
         state.hotkeys.isRecordingShortcut = true
-        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .otherMouseDown]) { event in
             record(event, for: action)
             return nil
         }
@@ -924,14 +921,19 @@ private struct HotkeysPanel: View {
 
     private func record(_ event: NSEvent, for action: HotkeyAction) {
         let flags = UInt64(event.modifierFlags.intersection([.control, .option, .shift, .command]).rawValue)
-        let keyCode = Int64(event.keyCode)
-        if keyCode == KeyShortcut.Code.escape, flags == 0 {
-            stopRecording()
-            return
-        }
-        let shortcut = KeyShortcut(keyCode: keyCode, modifiers: flags,
+        let shortcut: KeyShortcut
+        if event.type == .otherMouseDown {
+            shortcut = KeyShortcut(mouseButton: Int64(event.buttonNumber), modifiers: flags)
+        } else {
+            let keyCode = Int64(event.keyCode)
+            if keyCode == KeyShortcut.Code.escape, flags == 0 {
+                stopRecording()
+                return
+            }
+            shortcut = KeyShortcut(keyCode: keyCode, modifiers: flags,
                                    keyLabel: KeyShortcut.label(keyCode: keyCode,
                                                                characters: event.characters(byApplyingModifiers: [])))
+        }
         if let problem = shortcut.problem(adding: action, among: settings.customShortcuts,
                                           yapperKey: settings.yapperKey) {
             problems[action] = problem   // stay recording, so the next try just works
@@ -1071,11 +1073,6 @@ private struct ChordKeys: View {
         }
         .fixedSize()
     }
-}
-
-/// Holds the + button's place on rows that can't take shortcuts, so every row's keys line up.
-private struct AddButtonSlot: View {
-    var body: some View { Color.clear.frame(width: 26, height: 26) }
 }
 
 private struct OrLabel: View {

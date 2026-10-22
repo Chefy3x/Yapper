@@ -1,5 +1,6 @@
 import Testing
 import CoreGraphics
+import Foundation
 
 /// Recorded shortcuts: matching in the event tap, and what Settings refuses to bind.
 struct KeyShortcutTests {
@@ -49,6 +50,54 @@ struct KeyShortcutTests {
         #expect(KeyShortcut.action(for: 96, flags: [], in: both) == .repasteLast)
         #expect(KeyShortcut.action(for: 15, flags: CGEventFlags(rawValue: KeyShortcut.control | KeyShortcut.shift), in: both) == .repasteLast)
         #expect(KeyShortcut.action(for: 15, flags: [], in: both) == nil)
+    }
+
+    @Test func talkTakesShortcutsLikeTheRest() {
+        let f13 = KeyShortcut(keyCode: 105, modifiers: 0, keyLabel: "F13")
+        #expect(f13.problem(adding: .talk, among: [:], yapperKey: .rightOption) == nil)
+        let shortcuts: [HotkeyAction: [KeyShortcut]] = [.talk: [f13, ctrlShiftR]]
+        #expect(KeyShortcut.action(for: 105, flags: [], in: shortcuts) == .talk)
+        #expect(ctrlShiftR.problem(adding: .readSelection, among: shortcuts, yapperKey: .rightOption) == "Already used by Talk.")
+    }
+
+    @Test func keepListeningTakesShortcutsButNotItsOwnSpaceChord() {
+        let f14 = KeyShortcut(keyCode: 107, modifiers: 0, keyLabel: "F14")
+        #expect(f14.problem(adding: .keepListening, among: [:], yapperKey: .rightOption) == nil)
+        #expect(KeyShortcut.action(for: 107, flags: [], in: [.keepListening: [f14]]) == .keepListening)
+        let optSpace = KeyShortcut(keyCode: KeyShortcut.Code.space, modifiers: KeyShortcut.option, keyLabel: "Space")
+        #expect(optSpace.problem(adding: .keepListening, among: [:], yapperKey: .rightOption) != nil)
+    }
+
+    @Test func anExtraMouseButtonIsAShortcutOnItsOwn() {
+        let back = KeyShortcut(mouseButton: 3, modifiers: 0)
+        #expect(back.keyLabel == "Mouse 4")
+        #expect(back.problem(adding: .talk, among: [:], yapperKey: .rightOption) == nil)
+        let shortcuts: [HotkeyAction: [KeyShortcut]] = [.talk: [back]]
+        #expect(KeyShortcut.action(forMouseButton: 3, flags: [], in: shortcuts) == .talk)
+        #expect(KeyShortcut.action(forMouseButton: 3, flags: .maskCommand, in: shortcuts) == nil)
+        #expect(KeyShortcut.action(forMouseButton: 4, flags: [], in: shortcuts) == nil)
+        // A mouse button never matches the key with the same number, nor the other way round.
+        #expect(KeyShortcut.action(for: 3, flags: [], in: shortcuts) == nil)
+        let f = KeyShortcut(keyCode: 3, modifiers: KeyShortcut.control, keyLabel: "F")
+        #expect(KeyShortcut.action(forMouseButton: 3, flags: .maskControl, in: [.talk: [f]]) == nil)
+    }
+
+    @Test func leftAndRightClicksAreRefused() {
+        #expect(KeyShortcut(mouseButton: 0, modifiers: KeyShortcut.command).problem(adding: .talk, among: [:], yapperKey: .rightOption) != nil)
+        #expect(KeyShortcut(mouseButton: 1, modifiers: 0).problem(adding: .talk, among: [:], yapperKey: .rightOption) != nil)
+    }
+
+    @Test func shortcutsSavedBeforeMouseButtonsStillDecode() throws {
+        let old = #"{"keyCode":15,"modifiers":262144,"keyLabel":"R"}"#.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(KeyShortcut.self, from: old)
+        #expect(decoded.mouseButton == nil)
+        #expect(decoded.matches(keyCode: 15, flags: .maskControl))
+    }
+
+    @Test func aQuickTalkPressLocksAndAHoldDoesNot() {
+        #expect(TalkShortcut.locksOnRelease(heldFor: 0.15))
+        #expect(!TalkShortcut.locksOnRelease(heldFor: ModifierGesture.holdThreshold))
+        #expect(!TalkShortcut.locksOnRelease(heldFor: 3))
     }
 
     @Test func refusesAYapperKeyChord() {

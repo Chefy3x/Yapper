@@ -570,6 +570,33 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// A Yapper-key press, or a Talk shortcut, before anyone knows it's a hold. A video or song
+    /// playing: pause it now and open the mic now, instead of waiting out the 0.45 s
+    /// tap-or-hold decision with the mic shut, which cost the first words. A tap reads aloud,
+    /// which pauses media anyway; anything else gets it back when abandoned. Yapper's own
+    /// reading still keeps the early mic off: it would hear itself.
+    private func openMicEarly() {
+        var trim: TimeInterval = 0
+        if media.isOtherMediaPlaying, settings.pauseMediaWhileTalking {
+            media.pauseIfPlaying()
+            trim = Self.mediaPauseLag
+        }
+        voiceInput.keyPressed(playbackActive: tts.isPlaying || (trim == 0 && media.isOtherMediaPlaying),
+                              trimLead: trim)
+    }
+
+    private func beginTalking() {
+        hotkeyFired.send(.pushToTalk)
+        pendingResumeTask?.cancel()   // a hold is not a tap; never resume under it
+        pendingResumeTask = nil
+        voiceInput.beginPushToTalk()
+    }
+
+    /// The first Talk shortcut, for "press … to finish" when one locked the mic.
+    private var talkShortcutKeycap: String? {
+        settings.customShortcuts[.talk]?.first?.parts.joined()
+    }
+
     private func wireHotkeys() {
         hotkeys.onReadLatestOrToggle = { [weak self] in
             guard let self else { return }
@@ -655,11 +682,8 @@ final class AppState: ObservableObject {
         hotkeys.onPushToTalkBegan = { [weak self] in
             guard let self else { return }
             if self.pressEndedLockedDictation { self.pressEndedLockedDictation = false; return }
-            self.hotkeyFired.send(.pushToTalk)
-            self.pendingResumeTask?.cancel()   // a hold is not a tap; never resume under it
-            self.pendingResumeTask = nil
             Log.hotkey.info("Yapper key hold -> Voice In")
-            self.voiceInput.beginPushToTalk()
+            self.beginTalking()
         }
         hotkeys.onKeyDown = { [weak self] in
             guard let self else { return }
@@ -671,17 +695,50 @@ final class AppState: ObservableObject {
                 return
             }
             self.pressEndedLockedDictation = false
-            // A video or song playing: pause it now and open the mic now, instead of waiting
-            // out the 0.45 s tap-or-hold decision with the mic shut, which cost the first words.
-            // A tap reads aloud, which pauses media anyway; anything else gets it back below.
-            // Yapper's own reading still keeps the early mic off: it would hear itself.
-            var trim: TimeInterval = 0
-            if self.media.isOtherMediaPlaying, self.settings.pauseMediaWhileTalking {
-                self.media.pauseIfPlaying()
-                trim = Self.mediaPauseLag
+            self.openMicEarly()
+        }
+        hotkeys.onTalkShortcutPressed = { [weak self] in
+            guard let self else { return }
+            // Pressed again while it listens: that's the finish, and nothing else.
+            if self.voiceInput.isLocked {
+                Log.hotkey.info("Talk shortcut -> finish")
+                self.voiceInput.finishLocked()
+                return
             }
-            self.voiceInput.keyPressed(playbackActive: self.tts.isPlaying || (trim == 0 && self.media.isOtherMediaPlaying),
-                                       trimLead: trim)
+            Log.hotkey.info("Talk shortcut -> Voice In")
+            self.openMicEarly()
+            self.beginTalking()
+            // Nothing opened (Voice In off, no model): media paused for it comes back.
+            if self.voiceInput.state == .idle { self.reconsiderMediaResume() }
+        }
+        hotkeys.onKeepListening = { [weak self] in
+            guard let self else { return }
+            let finishKey = self.settings.customShortcuts[.keepListening]?.first?.parts.joined()
+            if self.voiceInput.isLocked {
+                Log.hotkey.info("Keep listening shortcut -> finish")
+                self.voiceInput.finishLocked()
+                return
+            }
+            // Mid-talk (the Yapper key or a Talk shortcut held): what Space does.
+            if self.voiceInput.state == .listening(.pushToTalk) {
+                Log.hotkey.info("Keep listening shortcut -> lock")
+                self.voiceInput.lock(finishKey: finishKey)
+                return
+            }
+            Log.hotkey.info("Keep listening shortcut -> Voice In, locked")
+            self.openMicEarly()
+            self.beginTalking()
+            self.voiceInput.lock(finishKey: finishKey)
+            if self.voiceInput.state == .idle { self.reconsiderMediaResume() }
+        }
+        hotkeys.onTalkShortcutReleased = { [weak self] heldFor in
+            guard let self else { return }
+            // Both are no-ops unless this press is the one listening.
+            if TalkShortcut.locksOnRelease(heldFor: heldFor) {
+                self.voiceInput.lock(finishKey: self.talkShortcutKeycap)
+            } else {
+                self.voiceInput.endPushToTalk()
+            }
         }
         hotkeys.onKeyAbandoned = { [weak self] in
             guard let self else { return }

@@ -18,8 +18,10 @@ import CoreGraphics
 /// text field and stealing it would be a daily paper cut. Anything else pressed while the key
 /// is held passes through unmodified, so it still works as a normal modifier.
 ///
-/// Shortcuts recorded in Settings → Hotkeys (`shortcuts`) are extra ways into the tap and chords
-/// 3–7, any number per action; the chords keep working alongside them.
+/// Shortcuts recorded in Settings → Hotkeys (`shortcuts`), keys or a mouse's extra buttons, are
+/// extra ways into the tap, the talk hold and chords 3–7, any number per action; the chords keep
+/// working alongside them. A Talk
+/// shortcut reports its press and, with how long it was held, its release (see `TalkShortcut`).
 ///
 /// Requires Accessibility permission. Without it, install() succeeds-but-does-nothing because the
 /// tap will be disabled by the system.
@@ -44,6 +46,12 @@ final class HotkeyManager {
     var onRepasteLast: (() -> Void)?
     /// Space during a talk hold: keep the mic open after the key comes up.
     var onLockRequested: (() -> Void)?
+    /// A recorded Talk shortcut went down, and came back up after `heldFor` seconds.
+    var onTalkShortcutPressed: (() -> Void)?
+    var onTalkShortcutReleased: ((TimeInterval) -> Void)?
+    /// A recorded Keep listening shortcut: lock a talk in progress, finish a locked one, or
+    /// start one already locked.
+    var onKeepListening: (() -> Void)?
     /// Answers "is a talk hold in progress?" — decides whether Space is Yapper's or the app's.
     var canLockMic: () -> Bool = { false }
     /// Answers "would a skip do anything right now?" — playing or queued. Decides whether
@@ -69,16 +77,23 @@ final class HotkeyManager {
     // Tap-versus-hold state machine (pure, unit-tested) + the timer that fires its hold event.
     private var gesture = ModifierGesture()
     private var holdTimer: DispatchWorkItem?
+    /// The Talk shortcut's key or mouse button while it is down, and since when. Its repeats
+    /// and its release are Yapper's, so the app under it never sees a stray key.
+    private var talkDown: (code: Int64, isMouse: Bool, at: Date)?
+    /// Mouse buttons whose press was a shortcut: their release is swallowed too.
+    private var heldShortcutButtons: Set<Int64> = []
 
     func install() {
         guard eventTap == nil else { return }
 
         let mask: CGEventMask =
             (1 << CGEventType.keyDown.rawValue) |
+            (1 << CGEventType.keyUp.rawValue) |
             (1 << CGEventType.flagsChanged.rawValue) |
             (1 << CGEventType.leftMouseDown.rawValue) |
             (1 << CGEventType.rightMouseDown.rawValue) |
-            (1 << CGEventType.otherMouseDown.rawValue)
+            (1 << CGEventType.otherMouseDown.rawValue) |
+            (1 << CGEventType.otherMouseUp.rawValue)
 
         let selfPtr = Unmanaged.passUnretained(self).toOpaque()
 
@@ -146,7 +161,19 @@ final class HotkeyManager {
             }
             return Unmanaged.passUnretained(event)
 
-        case .leftMouseDown, .rightMouseDown, .otherMouseDown:
+        case .otherMouseDown:
+            // A mouse's extra button recorded as a shortcut: Yapper's, like a key.
+            let button = event.getIntegerValueField(.mouseEventButtonNumber)
+            if !isRecordingShortcut,
+               let action = KeyShortcut.action(forMouseButton: button, flags: flags, in: shortcuts),
+               action != .skipNext || skipIsMeaningful() {
+                heldShortcutButtons.insert(button)
+                fire(action, code: button, isMouse: true)
+                return nil
+            }
+            fallthrough
+
+        case .leftMouseDown, .rightMouseDown:
             // A click while the key is held (⌥-click, ⌥-drag, …) is aimed at the focused app —
             // releasing right after must NOT count as a tap, and a hold can't start from it.
             // Once the hold has begun, a click leaves the mic open: the user is clicking into
@@ -162,11 +189,15 @@ final class HotkeyManager {
                 if gesture.isDown { notifyAbandoned(); dispatch(gesture.handle(.otherKeyDown)) }
                 return Unmanaged.passUnretained(event)
             }
+            // The Talk shortcut held down auto-repeats; the repeats are not new presses.
+            if let down = talkDown, !down.isMouse, keyCode == down.code,
+               event.getIntegerValueField(.keyboardEventAutorepeat) != 0 {
+                return nil
+            }
             // A recorded shortcut wins over everything, held Yapper key or not.
             if let action = KeyShortcut.action(for: keyCode, flags: flags, in: shortcuts),
                action != .skipNext || skipIsMeaningful() {
-                if gesture.isDown { notifyAbandoned(); dispatch(gesture.handle(.otherKeyDown)) }
-                DispatchQueue.main.async { [weak self] in self?.perform(action) }
+                fire(action, code: keyCode, isMouse: false)
                 return nil
             }
             // If the Yapper key is held, watch for our chords. Otherwise pass through.
@@ -221,14 +252,43 @@ final class HotkeyManager {
             // Anything else: passthrough, so normal modifier+key shortcuts still work.
             return Unmanaged.passUnretained(event)
 
+        case .keyUp, .otherMouseUp:
+            // The Talk shortcut coming up: hold-to-talk ends, a quick press keeps listening.
+            // Matched on the key or button alone, since the modifiers may already be up.
+            let isMouse = type == .otherMouseUp
+            let code = isMouse ? event.getIntegerValueField(.mouseEventButtonNumber) : keyCode
+            let wasShortcutButton = isMouse && heldShortcutButtons.remove(code) != nil
+            guard let down = talkDown, down.isMouse == isMouse, down.code == code else {
+                return wasShortcutButton ? nil : Unmanaged.passUnretained(event)
+            }
+            talkDown = nil
+            let heldFor = Date().timeIntervalSince(down.at)
+            DispatchQueue.main.async { [weak self] in self?.onTalkShortcutReleased?(heldFor) }
+            return nil
+
         default:
             return Unmanaged.passUnretained(event)
+        }
+    }
+
+    /// A recorded shortcut went down, by key or mouse button. The caller swallows the event.
+    private func fire(_ action: HotkeyAction, code: Int64, isMouse: Bool) {
+        // Keep listening mid-hold is Space: the hold carries on, so it must not cancel it.
+        let locksHold = action == .keepListening && canLockMic()
+        if gesture.isDown, !locksHold { notifyAbandoned(); dispatch(gesture.handle(.otherKeyDown)) }
+        if action == .talk {
+            talkDown = (code, isMouse, Date())
+            DispatchQueue.main.async { [weak self] in self?.onTalkShortcutPressed?() }
+        } else {
+            DispatchQueue.main.async { [weak self] in self?.perform(action) }
         }
     }
 
     private func perform(_ action: HotkeyAction) {
         switch action {
         case .readLatest:         onReadLatestOrToggle?()
+        case .talk:               onTalkShortcutPressed?()
+        case .keepListening:      onKeepListening?()
         case .readSelection:      onReadSelection?()
         case .repasteLast:        onRepasteLast?()
         case .toggleConversation: onToggleConversationMode?()

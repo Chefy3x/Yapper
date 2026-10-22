@@ -307,12 +307,14 @@ final class VoiceInputCoordinator: ObservableObject {
         if state == .listening(.pushToTalk) { cuePlayed = playStartCue?() }
     }
 
-    /// Space during a hold. For the five-minute thought that shouldn't mean five minutes holding a key.
-    func lock() {
+    /// Space during a hold, or a Talk shortcut pressed and let go. For the five-minute thought
+    /// that shouldn't mean five minutes holding a key. `finishKey` names the shortcut that
+    /// locked it; the Yapper key finishes too.
+    func lock(finishKey: String? = nil) {
         guard case .listening(.pushToTalk) = state, tailTask == nil, !isLocked else { return }
         isLocked = true
         armWatchdog(for: .pushToTalk, ceiling: Self.lockedCeiling)
-        onEvent?("Mic locked — press \(settings.yapperKey.keycap) to finish")
+        onEvent?("Mic locked — press \(finishKey ?? settings.yapperKey.keycap) to finish")
         Log.voice.info("Mic locked")
     }
 
