@@ -222,8 +222,8 @@ struct MouthMoveFollower: Sendable {
     }
 }
 
-/// Low-latency mic audio for the mouth. The engine's sink node hands every ~10 ms input buffer to
-/// `push` on the audio thread, which only copies it into a preallocated ring. A serial queue
+/// Low-latency mic audio for the mouth. The mic queue hands every 10 ms input buffer to `push`
+/// on its own thread, which only copies it into a preallocated ring. A serial queue
 /// drains the ring every 10 ms, brings it to 16 kHz mono and runs the reader; the mouth view asks
 /// for `drive(at:)` once per frame.
 final class MouthLive: @unchecked Sendable {
@@ -236,7 +236,7 @@ final class MouthLive: @unchecked Sendable {
     private let queue = DispatchQueue(label: "app.yapper.mouth", qos: .userInteractive)
     private var timer: DispatchSourceTimer?
 
-    // the audio thread's ring (input rate, mono)
+    // the mic thread's ring (input rate, mono)
     private let ringLock = NSLock()
     private let capacity = 96_000
     private let ring: UnsafeMutablePointer<Float>
@@ -272,6 +272,12 @@ final class MouthLive: @unchecked Sendable {
 
     /// Called when capture starts, with the mic's own rate.
     func start(inputRate: Double) {
+        // Touch every page of the ring now, before the mic writes into it: after a quiet spell
+        // the system may have compressed them, and the first pushes would fault them back in.
+        ringLock.lock()
+        ring.update(repeating: 0, count: capacity)
+        ringWrite = 0; ringCount = 0
+        ringLock.unlock()
         queue.async { [self] in
             inputFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: inputRate, channels: 1, interleaved: false)
             converter = inputFormat.flatMap { AVAudioConverter(from: $0, to: outputFormat) }
@@ -281,7 +287,6 @@ final class MouthLive: @unchecked Sendable {
                 reader = makeReader()
                 readerEar = MouthWavLM.chosenHead
             }
-            ringLock.lock(); ringWrite = 0; ringCount = 0; ringLock.unlock()
             drivesLock.lock(); timeline.reset(); timeline.playout = MouthTimeline.playout(shapeLag: reader.shapeLag); drivesLock.unlock()
             let t = DispatchSource.makeTimerSource(queue: queue)
             t.schedule(deadline: .now(), repeating: .milliseconds(10), leeway: .milliseconds(2))
@@ -299,7 +304,7 @@ final class MouthLive: @unchecked Sendable {
         }
     }
 
-    /// The audio thread: copy channel 0 (`stride` apart for interleaved input) into the ring.
+    /// The mic's thread: copy channel 0 (`stride` apart for interleaved input) into the ring.
     func push(_ samples: UnsafePointer<Float>, count: Int, stride: Int = 1) {
         ringLock.lock()
         for i in 0..<count {
