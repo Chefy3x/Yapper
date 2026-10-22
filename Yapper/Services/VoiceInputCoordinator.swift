@@ -504,7 +504,7 @@ final class VoiceInputCoordinator: ObservableObject {
         let shortcut = settings.yapperKey == .rightCommand
             ? settings.customShortcuts[.repasteLast]?.first?.parts.joined()
             : "\(settings.yapperKey.keycap) + V"
-        guard let shortcut else { return "Nothing took the paste. Paste it again from Settings → Dictations" }
+        guard let shortcut else { return "Nothing took the paste. Paste it again from Settings → Dictation history" }
         return "Nothing took the paste. Click where it goes and press \(shortcut)"
     }
 

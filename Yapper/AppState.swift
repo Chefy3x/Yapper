@@ -27,8 +27,8 @@ final class AppState: ObservableObject {
     /// because both the deck and the panel controller need it: the deck lights its TRANSCRIPT
     /// marking from it, the controller shows/hides the panel off it.
     @Published var transcriptVisible: Bool = false
-    /// Set by the menu bar "History" item to deep-link the Settings window to the History tab.
-    @Published var pendingHistoryOpen: Bool = false
+    /// Set by the menu bar's history items to deep-link the Settings window to that page.
+    @Published var pendingSettingsSection: YSection?
     /// Set by Settings → Hotkeys to reopen the first-run guide on demand.
     @Published var pendingOnboardingOpen: Bool = false
 

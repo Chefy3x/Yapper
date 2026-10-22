@@ -15,15 +15,15 @@ enum YSection: String, CaseIterable, Identifiable {
         switch self {
         case .general:      "General"
         case .hotkeys:      "Hotkeys"
-        case .voiceIn:      "Setup"
-        case .dictations:   "Dictations"
+        case .voiceIn:      "Talk"
+        case .dictations:   "Dictation history"
         case .dictionary:   "Dictionary"
         case .snippets:     "Snippets"
         case .models:       "Models"
         case .voices:       "Voices"
         case .providers:    "Providers"
         case .conversation: "Conversation"
-        case .history:      "History"
+        case .history:      "Read-aloud history"
         case .about:        "About"
         }
     }
@@ -137,10 +137,10 @@ struct SettingsView: View {
         .buttonStyle(SoftButtonStyle())
         .preferredColorScheme(.light)
         .onAppear {
-            if state.pendingHistoryOpen { selected = .history; state.pendingHistoryOpen = false }
+            if let section = state.pendingSettingsSection { selected = section; state.pendingSettingsSection = nil }
         }
-        .onChange(of: state.pendingHistoryOpen) { open in
-            if open { selected = .history; state.pendingHistoryOpen = false }
+        .onChange(of: state.pendingSettingsSection) { section in
+            if let section { selected = section; state.pendingSettingsSection = nil }
         }
     }
 
@@ -1371,7 +1371,7 @@ private struct ConversationPanel: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Image(systemName: "info.circle")
                     .foregroundStyle(Brand.faint)
-                Text("\(settings.yapperKey.keycap) + → skips to the next reply. With hands-free on (Voice In → Setup) the mic opens after each reply so you can answer; Yapper never presses Return.")
+                Text("\(settings.yapperKey.keycap) + → skips to the next reply. With hands-free on (Voice in → Talk) the mic opens after each reply so you can answer; Yapper never presses Return.")
                     .font(skin.body(11.5))
                     .foregroundStyle(Brand.muted)
                     .fixedSize(horizontal: false, vertical: true)

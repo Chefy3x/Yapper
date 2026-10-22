@@ -304,18 +304,52 @@ struct ShortcutLine: View {
 
 /// The user-facing gestures, in the order they matter. The AX dump (key + D) is a
 /// debug affordance and deliberately absent — it lives in Settings only.
+///
+/// One key does both directions (hold to talk, tap to read), so every gesture says which side it
+/// belongs to, and every list of them is drawn in those groups.
 enum ShortcutReference {
-    static func all(yapperKey key: YapperKey) -> [(caps: [MiniKeycap.Content], label: String)] {
+    enum Group: String, CaseIterable {
+        case voiceIn = "Voice in"
+        case readAloud = "Read aloud"
+        /// Both at once: Yapper reads, then listens for your answer.
+        case conversation = "Conversation"
+    }
+
+    struct Item {
+        let group: Group
+        let caps: [MiniKeycap.Content]
+        let label: String
+    }
+
+    static func all(yapperKey key: YapperKey) -> [Item] {
         let cap = MiniKeycap.Content.text(key.keycap)
         return [
-            ([cap], "Read latest / pause"),
-            ([cap, .text("hold")], "Talk — release to type"),
-            ([cap, .text("hold"), .text("Space")], "Lock the mic — press again to type"),
-            ([cap, .text("V")], "Paste the last dictation again"),
-            ([cap, .text("S")], "Read selected text"),
-            ([cap, .symbol("return")], "Conversation Mode"),
-            ([cap, .symbol("arrow.right")], "Skip ahead"),
+            Item(group: .voiceIn, caps: [cap, .text("hold")], label: "Talk — release to type"),
+            Item(group: .voiceIn, caps: [cap, .text("hold"), .text("Space")], label: "Lock the mic — press again to type"),
+            Item(group: .voiceIn, caps: [cap, .text("V")], label: "Paste the last dictation again"),
+            Item(group: .readAloud, caps: [cap], label: "Read latest / pause"),
+            Item(group: .readAloud, caps: [cap, .text("S")], label: "Read selected text"),
+            Item(group: .readAloud, caps: [cap, .symbol("arrow.right")], label: "Skip ahead"),
+            Item(group: .conversation, caps: [cap, .symbol("return")], label: "Conversation Mode"),
         ]
+    }
+
+    static func items(in group: Group, yapperKey key: YapperKey) -> [Item] {
+        all(yapperKey: key).filter { $0.group == group }
+    }
+}
+
+/// The small capitals over a group of shortcuts or menu items.
+struct ShortcutGroupHeading: View {
+    let text: String
+    init(_ text: String) { self.text = text }
+
+    var body: some View {
+        Text(text.uppercased())
+            .font(.system(size: 9, weight: .semibold))
+            .tracking(0.8)
+            .foregroundStyle(.tertiary)
+            .padding(.bottom, 1)
     }
 }
 

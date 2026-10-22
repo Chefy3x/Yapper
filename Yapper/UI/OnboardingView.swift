@@ -299,8 +299,14 @@ struct OnboardingView: View {
                 }
                 .padding(.bottom, 2)
 
-                ForEach(Array(ShortcutReference.all(yapperKey: settings.yapperKey).enumerated()), id: \.offset) { _, item in
-                    ShortcutLine(caps: item.caps, label: item.label, capColumnWidth: 118)
+                // Grouped the way the menu bar draws them, so the two lists read the same.
+                ForEach(ShortcutReference.Group.allCases, id: \.self) { group in
+                    ShortcutGroupHeading(group.rawValue)
+                        .padding(.top, group == .voiceIn ? 0 : 4)
+                    ForEach(Array(ShortcutReference.items(in: group, yapperKey: settings.yapperKey).enumerated()),
+                            id: \.offset) { _, item in
+                        ShortcutLine(caps: item.caps, label: item.label, capColumnWidth: 118)
+                    }
                 }
             }
             .padding(16)

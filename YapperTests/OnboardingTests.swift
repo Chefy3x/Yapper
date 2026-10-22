@@ -73,6 +73,17 @@ struct ShortcutReferenceTests {
             #expect(!item.label.isEmpty)
         }
     }
+
+    // One key talks and reads, so every list is drawn in groups; a group with nothing in it would
+    // leave a heading over empty space.
+    @Test func everyGroupHasItsGestures() {
+        let key = YapperKey.rightOption
+        #expect(ShortcutReference.items(in: .voiceIn, yapperKey: key).map(\.label).allSatisfy {
+            !$0.lowercased().contains("read") })
+        #expect(ShortcutReference.items(in: .readAloud, yapperKey: key).count == 3)
+        #expect(ShortcutReference.items(in: .voiceIn, yapperKey: key).count == 3)
+        #expect(ShortcutReference.items(in: .conversation, yapperKey: key).count == 1)
+    }
 }
 
 // A key check has to distinguish "ElevenLabs says no" from "we couldn't ask". Collapsing the two

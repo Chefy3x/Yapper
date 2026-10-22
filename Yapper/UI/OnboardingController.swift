@@ -20,7 +20,7 @@ final class OnboardingController: NSObject, NSWindowDelegate {
         self.isFirstRun = isFirstRun
         super.init()
 
-        // Settings → Hotkeys can ask for the guide back, mirroring `pendingHistoryOpen`.
+        // Settings → Hotkeys can ask for the guide back, mirroring `pendingSettingsSection`.
         state.$pendingOnboardingOpen
             .filter { $0 }
             .sink { [weak self] _ in
