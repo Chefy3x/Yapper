@@ -64,7 +64,7 @@ struct SoftButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 12, weight: .medium))
+            .settingsFont(size: 12, weight: .medium)
             .foregroundStyle(configuration.role == .destructive ? Brand.red : Brand.ink)
             .padding(.horizontal, 12)
             .padding(.vertical, 5)
@@ -222,6 +222,77 @@ extension EnvironmentValues {
     }
 }
 
+// MARK: - Scale
+
+/// How much bigger Settings draws its type than at the base column width. The Settings window
+/// sets it from its own width, so widening the window grows the cards and the words together;
+/// everywhere else (the menu bar, the guide) it stays 1.
+private struct SettingsScaleKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 1
+}
+
+extension EnvironmentValues {
+    var settingsScale: CGFloat {
+        get { self[SettingsScaleKey.self] }
+        set { self[SettingsScaleKey.self] = newValue }
+    }
+}
+
+extension Brand {
+    /// The most the type grows, so a full-screen window reads large rather than enormous.
+    static let maxScale: CGFloat = 1.35
+
+    /// The scale for a content area `width` wide: 1 up to the base column, then in step with it.
+    static func scale(forContentWidth width: CGFloat) -> CGFloat {
+        min(max(width / contentMaxWidth, 1), maxScale)
+    }
+}
+
+/// Sets a Settings font at its base size, scaled by `settingsScale`. Sizes stay written as they
+/// look at the base width; only these modifiers know about the window.
+private struct SettingsFont: ViewModifier {
+    enum Voice {
+        case system(Font.Weight, Font.Design)
+        case body(Font.Weight)
+        case display
+        case label
+    }
+
+    let size: CGFloat
+    let voice: Voice
+    @Environment(\.settingsScale) private var scale
+    @Environment(\.settingsSkin) private var skin
+
+    func body(content: Content) -> some View {
+        let s = size * scale
+        switch voice {
+        case .system(let weight, let design): content.font(.system(size: s, weight: weight, design: design))
+        case .body(let weight):               content.font(skin.body(s, weight))
+        case .display:                        content.font(Brand.display(s))
+        case .label:                          content.font(Brand.label(s))
+        }
+    }
+}
+
+extension View {
+    /// `.font(.system(size:weight:design:))` that grows with the Settings window.
+    func settingsFont(size: CGFloat, weight: Font.Weight = .regular, design: Font.Design = .default) -> some View {
+        modifier(SettingsFont(size: size, voice: .system(weight, design)))
+    }
+    /// `.font(skin.body(…))` that grows with the Settings window.
+    func settingsBody(_ size: CGFloat, _ weight: Font.Weight = .regular) -> some View {
+        modifier(SettingsFont(size: size, voice: .body(weight)))
+    }
+    /// `.font(Brand.display(…))` that grows with the Settings window.
+    func settingsDisplay(_ size: CGFloat) -> some View {
+        modifier(SettingsFont(size: size, voice: .display))
+    }
+    /// `.font(Brand.label(…))` that grows with the Settings window.
+    func settingsLabel(_ size: CGFloat = 10.5) -> some View {
+        modifier(SettingsFont(size: size, voice: .label))
+    }
+}
+
 // MARK: - Bits
 
 /// 1pt dashed hairline — dark panels use dashed dividers in the tape skin.
@@ -256,9 +327,9 @@ struct MiniKeycap: View {
         Group {
             switch content {
             case .text(let s):
-                Text(s).font(.system(size: 10.5, weight: .semibold))
+                Text(s).settingsFont(size: 10.5, weight: .semibold)
             case .symbol(let s):
-                Image(systemName: s).font(.system(size: 9, weight: .bold))
+                Image(systemName: s).settingsFont(size: 9, weight: .bold)
             }
         }
         .foregroundStyle(.primary.opacity(0.75))
@@ -293,7 +364,7 @@ struct ShortcutLine: View {
             .frame(width: capColumnWidth, alignment: .leading)
 
             Text(label)
-                .font(.system(size: 11))
+                .settingsFont(size: 11)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
             Spacer(minLength: 0)
@@ -346,7 +417,7 @@ struct ShortcutGroupHeading: View {
 
     var body: some View {
         Text(text.uppercased())
-            .font(.system(size: 9, weight: .semibold))
+            .settingsFont(size: 9, weight: .semibold)
             .tracking(0.8)
             .foregroundStyle(.tertiary)
             .padding(.bottom, 1)

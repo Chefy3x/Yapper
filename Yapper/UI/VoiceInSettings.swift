@@ -30,7 +30,7 @@ struct TagChip: View {
 
     var body: some View {
         Text(text)
-            .font(.system(size: 10.5, weight: .semibold))
+            .settingsFont(size: 10.5, weight: .semibold)
             .foregroundStyle(foreground)
             .padding(.horizontal, 7)
             .padding(.vertical, 2.5)
@@ -66,7 +66,7 @@ struct RowIconButton: View {
     var body: some View {
         Button(role: role, action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 10.5, weight: .semibold))
+                .settingsFont(size: 10.5, weight: .semibold)
                 .foregroundStyle(active ? Brand.blueDeep : (hovering ? Brand.ink : Brand.muted))
                 .frame(width: 26, height: 26)
                 .background(Circle().fill(hovering ? Brand.ink.opacity(0.08) : Brand.sunken))
@@ -88,7 +88,7 @@ struct CardHeader: View {
     var body: some View {
         HStack(alignment: .center, spacing: 14) {
             Image(systemName: icon)
-                .font(.system(size: 14, weight: .semibold))
+                .settingsFont(size: 14, weight: .semibold)
                 .foregroundStyle(skin.iconTint)
                 .iconTile(skin.iconChipBG, size: 34)
             RowLabel(title, subtitle: subtitle)
@@ -106,11 +106,11 @@ struct SearchField: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 11.5, weight: .semibold))
+                .settingsFont(size: 11.5, weight: .semibold)
                 .foregroundStyle(Brand.faint)
             TextField(prompt, text: $text)
                 .textFieldStyle(.plain)
-                .font(.system(size: 13))
+                .settingsFont(size: 13)
             if !text.isEmpty {
                 Button { text = "" } label: {
                     Image(systemName: "xmark.circle.fill").foregroundStyle(Brand.faint)
@@ -134,14 +134,14 @@ struct EmptyStateCard: View {
     var body: some View {
         VStack(spacing: 10) {
             Image(systemName: icon)
-                .font(.system(size: 18, weight: .medium))
+                .settingsFont(size: 18, weight: .medium)
                 .foregroundStyle(Brand.muted)
                 .iconTile(Brand.sunken, size: 40)
             Text(title)
-                .font(Brand.display(20))
+                .settingsDisplay(20)
                 .foregroundStyle(Brand.ink)
             Text(detail)
-                .font(.system(size: 12))
+                .settingsFont(size: 12)
                 .foregroundStyle(Brand.muted)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 360)
@@ -206,7 +206,7 @@ private struct PillPreviewCard: View {
                 RecordingPill(phase: phase, motion: PillMotion(fixed: 0.75, working: phase == .transcribing))
             }
             Text(label)
-                .font(skin.body(9.5, .semibold))
+                .settingsBody(9.5, .semibold)
                 .tracking(0.2)
                 .foregroundStyle(Brand.faint)
         }
@@ -295,22 +295,22 @@ struct ModelsPanel: View {
         let downloaded = model.isDownloaded
         return HStack(alignment: .top, spacing: 12) {
             Image(systemName: active ? "checkmark.circle.fill" : downloaded ? "circle" : "arrow.down.circle")
-                .font(.system(size: 15, weight: .medium))
+                .settingsFont(size: 15, weight: .medium)
                 .foregroundStyle(active ? AnyShapeStyle(skin.accent) : AnyShapeStyle(Brand.faint))
                 .frame(width: 22)
                 .padding(.top, 1)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
-                    Text(model.displayName).font(skin.body(13, .semibold))
+                    Text(model.displayName).settingsBody(13, .semibold)
                     if active { TagChip(text: "In use", tone: .accent) }
                     if model.id == WhisperModel.recommended.id, !active { TagChip(text: "Recommended") }
                 }
                 Text(model.blurb)
-                    .font(skin.body(11))
+                    .settingsBody(11)
                     .foregroundStyle(Brand.muted)
                     .fixedSize(horizontal: false, vertical: true)
                 Text(meta(model, downloaded: downloaded))
-                    .font(skin.body(10.5, .medium))
+                    .settingsBody(10.5, .medium)
                     .foregroundStyle(Brand.faint)
                 if active, case .downloading(let p) = state.whisperModelStatus {
                     ProgressView(value: p).tint(skin.controlTint).padding(.top, 2)
@@ -335,18 +335,18 @@ struct ModelsPanel: View {
         if active {
             switch state.whisperModelStatus {
             case .downloading(let p):
-                Text("\(Int(p * 100))%").font(skin.body(11, .semibold)).monospacedDigit().foregroundStyle(Brand.muted)
+                Text("\(Int(p * 100))%").settingsBody(11, .semibold).monospacedDigit().foregroundStyle(Brand.muted)
             case .loading:
-                HStack(spacing: 6) { ProgressView().controlSize(.small); Text("Loading").font(skin.body(11)).foregroundStyle(Brand.muted) }
+                HStack(spacing: 6) { ProgressView().controlSize(.small); Text("Loading").settingsBody(11).foregroundStyle(Brand.muted) }
             case .notDownloaded:
                 Button("Download") { state.voiceInput.downloadModel() }.controlSize(.small)
             case .failed:
                 Button("Retry") { state.voiceInput.downloadModel() }.controlSize(.small)
             case .ready:
-                Text("Ready").font(skin.body(10.5, .semibold)).tracking(0)
+                Text("Ready").settingsBody(10.5, .semibold).tracking(0)
                     .foregroundStyle(skin.okTint)
             case .downloaded:
-                Text("Loads when Voice in is on").font(skin.body(10.5)).foregroundStyle(Brand.faint)
+                Text("Loads when Voice in is on").settingsBody(10.5).foregroundStyle(Brand.faint)
             }
         } else if downloaded {
             HStack(spacing: 6) {
@@ -371,30 +371,30 @@ struct ModelsPanel: View {
     private var formatterRow: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: formatter.status == .ready ? "checkmark.circle.fill" : "arrow.down.circle")
-                .font(.system(size: 15, weight: .medium))
+                .settingsFont(size: 15, weight: .medium)
                 .foregroundStyle(formatter.status == .ready && settings.smartFormattingEnabled
                                  ? AnyShapeStyle(skin.accent) : AnyShapeStyle(Brand.faint))
                 .frame(width: 22)
                 .padding(.top, 1)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
-                    Text(FormatterModel.displayName).font(skin.body(13, .semibold))
+                    Text(FormatterModel.displayName).settingsBody(13, .semibold)
                     if formatter.status == .ready, settings.smartFormattingEnabled { TagChip(text: "In use", tone: .accent) }
                 }
                 Text("Qwen's small open model (Apache-2.0), 4-bit, through llama.cpp on the GPU. Loads as you start talking and unloads after five idle minutes.")
-                    .font(skin.body(11))
+                    .settingsBody(11)
                     .foregroundStyle(Brand.muted)
                     .fixedSize(horizontal: false, vertical: true)
                 Text(formatter.status == .ready && formatterBytes > 0
                      ? "llama.cpp · Metal · \(byteString(formatterBytes)) on disk"
                      : "llama.cpp · Metal · \(FormatterModel.approxSize) download")
-                    .font(skin.body(10.5, .medium))
+                    .settingsBody(10.5, .medium)
                     .foregroundStyle(Brand.faint)
                 if case .downloading(let p) = formatter.status {
                     ProgressView(value: p).tint(skin.controlTint).padding(.top, 2)
                 }
                 if case .failed(let why) = formatter.status {
-                    Text(why).font(skin.body(10.5)).foregroundStyle(skin.destructive)
+                    Text(why).settingsBody(10.5).foregroundStyle(skin.destructive)
                 }
             }
             Spacer(minLength: 10)
@@ -406,7 +406,7 @@ struct ModelsPanel: View {
     private var formatterAction: some View {
         switch formatter.status {
         case .unsupported:
-            Text("Needs Apple Silicon").font(skin.body(10.5)).foregroundStyle(Brand.faint)
+            Text("Needs Apple Silicon").settingsBody(10.5).foregroundStyle(Brand.faint)
         case .notDownloaded, .failed:
             Button("Download") {
                 formatter.download()
@@ -414,9 +414,9 @@ struct ModelsPanel: View {
             }
             .controlSize(.small)
         case .downloading(let p):
-            Text("\(Int(p * 100))%").font(skin.body(11, .semibold)).monospacedDigit().foregroundStyle(Brand.muted)
+            Text("\(Int(p * 100))%").settingsBody(11, .semibold).monospacedDigit().foregroundStyle(Brand.muted)
         case .verifying:
-            HStack(spacing: 6) { ProgressView().controlSize(.small); Text("Checking").font(skin.body(11)).foregroundStyle(Brand.muted) }
+            HStack(spacing: 6) { ProgressView().controlSize(.small); Text("Checking").settingsBody(11).foregroundStyle(Brand.muted) }
         case .ready:
             HStack(spacing: 8) {
                 Toggle("", isOn: $settings.smartFormattingEnabled)
@@ -433,11 +433,11 @@ struct ModelsPanel: View {
         let total = sizes.values.reduce(0, +) + formatterBytes
         return HStack(spacing: 10) {
             Image(systemName: "internaldrive")
-                .font(.system(size: 11, weight: .semibold))
+                .settingsFont(size: 11, weight: .semibold)
                 .foregroundStyle(Brand.faint)
             Text(total > 0 ? "\(byteString(total)) of models on this Mac, in Application Support › Yapper."
                            : "Models are kept in Application Support › Yapper.")
-                .font(skin.body(11))
+                .settingsBody(11)
                 .foregroundStyle(Brand.muted)
             Spacer()
             Button("Show in Finder") {
@@ -565,11 +565,11 @@ struct DictationsPanel: View {
     private func stat(_ value: String, _ label: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(value)
-                .font(Brand.display(34))
+                .settingsDisplay(34)
                 .monospacedDigit()
                 .foregroundStyle(AnyShapeStyle(Brand.ink))
             Text(label)
-                .font(skin.body(10, .semibold))
+                .settingsBody(10, .semibold)
                 .tracking(0.2)
                 .foregroundStyle(Brand.muted)
         }
@@ -595,13 +595,13 @@ struct DictationsPanel: View {
         return LazyVStack(alignment: .leading, spacing: 6) {
             if all.isEmpty {
                 Text("Nothing matches “\(query)”.")
-                    .font(skin.body(12))
+                    .settingsBody(12)
                     .foregroundStyle(Brand.faint)
                     .padding(.vertical, 20)
             }
             ForEach(days, id: \.key) { day, entries in
                 Text(dayLabel(day))
-                    .font(skin.body(10, .bold))
+                    .settingsBody(10, .bold)
                     .tracking(1.6)
                     .foregroundStyle(Brand.muted)
                     .padding(.top, day == days.first?.key ? 0 : 14)
@@ -676,7 +676,7 @@ private struct DictationRow: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 12) {
                 Text(entry.at.formatted(date: .omitted, time: .shortened))
-                    .font(skin.body(11, .medium))
+                    .settingsBody(11, .medium)
                     .monospacedDigit()
                     .foregroundStyle(Brand.faint)
                     .frame(width: 58, alignment: .leading)
@@ -684,12 +684,12 @@ private struct DictationRow: View {
                 VStack(alignment: .leading, spacing: 4) {
                     if entry.text.isEmpty {
                         Text(entry.outcome == .failed ? "Couldn't transcribe this one" : "Nothing to type: silence, or just “um”")
-                            .font(skin.body(13))
+                            .settingsBody(13)
                             .italic()
                             .foregroundStyle(Brand.faint)
                     } else {
                         Text(entry.text)
-                            .font(skin.body(13))
+                            .settingsBody(13)
                             .foregroundStyle(Brand.ink)
                             .lineLimit(expanded ? nil : 2)
                             .textSelection(.enabled)
@@ -718,13 +718,13 @@ private struct DictationRow: View {
     private var meta: some View {
         HStack(spacing: 6) {
             if let app = entry.appName {
-                Text(app).font(skin.body(10.5, .medium)).foregroundStyle(Brand.muted)
+                Text(app).settingsBody(10.5, .medium).foregroundStyle(Brand.muted)
                 dot
             }
-            Text(duration).font(skin.body(10.5)).foregroundStyle(Brand.faint)
+            Text(duration).settingsBody(10.5).foregroundStyle(Brand.faint)
             if entry.wordCount > 0 {
                 dot
-                Text("\(entry.wordCount) word\(entry.wordCount == 1 ? "" : "s")").font(skin.body(10.5)).foregroundStyle(Brand.faint)
+                Text("\(entry.wordCount) word\(entry.wordCount == 1 ? "" : "s")").settingsBody(10.5).foregroundStyle(Brand.faint)
             }
             switch entry.outcome {
             case .copied: TagChip(text: "Not pasted")
@@ -735,11 +735,11 @@ private struct DictationRow: View {
             }
             if entry.wasCleaned, entry.outcome != .empty { TagChip(text: "Cleaned up") }
             if working { ProgressView().controlSize(.mini) }
-            if let note { Text(note).font(skin.body(10.5)).foregroundStyle(skin.destructive).lineLimit(1) }
+            if let note { Text(note).settingsBody(10.5).foregroundStyle(skin.destructive).lineLimit(1) }
         }
     }
 
-    private var dot: some View { Text("·").font(skin.body(10.5)).foregroundStyle(Brand.faint) }
+    private var dot: some View { Text("·").settingsBody(10.5).foregroundStyle(Brand.faint) }
 
     private var duration: String {
         let s = Int(entry.duration.rounded())
@@ -767,7 +767,7 @@ private struct DictationRow: View {
                 Button("Delete", role: .destructive, action: onDelete)
             } label: {
                 Image(systemName: "ellipsis")
-                    .font(.system(size: 11, weight: .bold))
+                    .settingsFont(size: 11, weight: .bold)
                     .foregroundStyle(Brand.muted)
                     .frame(width: 26, height: 26)
                     .background(Circle().fill(Brand.ink.opacity(0.06)))
@@ -790,11 +790,11 @@ private struct DictationRow: View {
     private func column(_ title: String, _ text: String, dim: Bool) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             Text(title.uppercased())
-                .font(skin.body(9, .bold))
+                .settingsBody(9, .bold)
                 .tracking(1.4)
                 .foregroundStyle(Brand.faint)
             Text(text)
-                .font(.system(size: 11.5, design: .monospaced))
+                .settingsFont(size: 11.5, design: .monospaced)
                 .foregroundStyle(dim ? AnyShapeStyle(Brand.muted) : AnyShapeStyle(Brand.ink))
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -861,7 +861,7 @@ struct DictionaryPanel: View {
                 VStack(alignment: .leading, spacing: 0) {
                     CardHeader(icon: "character.book.closed.fill", title: "Your words",
                                subtitle: "Names and jargon Yapper should expect, and fixes for what the speech model still gets wrong.",
-                               trailing: AnyView(Text(countLine).font(skin.body(10.5, .medium)).foregroundStyle(Brand.faint)))
+                               trailing: AnyView(Text(countLine).settingsBody(10.5, .medium).foregroundStyle(Brand.faint)))
                         .padding(.bottom, 4)
                     RowDivider()
                     addBar
@@ -911,7 +911,7 @@ struct DictionaryPanel: View {
             if addingCorrection {
                 HStack(spacing: 8) {
                     TextField("When it hears…", text: $newHeard).textFieldStyle(.roundedBorder)
-                    Image(systemName: "arrow.right").font(.system(size: 10, weight: .bold)).foregroundStyle(Brand.faint)
+                    Image(systemName: "arrow.right").settingsFont(size: 10, weight: .bold).foregroundStyle(Brand.faint)
                     TextField("…type this", text: $newTyped).textFieldStyle(.roundedBorder).onSubmit(addCorrection)
                     Button("Add", action: addCorrection)
                         .controlSize(.small)
@@ -941,7 +941,7 @@ struct DictionaryPanel: View {
                 ForEach(Filter.allCases) { f in
                     Button { filter = f } label: {
                         Text(f.rawValue)
-                            .font(.system(size: 11.5, weight: filter == f ? .semibold : .medium))
+                            .settingsFont(size: 11.5, weight: filter == f ? .semibold : .medium)
                             .foregroundStyle(filter == f ? Brand.ink : Brand.muted)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 5)
@@ -981,7 +981,7 @@ struct DictionaryPanel: View {
             Text(vocab.terms.isEmpty && vocab.replacements.isEmpty
                  ? "Nothing yet. Add a word above, or let Yapper learn from your edits."
                  : "Nothing matches.")
-                .font(skin.body(11.5))
+                .settingsBody(11.5)
                 .foregroundStyle(Brand.faint)
                 .padding(.vertical, 12)
         } else {
@@ -1000,12 +1000,12 @@ struct DictionaryPanel: View {
     private func rowContent(_ item: Entry) -> some View {
         switch item {
         case .term(let t, _):
-            Text(t).font(skin.body(12.5, .semibold))
+            Text(t).settingsBody(12.5, .semibold)
         case .rule(let r):
             HStack(spacing: 8) {
-                Text(r.heard).font(skin.body(12.5)).foregroundStyle(Brand.muted).strikethrough(color: .secondary.opacity(0.5))
-                Image(systemName: "arrow.right").font(.system(size: 9, weight: .bold)).foregroundStyle(Brand.faint)
-                Text(r.typed).font(skin.body(12.5, .semibold))
+                Text(r.heard).settingsBody(12.5).foregroundStyle(Brand.muted).strikethrough(color: .secondary.opacity(0.5))
+                Image(systemName: "arrow.right").settingsFont(size: 9, weight: .bold).foregroundStyle(Brand.faint)
+                Text(r.typed).settingsBody(12.5, .semibold)
             }
         }
     }
@@ -1022,14 +1022,14 @@ struct DictionaryPanel: View {
     private func learnedBanner(_ batch: LearnedBatch) -> some View {
         HStack(spacing: 12) {
             Image(systemName: "sparkles")
-                .font(.system(size: 12, weight: .semibold))
+                .settingsFont(size: 12, weight: .semibold)
                 .foregroundStyle(skin.accent)
             Text("Learned \(batch.words.map { "“\($0)”" }.joined(separator: ", ")) from your edit.")
-                .font(skin.body(12))
+                .settingsBody(12)
                 .lineLimit(2)
             Spacer()
             Button("Undo") { vocab.undoLearned() }.controlSize(.small)
-            Button { vocab.dismissLearned() } label: { Image(systemName: "xmark").font(.system(size: 9, weight: .bold)) }
+            Button { vocab.dismissLearned() } label: { Image(systemName: "xmark").settingsFont(size: 9, weight: .bold) }
                 .buttonStyle(.plain)
                 .foregroundStyle(Brand.muted)
         }
@@ -1045,12 +1045,12 @@ struct DictionaryPanel: View {
     private func toggleRow(icon: String, title: String, detail: String, isOn: Binding<Bool>) -> some View {
         HStack(spacing: 12) {
             Image(systemName: icon)
-                .font(.system(size: 13, weight: .medium))
+                .settingsFont(size: 13, weight: .medium)
                 .foregroundStyle(skin.iconTint)
                 .frame(width: 22)
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(skin.body(13, .semibold))
-                Text(detail).font(skin.body(11)).foregroundStyle(Brand.muted)
+                Text(title).settingsBody(13, .semibold)
+                Text(detail).settingsBody(11).foregroundStyle(Brand.muted)
             }
             Spacer()
             Toggle("", isOn: isOn)
@@ -1063,13 +1063,13 @@ struct DictionaryPanel: View {
     private var wisprImportRow: some View {
         HStack(spacing: 12) {
             Image(systemName: "square.and.arrow.down")
-                .font(.system(size: 13, weight: .medium))
+                .settingsFont(size: 13, weight: .medium)
                 .foregroundStyle(skin.iconTint)
                 .frame(width: 22)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Import from Wispr Flow").font(skin.body(13, .semibold))
+                Text("Import from Wispr Flow").settingsBody(13, .semibold)
                 Text(importNote ?? "Brings in the words and corrections Wispr Flow has learned, marked as imported.")
-                    .font(skin.body(11))
+                    .settingsBody(11)
                     .foregroundStyle(importNote == nil ? Brand.muted : Brand.blueDeep)
             }
             Spacer()
@@ -1103,7 +1103,7 @@ struct DictionaryPanel: View {
                        subtitle: "Edit what Yapper typed into what you meant, then save. Every changed word becomes a correction.")
             if let last = vocab.lastTranscript {
                 TextEditor(text: $correction)
-                    .font(skin.body(12))
+                    .settingsBody(12)
                     .frame(minHeight: 54, maxHeight: 110)
                     .scrollContentBackground(.hidden)
                     .padding(6)
@@ -1111,10 +1111,10 @@ struct DictionaryPanel: View {
                     .onAppear { correction = last.delivered }
                     .onChange(of: last.delivered) { correction = $0 }
                 HStack {
-                    Text(last.at, style: .relative).font(skin.body(11)).foregroundStyle(Brand.faint)
-                    + Text(" ago").font(skin.body(11)).foregroundStyle(Brand.faint)
+                    (Text(last.at, style: .relative) + Text(" ago"))
+                        .settingsBody(11).foregroundStyle(Brand.faint)
                     Spacer()
-                    if let learnedNote { Text(learnedNote).font(skin.body(11)).foregroundStyle(Brand.blueDeep) }
+                    if let learnedNote { Text(learnedNote).settingsBody(11).foregroundStyle(Brand.blueDeep) }
                     Button("Save correction") {
                         let learned = vocab.learn(corrected: correction)
                         learnedNote = learned.isEmpty ? "No word changes to learn"
@@ -1124,7 +1124,7 @@ struct DictionaryPanel: View {
                     .disabled(correction.trimmingCharacters(in: .whitespacesAndNewlines) == last.delivered)
                 }
             } else {
-                Text("Nothing dictated yet.").font(skin.body(11)).foregroundStyle(Brand.faint)
+                Text("Nothing dictated yet.").settingsBody(11).foregroundStyle(Brand.faint)
             }
         }
     }
@@ -1143,7 +1143,7 @@ private struct DictionaryRow<Content: View>: View {
             switch origin {
             case .learned:
                 HStack(spacing: 3) {
-                    Image(systemName: "sparkle").font(.system(size: 8, weight: .bold))
+                    Image(systemName: "sparkle").settingsFont(size: 8, weight: .bold)
                         .foregroundStyle(skin.accent)
                     TagChip(text: "Learned")
                 }
@@ -1186,7 +1186,7 @@ struct SnippetsPanel: View {
                                subtitle: "Say the trigger in any dictation and Yapper types the text instead. Say only the trigger and you get exactly the text.")
                     editor(trigger: $trigger, expansion: $expansion)
                     HStack {
-                        if let error { Text(error).font(skin.body(11)).foregroundStyle(skin.destructive) }
+                        if let error { Text(error).settingsBody(11).foregroundStyle(skin.destructive) }
                         Spacer()
                         PrimaryButton(title: "Add snippet", systemImage: "plus", action: add)
                     }
@@ -1198,7 +1198,7 @@ struct SnippetsPanel: View {
             } else {
                 HStack {
                     Text("\(store.snippets.count) snippet\(store.snippets.count == 1 ? "" : "s")")
-                        .font(skin.body(10, .bold))
+                        .settingsBody(10, .bold)
                         .tracking(1.6)
                         .foregroundStyle(Brand.muted)
                     Spacer()
@@ -1234,13 +1234,13 @@ struct SnippetsPanel: View {
             }
             .frame(width: 190)
             Image(systemName: "arrow.right")
-                .font(.system(size: 10, weight: .bold))
+                .settingsFont(size: 10, weight: .bold)
                 .foregroundStyle(Brand.faint)
                 .padding(.top, 27)
             VStack(alignment: .leading, spacing: 6) {
                 fieldLabel("Type")
                 TextEditor(text: expansion)
-                    .font(.system(size: 12, design: .monospaced))
+                    .settingsFont(size: 12, design: .monospaced)
                     .scrollContentBackground(.hidden)
                     .frame(height: 62)
                     .padding(5)
@@ -1252,7 +1252,7 @@ struct SnippetsPanel: View {
 
     private func fieldLabel(_ text: String) -> some View {
         Text(text.uppercased())
-            .font(skin.body(9, .bold))
+            .settingsBody(9, .bold)
             .tracking(1.4)
             .foregroundStyle(Brand.faint)
     }
@@ -1277,7 +1277,7 @@ struct SnippetsPanel: View {
         VStack(alignment: .leading, spacing: 10) {
             editor(trigger: $editTrigger, expansion: $editExpansion)
             HStack {
-                if let editError { Text(editError).font(skin.body(11)).foregroundStyle(skin.destructive) }
+                if let editError { Text(editError).settingsBody(11).foregroundStyle(skin.destructive) }
                 Spacer()
                 Button("Cancel") { editing = nil }.controlSize(.small)
                 Button("Save") {
@@ -1310,20 +1310,20 @@ private struct SnippetRow: View {
         HStack(alignment: .top, spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("“\(snippet.trigger)”")
-                    .font(skin.body(12.5, .semibold))
+                    .settingsBody(12.5, .semibold)
                 if snippet.uses > 0 {
                     Text("used \(snippet.uses)×")
-                        .font(skin.body(10))
+                        .settingsBody(10)
                         .foregroundStyle(Brand.faint)
                 }
             }
             .frame(width: 190, alignment: .leading)
             Image(systemName: "arrow.right")
-                .font(.system(size: 9, weight: .bold))
+                .settingsFont(size: 9, weight: .bold)
                 .foregroundStyle(Brand.faint)
                 .padding(.top, 4)
             Text(snippet.expansion)
-                .font(.system(size: 11.5, design: .monospaced))
+                .settingsFont(size: 11.5, design: .monospaced)
                 .foregroundStyle(Brand.muted)
                 .lineLimit(3)
                 .frame(maxWidth: .infinity, alignment: .leading)

@@ -103,6 +103,8 @@ struct SettingsView: View {
 
     /// One light look, whatever the mini player wears; the cassette stays on the deck.
     private let skin: SettingsSkin = .standard
+    /// Space either side of the page.
+    private static let pagePadding: CGFloat = 44
 
     var body: some View {
         HStack(spacing: 0) {
@@ -113,18 +115,25 @@ struct SettingsView: View {
                     Rectangle().fill(Brand.line).frame(width: 1).ignoresSafeArea()
                 }
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    SectionHeader(section: selected)
-                        .padding(.top, 30)
-                        .padding(.bottom, 26)
+            // The page grows with the window: past the base column, the cards widen and the type
+            // scales up with them (to `Brand.maxScale`), so a bigger window reads bigger instead of
+            // leaving the page stranded in one corner.
+            GeometryReader { geo in
+                let scale = Brand.scale(forContentWidth: geo.size.width - Self.pagePadding * 2)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        SectionHeader(section: selected)
+                            .padding(.top, 30)
+                            .padding(.bottom, 26)
 
-                    content
-                        .padding(.bottom, 60)
+                        content
+                            .padding(.bottom, 60)
+                    }
+                    .frame(maxWidth: Brand.contentMaxWidth * scale, alignment: .leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, Self.pagePadding)
                 }
-                .frame(maxWidth: Brand.contentMaxWidth, alignment: .leading)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 44)
+                .environment(\.settingsScale, scale)
             }
             .background(Brand.canvas.ignoresSafeArea())
         }
@@ -241,7 +250,7 @@ private struct SidebarRail: View {
             HStack(spacing: 10) {
                 YapperGlyph(size: 28)
                 Text("Yapper")
-                    .font(Brand.display(22))
+                    .settingsDisplay(22)
                     .foregroundStyle(Brand.ink)
                 Spacer()
             }
@@ -253,7 +262,7 @@ private struct SidebarRail: View {
                 ForEach(Array(YSection.groups.enumerated()), id: \.offset) { index, group in
                     if let heading = group.heading {
                         Text(heading.uppercased())
-                            .font(Brand.label(9.5))
+                            .settingsLabel(9.5)
                             .tracking(1.4)
                             .foregroundStyle(Brand.faint)
                             .padding(.horizontal, 12)
@@ -274,7 +283,7 @@ private struct SidebarRail: View {
             HStack(spacing: 7) {
                 Circle().fill(Brand.led).frame(width: 6, height: 6)
                 Text("Version \(appVersion)")
-                    .font(Brand.label(10))
+                    .settingsLabel(10)
                     .foregroundStyle(Brand.faint)
             }
             .padding(.horizontal, 24)
@@ -293,11 +302,11 @@ private struct SidebarItem: View {
         Button(action: action) {
             HStack(spacing: 10) {
                 Image(systemName: section.symbol)
-                    .font(.system(size: 13, weight: .medium))
+                    .settingsFont(size: 13, weight: .medium)
                     .frame(width: 18)
                     .foregroundStyle(isSelected ? Brand.ink : Brand.muted)
                 Text(section.title)
-                    .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
+                    .settingsFont(size: 13, weight: isSelected ? .semibold : .regular)
                     .foregroundStyle(isSelected ? Brand.ink : Brand.ink.opacity(0.78))
                 Spacer()
             }
@@ -340,23 +349,23 @@ private struct SectionHeader: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 9) {
                 Text(counter)
-                    .font(Brand.label(10))
+                    .settingsLabel(10)
                     .tracking(1)
                     .foregroundStyle(Brand.blueOnDark)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 4)
                     .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(Brand.lcd))
                 Text(group.uppercased())
-                    .font(Brand.label(10.5))
+                    .settingsLabel(10.5)
                     .tracking(1.5)
                     .foregroundStyle(Brand.muted)
             }
             Text(section.title)
-                .font(Brand.display(38))
+                .settingsDisplay(38)
                 .tracking(-0.4)
                 .foregroundStyle(Brand.ink)
             Text(section.subtitle)
-                .font(.system(size: 14))
+                .settingsFont(size: 14)
                 .foregroundStyle(Brand.muted)
         }
     }
@@ -396,11 +405,11 @@ struct RowLabel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(title)
-                .font(.system(size: 13, weight: .medium))
+                .settingsFont(size: 13, weight: .medium)
                 .foregroundStyle(Brand.ink)
             if let subtitle {
                 Text(subtitle)
-                    .font(.system(size: 12))
+                    .settingsFont(size: 12)
                     .foregroundStyle(Brand.muted)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -421,7 +430,7 @@ struct SectionLabel: View {
     let text: String
     var body: some View {
         Text(text.uppercased())
-            .font(Brand.label(10.5))
+            .settingsLabel(10.5)
             .tracking(1.4)
             .foregroundStyle(Brand.muted)
             .padding(.bottom, 10)
@@ -463,7 +472,7 @@ private struct GeneralPanel: View {
             Card {
                 HStack(alignment: .center, spacing: 16) {
                     Image(systemName: "power")
-                        .font(.system(size: 16, weight: .semibold))
+                        .settingsFont(size: 16, weight: .semibold)
                         .foregroundStyle(skin.iconTint)
                         .iconTile(skin.iconChipBG, size: 34)
                     RowLabel("Launch at login",
@@ -484,7 +493,7 @@ private struct GeneralPanel: View {
                 VStack(alignment: .leading, spacing: 16) {
                     HStack(spacing: 14) {
                         Image(systemName: "macwindow")
-                            .font(.system(size: 16, weight: .semibold))
+                            .settingsFont(size: 16, weight: .semibold)
                             .foregroundStyle(skin.iconTint)
                             .iconTile(skin.iconChipBG, size: 34)
                         RowLabel("Mini player position",
@@ -501,7 +510,7 @@ private struct GeneralPanel: View {
                 VStack(alignment: .leading, spacing: 16) {
                     HStack(spacing: 14) {
                         Image(systemName: "rectangle.on.rectangle.angled")
-                            .font(.system(size: 16, weight: .semibold))
+                            .settingsFont(size: 16, weight: .semibold)
                             .foregroundStyle(skin.iconTint)
                             .iconTile(skin.iconChipBG, size: 34)
                         RowLabel("Mini player theme",
@@ -539,7 +548,7 @@ private struct GeneralPanel: View {
                 Image(systemName: "info.circle")
                     .foregroundStyle(Brand.faint)
                 Text("If you've dragged the mini player to a custom spot, that wins until you reset.")
-                    .font(.system(size: 11))
+                    .settingsFont(size: 11)
                     .foregroundStyle(Brand.muted)
             }
             .padding(.horizontal, 4)
@@ -581,7 +590,7 @@ private struct CornerPicker: View {
                         .padding(6)
                 }
                 Text(label)
-                    .font(skin.body(11, .medium))
+                    .settingsBody(11, .medium)
                     .foregroundStyle(isOn ? skin.accent : .secondary)
             }
             .padding(10)
@@ -655,13 +664,13 @@ private struct VoicesPanel: View {
                             .frame(width: 150)
                         TextField("Voice ID, e.g. 21m00Tcm4TlvDq8ikWAM", text: $newVoiceID)
                             .textFieldStyle(.roundedBorder)
-                            .font(.system(size: 12, design: .monospaced))
+                            .settingsFont(size: 12, design: .monospaced)
                             .onSubmit(addVoice)
                         Button("Add", action: addVoice)
                             .disabled(!canAdd)
                     }
                     Text("In ElevenLabs, open Voices, then the voice's ⋯ menu → Copy voice ID.")
-                        .font(skin.body(11))
+                        .settingsBody(11)
                         .foregroundStyle(Brand.muted)
                         .padding(.top, 10)
                 }
@@ -705,16 +714,16 @@ private struct VoiceRow: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: isActive ? "checkmark.circle.fill" : "circle")
-                .font(.system(size: 15, weight: isActive ? .semibold : .regular))
+                .settingsFont(size: 15, weight: isActive ? .semibold : .regular)
                 .foregroundStyle(isActive ? skin.controlTint : Brand.lineStrong)
                 .frame(width: 18)
             Text(voice.displayName)
-                .font(skin.body(13, isActive ? .semibold : .medium))
+                .settingsBody(13, isActive ? .semibold : .medium)
                 .foregroundStyle(Brand.ink)
             if voice.isCustom { TagChip(text: "Custom") }
             if isActive {
                 Text("In use")
-                    .font(skin.body(11))
+                    .settingsBody(11)
                     .foregroundStyle(Brand.muted)
             }
             Spacer(minLength: 8)
@@ -813,7 +822,7 @@ private struct HotkeysPanel: View {
                 Image(systemName: "plus.circle")
                     .foregroundStyle(Brand.faint)
                 Text("Use + to add your own shortcuts, as many per action as you like. Each needs ⌃, ⌥ or ⌘, or use an F-key or a mouse's extra button on its own.")
-                    .font(skin.body(11))
+                    .settingsBody(11)
                     .foregroundStyle(Brand.muted)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 16)
@@ -829,7 +838,7 @@ private struct HotkeysPanel: View {
         Card {
             HStack(spacing: 14) {
                 Image(systemName: "keyboard")
-                    .font(.system(size: 14, weight: .semibold))
+                    .settingsFont(size: 14, weight: .semibold)
                     .foregroundStyle(skin.iconTint)
                     .iconTile(skin.iconChipBG, size: 34)
                 RowLabel("Yapper key",
@@ -849,7 +858,7 @@ private struct HotkeysPanel: View {
                     Image(systemName: "info.circle")
                         .foregroundStyle(Brand.faint)
                     Text(caveat)
-                        .font(skin.body(11))
+                        .settingsBody(11)
                         .foregroundStyle(Brand.muted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -875,7 +884,7 @@ private struct HotkeysPanel: View {
                     ChordKeys(keys: chord, suffix: action == .talk ? "hold" : nil)
                 } else if extras.isEmpty, !isRecording {
                     Text("Not set")
-                        .font(.system(size: 11.5, weight: .medium))
+                        .settingsFont(size: 11.5, weight: .medium)
                         .foregroundStyle(Brand.faint)
                 }
                 ForEach(Array(extras.enumerated()), id: \.element) { index, shortcut in
@@ -990,10 +999,10 @@ private struct KeycapView: View {
             switch content {
             case .text(let s, let w, let mono):
                 Text(s)
-                    .font(.system(size: 12.5, weight: w, design: mono ? .monospaced : .default))
+                    .settingsFont(size: 12.5, weight: w, design: mono ? .monospaced : .default)
             case .symbol(let s):
                 Image(systemName: s)
-                    .font(.system(size: 13, weight: .semibold))
+                    .settingsFont(size: 13, weight: .semibold)
             }
         }
         // Light keycaps, like the key chips on the site: white, a hairline, a 1pt base.
@@ -1033,7 +1042,7 @@ private struct HotkeyListRow<Keys: View>: View {
         HStack(alignment: .center, spacing: 20) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
-                    .font(skin.body(13, .semibold))
+                    .settingsBody(13, .semibold)
                     .foregroundStyle(Brand.ink)
                 // Red is kept for REC and destructive; a clash just reads louder.
                 Label {
@@ -1042,7 +1051,7 @@ private struct HotkeyListRow<Keys: View>: View {
                     if warning { Image(systemName: "exclamationmark.circle.fill") }
                 }
                 .labelStyle(SubtitleLabelStyle(showsIcon: warning))
-                .font(skin.body(11.5, warning ? .medium : .regular))
+                .settingsBody(11.5, warning ? .medium : .regular)
                 .foregroundStyle(warning ? Brand.ink : Brand.muted)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -1076,14 +1085,14 @@ private struct ChordKeys: View {
             ForEach(Array(keys.enumerated()), id: \.offset) { idx, key in
                 if idx > 0 {
                     Image(systemName: "plus")
-                        .font(.system(size: 8, weight: .bold))
+                        .settingsFont(size: 8, weight: .bold)
                         .foregroundStyle(Brand.faint)
                 }
                 key.view
             }
             if let suffix {
                 Text(suffix)
-                    .font(.system(size: 11.5, weight: .medium))
+                    .settingsFont(size: 11.5, weight: .medium)
                     .foregroundStyle(Brand.muted)
                     .padding(.leading, 2)
             }
@@ -1095,7 +1104,7 @@ private struct ChordKeys: View {
 private struct OrLabel: View {
     var body: some View {
         Text("or")
-            .font(.system(size: 11, weight: .medium))
+            .settingsFont(size: 11, weight: .medium)
             .foregroundStyle(Brand.faint)
     }
 }
@@ -1109,7 +1118,7 @@ private struct ShortcutCap: View {
 
     var body: some View {
         Text(label)
-            .font(.system(size: 12.5, weight: remove == nil ? .medium : .semibold))
+            .settingsFont(size: 12.5, weight: remove == nil ? .medium : .semibold)
             .foregroundStyle(remove == nil ? Brand.muted : Brand.ink)
             .frame(minHeight: 28)
             .padding(.horizontal, 10)
@@ -1129,7 +1138,7 @@ private struct ShortcutCap: View {
                 if let remove {
                     Button(action: remove) {
                         Image(systemName: "xmark")
-                            .font(.system(size: 7, weight: .heavy))
+                            .settingsFont(size: 7, weight: .heavy)
                             .foregroundStyle(.white)
                             .frame(width: 15, height: 15)
                             .background(Circle().fill(Brand.muted))
@@ -1167,7 +1176,7 @@ private struct ProvidersPanel: View {
                 Card {
                     HStack(alignment: .center, spacing: 16) {
                         Image(systemName: "apple.logo")
-                            .font(.system(size: 14, weight: .semibold))
+                            .settingsFont(size: 14, weight: .semibold)
                             .foregroundStyle(skin.iconTint)
                             .iconTile(skin.iconChipBG, size: 32)
 
@@ -1188,7 +1197,7 @@ private struct ProvidersPanel: View {
 
                         VStack(alignment: .leading, spacing: 10) {
                             Text("Model")
-                                .font(skin.body(13, .semibold))
+                                .settingsBody(13, .semibold)
                             VStack(spacing: 8) {
                                 ForEach(ElevenLabsModel.allCases) { model in
                                     ModelOption(
@@ -1214,7 +1223,7 @@ private struct ProvidersPanel: View {
 
                         VStack(alignment: .leading, spacing: 10) {
                             Text("Model")
-                                .font(skin.body(13, .semibold))
+                                .settingsBody(13, .semibold)
                             VStack(spacing: 8) {
                                 ForEach(OpenAIModel.allCases) { model in
                                     ModelOption(
@@ -1228,7 +1237,7 @@ private struct ProvidersPanel: View {
                         }
 
                         Text("OpenAI voices synthesize one sentence at a time with no cross-sentence stitching, so seams are slightly more audible than ElevenLabs.")
-                            .font(skin.body(11))
+                            .settingsBody(11)
                             .foregroundStyle(Brand.muted)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -1240,7 +1249,7 @@ private struct ProvidersPanel: View {
                 Card {
                     HStack(alignment: .center, spacing: 16) {
                         Image(systemName: "wifi.slash")
-                            .font(.system(size: 14, weight: .semibold))
+                            .settingsFont(size: 14, weight: .semibold)
                             .foregroundStyle(skin.iconTint)
                             .iconTile(skin.iconChipBG, size: 32)
 
@@ -1276,10 +1285,10 @@ private struct ModelOption: View {
                 }
                 VStack(alignment: .leading, spacing: 1) {
                     Text(title)
-                        .font(skin.body(13, .semibold))
+                        .settingsBody(13, .semibold)
                         .foregroundStyle(Brand.ink)
                     Text(subtitle)
-                        .font(skin.body(11))
+                        .settingsBody(11)
                         .foregroundStyle(Brand.muted)
                 }
                 Spacer()
@@ -1315,7 +1324,7 @@ private struct ConversationPanel: View {
             Card {
                 HStack(alignment: .center, spacing: 14) {
                     Image(systemName: "bubble.left.and.bubble.right.fill")
-                        .font(.system(size: 14, weight: .semibold))
+                        .settingsFont(size: 14, weight: .semibold)
                         .foregroundStyle(skin.iconTint)
                         .iconTile(skin.iconChipBG, size: 34)
                     RowLabel("On when Yapper starts",
@@ -1341,13 +1350,13 @@ private struct ConversationPanel: View {
                         } label: {
                             HStack(spacing: 8) {
                                 Image(systemName: "chevron.right")
-                                    .font(.system(size: 9, weight: .bold))
+                                    .settingsFont(size: 9, weight: .bold)
                                     .rotationEffect(.degrees(showUninstalled ? 90 : 0))
                                 Text("Not installed: \(uninstalled.map(\.name).joined(separator: ", "))")
                                     .lineLimit(1)
                                 Spacer()
                             }
-                            .font(skin.body(11.5))
+                            .settingsBody(11.5)
                             .foregroundStyle(Brand.muted)
                             .contentShape(Rectangle())
                         }
@@ -1361,7 +1370,7 @@ private struct ConversationPanel: View {
                     }
                 }
                 Text("Yapper reads each new reply from these as it finishes, even in the background. Browsers count only while their active tab is an AI site.")
-                    .font(skin.body(11.5))
+                    .settingsBody(11.5)
                     .foregroundStyle(Brand.muted)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 10)
@@ -1372,7 +1381,7 @@ private struct ConversationPanel: View {
                 Image(systemName: "info.circle")
                     .foregroundStyle(Brand.faint)
                 Text("\(settings.yapperKey.keycap) + → skips to the next reply. With hands-free on (Voice in → Talk) the mic opens after each reply so you can answer; Yapper never presses Return.")
-                    .font(skin.body(11.5))
+                    .settingsBody(11.5)
                     .foregroundStyle(Brand.muted)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -1434,17 +1443,17 @@ private struct WatchedAppRow: View {
                         .interpolation(.high)
                 } else {
                     Image(systemName: app.isBrowser ? "globe" : "app")
-                        .font(.system(size: 14))
+                        .settingsFont(size: 14)
                         .foregroundStyle(Brand.faint)
                 }
             }
             .frame(width: 24, height: 24)
             VStack(alignment: .leading, spacing: 1) {
                 Text(app.name)
-                    .font(skin.body(13, .medium))
+                    .settingsBody(13, .medium)
                     .foregroundStyle(app.isInstalled ? Brand.ink : Brand.muted)
                 Text(app.isInstalled ? app.strategy : "Not installed")
-                    .font(skin.body(11))
+                    .settingsBody(11)
                     .foregroundStyle(Brand.muted)
             }
             Spacer()
@@ -1477,7 +1486,7 @@ struct VoiceInSection: View {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(alignment: .center, spacing: 16) {
                     Image(systemName: "mic.fill")
-                        .font(.system(size: 14, weight: .semibold))
+                        .settingsFont(size: 14, weight: .semibold)
                         .foregroundStyle(Brand.blueDeep)
                         .iconTile(Brand.blueSoft, size: 34)
                     RowLabel("Voice in",
@@ -1536,13 +1545,13 @@ struct VoiceInSection: View {
     private var microphoneRow: some View {
         HStack(spacing: 12) {
             Image(systemName: state.hasMicrophonePermission ? "checkmark.circle.fill" : "exclamationmark.circle")
-                .font(.system(size: 13, weight: .medium))
+                .settingsFont(size: 13, weight: .medium)
                 .foregroundStyle(state.hasMicrophonePermission ? Brand.led : Color.orange)
                 .frame(width: 22)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Microphone").font(skin.body(13, .semibold))
+                Text("Microphone").settingsBody(13, .semibold)
                 Text(state.hasMicrophonePermission ? "Access granted" : "Yapper needs microphone access to listen")
-                    .font(skin.body(11))
+                    .settingsBody(11)
                     .foregroundStyle(Brand.muted)
             }
             Spacer()
@@ -1563,14 +1572,14 @@ struct VoiceInSection: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 12) {
                 Image(systemName: "cpu")
-                    .font(.system(size: 13, weight: .medium))
+                    .settingsFont(size: 13, weight: .medium)
                     .foregroundStyle(skin.iconTint)
                     .frame(width: 22)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Speech model: \(WhisperModel.named(settings.whisperModelID).displayName)")
-                        .font(skin.body(13, .semibold))
+                        .settingsBody(13, .semibold)
                     Text(modelStatusLine)
-                        .font(skin.body(11))
+                        .settingsBody(11)
                         .foregroundStyle(Brand.muted)
                 }
                 Spacer()
@@ -1599,12 +1608,12 @@ struct VoiceInSection: View {
     private func toggleRow(icon: String, title: String, detail: String, isOn: Binding<Bool>) -> some View {
         HStack(spacing: 12) {
             Image(systemName: icon)
-                .font(.system(size: 13, weight: .medium))
+                .settingsFont(size: 13, weight: .medium)
                 .foregroundStyle(skin.iconTint)
                 .frame(width: 22)
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(skin.body(13, .semibold))
-                Text(detail).font(skin.body(11)).foregroundStyle(Brand.muted)
+                Text(title).settingsBody(13, .semibold)
+                Text(detail).settingsBody(11).foregroundStyle(Brand.muted)
             }
             Spacer()
             Toggle("", isOn: isOn)
@@ -1618,13 +1627,13 @@ struct VoiceInSection: View {
     private var pillStyleRow: some View {
         HStack(spacing: 12) {
             Image(systemName: "mouth")
-                .font(.system(size: 13, weight: .medium))
+                .settingsFont(size: 13, weight: .medium)
                 .foregroundStyle(skin.iconTint)
                 .frame(width: 22)
             VStack(alignment: .leading, spacing: 2) {
-                Text("On the pill").font(skin.body(13, .semibold))
+                Text("On the pill").settingsBody(13, .semibold)
                 Text("A mouth that moves with your voice as you talk, or the level bars.")
-                    .font(skin.body(11))
+                    .settingsBody(11)
                     .foregroundStyle(Brand.muted)
             }
             Spacer()
@@ -1643,13 +1652,13 @@ struct VoiceInSection: View {
     private var mouthEarRow: some View {
         HStack(spacing: 12) {
             Image(systemName: "ear.and.waveform")
-                .font(.system(size: 13, weight: .medium))
+                .settingsFont(size: 13, weight: .medium)
                 .foregroundStyle(skin.iconTint)
                 .frame(width: 22)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Mouth timing").font(skin.body(13, .semibold))
+                Text("Mouth timing").settingsBody(13, .semibold)
                 Text("Hearing further ahead gets more sounds right, but the mouth runs that much behind your voice.")
-                    .font(skin.body(11))
+                    .settingsBody(11)
                     .foregroundStyle(Brand.muted)
             }
             Spacer()
@@ -1667,13 +1676,13 @@ struct VoiceInSection: View {
     private var handsFreeRow: some View {
         HStack(spacing: 12) {
             Image(systemName: "ear")
-                .font(.system(size: 13, weight: .medium))
+                .settingsFont(size: 13, weight: .medium)
                 .foregroundStyle(skin.iconTint)
                 .frame(width: 22)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Hands-free after each reply").font(skin.body(13, .semibold))
+                Text("Hands-free after each reply").settingsBody(13, .semibold)
                 Text("When Conversation Mode finishes reading a response, the mic opens until you pause. Nothing is sent — you press Return.")
-                    .font(skin.body(11))
+                    .settingsBody(11)
                     .foregroundStyle(Brand.muted)
             }
             Spacer()
@@ -1688,13 +1697,13 @@ struct VoiceInSection: View {
     private var pauseMediaRow: some View {
         HStack(spacing: 12) {
             Image(systemName: "pause.circle")
-                .font(.system(size: 13, weight: .medium))
+                .settingsFont(size: 13, weight: .medium)
                 .foregroundStyle(skin.iconTint)
                 .frame(width: 22)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Pause media while you or Yapper talk").font(skin.body(13, .semibold))
+                Text("Pause media while you or Yapper talk").settingsBody(13, .semibold)
                 Text("A video or song in another app pauses while you hold the talk key or Yapper reads, and plays again once you're both done. In Conversation Mode it waits for the reply too.")
-                    .font(skin.body(11))
+                    .settingsBody(11)
                     .foregroundStyle(Brand.muted)
             }
             Spacer()
@@ -1709,13 +1718,13 @@ struct VoiceInSection: View {
     private var cleanUpRow: some View {
         HStack(spacing: 12) {
             Image(systemName: "eraser")
-                .font(.system(size: 13, weight: .medium))
+                .settingsFont(size: 13, weight: .medium)
                 .foregroundStyle(skin.iconTint)
                 .frame(width: 22)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Clean up stumbles").font(skin.body(13, .semibold))
+                Text("Clean up stumbles").settingsBody(13, .semibold)
                 Text("Takes out um and uh, stutters, words said twice, and filler like \"you know\" that's never meant. Instant, on every dictation.")
-                    .font(skin.body(11))
+                    .settingsBody(11)
                     .foregroundStyle(Brand.muted)
             }
             Spacer()
@@ -1730,13 +1739,13 @@ struct VoiceInSection: View {
     private var formattingRow: some View {
         HStack(spacing: 12) {
             Image(systemName: "list.number")
-                .font(.system(size: 13, weight: .medium))
+                .settingsFont(size: 13, weight: .medium)
                 .foregroundStyle(skin.iconTint)
                 .frame(width: 22)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Smart formatting").font(skin.body(13, .semibold))
+                Text("Smart formatting").settingsBody(13, .semibold)
                 Text(formattingDetail)
-                    .font(skin.body(11))
+                    .settingsBody(11)
                     .foregroundStyle(Brand.muted)
             }
             Spacer()
@@ -1783,13 +1792,13 @@ struct VoiceInSection: View {
     private var inputDeviceRow: some View {
         HStack(spacing: 12) {
             Image(systemName: "waveform.circle")
-                .font(.system(size: 13, weight: .medium))
+                .settingsFont(size: 13, weight: .medium)
                 .foregroundStyle(skin.iconTint)
                 .frame(width: 22)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Input").font(skin.body(13, .semibold))
+                Text("Input").settingsBody(13, .semibold)
                 Text("Which microphone to listen with.")
-                    .font(skin.body(11))
+                    .settingsBody(11)
                     .foregroundStyle(Brand.muted)
             }
             Spacer()
@@ -1858,7 +1867,7 @@ private struct HistoryBrowser: View {
                 Spacer()
                 if !history.entries.isEmpty {
                     Text("\(history.entries.count) item\(history.entries.count == 1 ? "" : "s")")
-                        .font(skin.body(11))
+                        .settingsBody(11)
                         .foregroundStyle(Brand.faint)
                         .padding(.bottom, 10)
                 }
@@ -1881,10 +1890,10 @@ private struct HistoryBrowser: View {
     private var emptyState: some View {
         VStack(spacing: 6) {
             Text("Nothing read yet")
-                .font(skin.body(13, .semibold))
+                .settingsBody(13, .semibold)
                 .foregroundStyle(Brand.muted)
             Text("What Yapper reads aloud shows up here, to play again.")
-                .font(skin.body(11.5))
+                .settingsBody(11.5)
                 .foregroundStyle(Brand.faint)
         }
         .frame(maxWidth: .infinity)
@@ -1904,15 +1913,15 @@ private struct HistoryRow: View {
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(entry.preview)
-                    .font(skin.body(12.5))
+                    .settingsBody(12.5)
                     .lineLimit(2)
                     .foregroundStyle(Brand.ink)
                 HStack(spacing: 5) {
                     Image(systemName: entry.origin.symbol)
-                        .font(.system(size: 9, weight: .semibold))
+                        .settingsFont(size: 9, weight: .semibold)
                     Text("\(entry.sourceApp) · \(relativeTime(entry.createdAt))")
                 }
-                .font(skin.body(11))
+                .settingsBody(11)
                 .foregroundStyle(Brand.faint)
             }
             Spacer(minLength: 8)
@@ -1989,11 +1998,11 @@ private struct AboutPanel: View {
 
             VStack(spacing: 8) {
                 Text("Yapper")
-                    .font(Brand.display(44))
+                    .settingsDisplay(44)
                     .tracking(-0.5)
                 Text("Reads your AI out loud. ") + Text("Types what you say.").italic()
             }
-            .font(Brand.display(19))
+            .settingsDisplay(19)
             .foregroundStyle(Brand.ink)
 
             HStack(spacing: 8) {
@@ -2005,9 +2014,9 @@ private struct AboutPanel: View {
             VStack(spacing: 4) {
                 Text("Free and open source. Speech is transcribed on this Mac.")
                 Text("Mouth shapes learned from LibriTTS (Zen et al.), CC BY 4.0.")
-                    .font(.system(size: 10.5))
+                    .settingsFont(size: 10.5)
             }
-            .font(.system(size: 12))
+            .settingsFont(size: 12)
             .foregroundStyle(Brand.muted)
             .multilineTextAlignment(.center)
             .padding(.top, 4)
@@ -2033,11 +2042,11 @@ private struct InfoPill: View {
     var body: some View {
         HStack(spacing: 8) {
             Text(label)
-                .font(Brand.label(9.5))
+                .settingsLabel(9.5)
                 .tracking(1.2)
                 .foregroundStyle(Brand.muted)
             Text(value)
-                .font(.system(size: 11.5, weight: .semibold, design: .monospaced))
+                .settingsFont(size: 11.5, weight: .semibold, design: .monospaced)
                 .foregroundStyle(Brand.ink)
         }
         .padding(.horizontal, 12)
@@ -2068,10 +2077,10 @@ struct PrimaryButton: View {
             HStack(spacing: 6) {
                 if let systemImage {
                     Image(systemName: systemImage)
-                        .font(.system(size: 11, weight: .bold))
+                        .settingsFont(size: 11, weight: .bold)
                 }
                 Text(title)
-                    .font(.system(size: 12.5, weight: .semibold))
+                    .settingsFont(size: 12.5, weight: .semibold)
             }
             .foregroundStyle(.white)
             .padding(.horizontal, 15)
@@ -2096,7 +2105,7 @@ struct PlayDisc: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: "play.fill")
-                .font(.system(size: 10, weight: .bold))
+                .settingsFont(size: 10, weight: .bold)
                 .foregroundStyle(.white)
                 .offset(x: 1)
                 .frame(width: 28, height: 28)
