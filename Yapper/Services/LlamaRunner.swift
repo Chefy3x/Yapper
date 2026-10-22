@@ -1,5 +1,6 @@
 import Foundation
 import llama
+import Accelerate
 
 /// One small language model loaded through llama.cpp, run greedily on a private thread.
 ///
@@ -89,6 +90,20 @@ final class LlamaRunner: @unchecked Sendable {
         try await run { try self.generateOnQueue(prefix: prefix, suffix: suffix, maxTokens: maxTokens, deadline: deadline) }
     }
 
+    /// How naturally each of two texts follows `prefix`: the summed log-probability of their
+    /// tokens from the first one where they differ. For texts that differ in a word or two, the
+    /// higher one reads more like what was meant.
+    func compare(prefix: String, _ a: String, _ b: String) async throws -> (a: Double, b: Double) {
+        try await run {
+            guard let vocab = try self.loadedVocab() else { throw RunnerError.contextFailed }
+            let ta = try self.tokenize(a, vocab: vocab), tb = try self.tokenize(b, vocab: vocab)
+            var common = 0
+            while common < min(ta.count, tb.count), ta[common] == tb[common] { common += 1 }
+            return (try self.scoreOnQueue(prefix: prefix, tokens: ta, from: common),
+                    try self.scoreOnQueue(prefix: prefix, tokens: tb, from: common))
+        }
+    }
+
     private func run<T: Sendable>(_ work: @escaping @Sendable () throws -> T) async throws -> T {
         try await withCheckedThrowingContinuation { cont in
             queue.async { cont.resume(with: Result { try work() }) }
@@ -172,6 +187,49 @@ final class LlamaRunner: @unchecked Sendable {
         }
         return Output(text: String(decoding: bytes, as: UTF8.self), promptTokens: start,
                       generatedTokens: generated, hitDeadline: hitDeadline, promptSeconds: promptSeconds)
+    }
+
+    private func loadedVocab() throws -> OpaquePointer? {
+        try loadOnQueue()
+        return vocab
+    }
+
+    /// Sum of log P(token) for `tokens[from...]`, each given everything before it. Token 0 has no
+    /// logits once the prefix comes from the cache, so scoring starts at 1 at the earliest.
+    private func scoreOnQueue(prefix: String, tokens: [llama_token], from: Int) throws -> Double {
+        guard let context, let vocab else { throw RunnerError.contextFailed }
+        llama_memory_clear(llama_get_memory(context), true)
+        let start = prefix.isEmpty ? 0 : try restoreOrEvaluate(prefix: prefix, context: context, vocab: vocab)
+        guard start + tokens.count < Int(contextLength), tokens.count <= 1024 else { throw RunnerError.promptTooLong }
+        var batch = llama_batch_init(Int32(tokens.count), 0, 1)
+        defer { llama_batch_free(batch) }
+        for (i, token) in tokens.enumerated() {
+            batch.token[i] = token
+            batch.pos[i] = llama_pos(start + i)
+            batch.n_seq_id[i] = 1
+            batch.seq_id[i]![0] = 0
+            batch.logits[i] = 1
+        }
+        batch.n_tokens = Int32(tokens.count)
+        let status = llama_decode(context, batch)
+        guard status == 0 else { throw RunnerError.decodeFailed(status) }
+
+        let n = Int(llama_vocab_n_tokens(vocab))
+        var exps = [Float](repeating: 0, count: n)
+        var total = 0.0
+        for i in max(1, from)..<tokens.count {
+            guard let logits = llama_get_logits_ith(context, Int32(i - 1)) else { continue }
+            var top: Float = 0
+            vDSP_maxv(logits, 1, &top, vDSP_Length(n))
+            var shift = -top
+            vDSP_vsadd(logits, 1, &shift, &exps, 1, vDSP_Length(n))
+            var count = Int32(n)
+            vvexpf(&exps, exps, &count)
+            var sum: Float = 0
+            vDSP_sve(exps, 1, &sum, vDSP_Length(n))
+            total += Double(logits[Int(tokens[i])] - top) - log(Double(sum))
+        }
+        return total
     }
 
     /// The prompt goes in batch-sized chunks; only the last chunk's logits are needed.

@@ -2,7 +2,7 @@ import Foundation
 
 /// Turns a spoken enumeration into a list: "first, … second, … third, …" or "number one, …
 /// number two, …". Said that way, a list is what's meant nearly every time, and rules get it
-/// right every time where the 2B model only sometimes does.
+/// right every time where the model only sometimes does.
 ///
 /// A counting word only counts when it opens a clause and is followed the way list markers are
 /// ("First, we…", "second is…", "number two:"), and only as part of a run that starts at one

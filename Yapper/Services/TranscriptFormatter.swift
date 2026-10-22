@@ -95,7 +95,7 @@ enum FormatCues {
 }
 
 /// The instructions and examples the small model sees. One narrow job, stated as rules, then
-/// shown: a 2B model follows examples far better than prose.
+/// shown: a small model follows examples far better than prose.
 enum FormatPrompt {
     static let system = """
     You tidy up dictated text. Return the same text with only these changes:
@@ -149,7 +149,7 @@ enum FormatPrompt {
         },
     ]
 
-    /// Qwen's ChatML, with the thinking block closed up front: a 2B model reasoning aloud is
+    /// Qwen's ChatML, with the thinking block closed up front: a small model reasoning aloud is
     /// slower and no better at this.
     static func build(text: String, mode: FormatMode, cleanup: Bool = false) -> String {
         prefix(mode: mode, cleanup: cleanup) + suffix(text: text)

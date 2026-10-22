@@ -188,6 +188,9 @@ final class AppState: ObservableObject {
             let formatted = await self.formatter.format(tidied, bundleID: bundleID, cleanup: cleanup)
             return Punctuation.finish(formatted, mode: mode)
         }
+        voiceInput.termAdvantage = { [weak self] text, spot, terms in
+            await self?.formatter.termAdvantage(in: text, at: spot, terms: terms)
+        }
         voiceInput.expandSnippets = { [weak self] text in self?.snippets.expand(text) ?? text }
         let hud = RecordingHUDController(state: self)
         recordingHUD = hud
@@ -247,6 +250,7 @@ final class AppState: ObservableObject {
                         self.formatter.warmUp(bundleID: NSWorkspace.shared.frontmostApplication?.bundleIdentifier,
                                               cleanup: self.settings.cleanUpSpeech)
                     }
+                    if !self.vocabulary.heardAs.isEmpty { self.formatter.warmContextCheck(terms: self.vocabulary.terms) }
                 }
                 self.reconsiderMediaResume(voiceState: state)
             }

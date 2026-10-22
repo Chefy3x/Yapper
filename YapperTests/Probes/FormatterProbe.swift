@@ -41,3 +41,62 @@ struct FormatterProbe {
         }
     }
 }
+
+/// Opt-in: the same formatting requests through several model files, side by side.
+/// YAPPER_FORMAT_MODELS=<comma-separated .gguf paths>. Runs the probe's sample dictations plus
+/// every kept dictation of the user's that would reach the model (a self-correction), through
+/// the real guard and time budget.
+@MainActor
+struct FormatterModelComparison {
+    nonisolated static let models = (ProcessInfo.processInfo.environment["YAPPER_FORMAT_MODELS"] ?? "")
+        .split(separator: ",").map { URL(fileURLWithPath: String($0)) }
+
+    struct Record: Decodable { let id: String; let heard: String? }
+
+    private func inputs() -> [(String, FormatMode)] {
+        let file = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Yapper/dictations.json")
+        let records = (try? JSONDecoder().decode([Record].self, from: Data(contentsOf: file))) ?? []
+        var seen: Set<String> = []
+        let own = records.compactMap { $0.heard.map { Disfluency.clean($0) } }
+            .filter { FormatEngine.plan($0, cleanup: true) != nil && seen.insert($0).inserted }
+        return FormatterProbe.cases + own.map { ($0, FormatMode.chat) }
+    }
+
+    @Test(.enabled(if: !models.isEmpty)) func sideBySide() async throws {
+        let cases = inputs()
+        print("FMT \(cases.count) requests (\(FormatterProbe.cases.count) samples + \(cases.count - FormatterProbe.cases.count) of yours)")
+        var outputs: [[String]] = []
+        for url in Self.models {
+            let runner = LlamaRunner(modelURL: url)
+            try await runner.load()
+            var counts: [String: Int] = [:], times: [Double] = [], texts: [String] = []
+            for (text, mode) in cases {
+                let started = Date()
+                let result = await FormatEngine.format(text, mode: mode, cleanup: true, runner: runner)
+                times.append(Date().timeIntervalSince(started))
+                let key: String = switch result.outcome {
+                case .formatted: "formatted"
+                case .unchanged: "unchanged"
+                case .rejected: "rejected"
+                case .timedOut: "timed out"
+                case .failed: "failed"
+                case .skipped: "skipped"
+                }
+                counts[key, default: 0] += 1
+                texts.append(result.text)
+            }
+            outputs.append(texts)
+            let sorted = times.sorted()
+            print("FMT ===== \(url.lastPathComponent): \(counts.sorted { $0.key < $1.key }.map { "\($0.key) \($0.value)" }.joined(separator: ", ")) | p50 \(String(format: "%.2f", sorted[sorted.count / 2]))s p90 \(String(format: "%.2f", sorted[sorted.count * 9 / 10]))s")
+            await runner.unload()
+        }
+        for (i, (text, _)) in cases.enumerated() {
+            print("FMT --- [\(i)] in: \(text.replacingOccurrences(of: "\n", with: " ⏎ "))")
+            for (m, url) in Self.models.enumerated() {
+                let out = outputs[m][i]
+                print("FMT   \(url.lastPathComponent.prefix(22)): \(out == text ? "(unchanged)" : out.replacingOccurrences(of: "\n", with: " ⏎ "))")
+            }
+        }
+    }
+}

@@ -70,6 +70,9 @@ final class VoiceInputCoordinator: ObservableObject {
     /// Lays out lists and applies self-corrections before the paste. Nil, or text returned
     /// unchanged, delivers the transcript as heard.
     var format: (@MainActor (String) async -> String)?
+    /// How much better the transcript reads with one of the user's terms in place of a word that
+    /// sounds like it ("Claude" for "cloud"), in nats. Nil when it can't tell.
+    var termAdvantage: (@MainActor (_ text: String, _ spot: SoundAlike, _ terms: [String]) async -> Double?)?
     /// Swaps spoken snippet triggers for their text: the last step before the paste.
     var expandSnippets: (@MainActor (String) -> String)?
     /// The mic level of every buffer while a turn is listening. Drives the recording HUD.
@@ -668,7 +671,8 @@ final class VoiceInputCoordinator: ObservableObject {
         let heard = try await transcriber.transcribe(samples: samples, prompt: prompt)
         let decoded = Date()
         guard !heard.isEmpty, !Task.isCancelled else { return (heard, "", decoded) }
-        let corrected = TranscriptCorrector.apply(heard, replacements: replacements)
+        let sensed = await settleSoundAlikes(in: heard, terms: terms)
+        let corrected = TranscriptCorrector.apply(sensed, replacements: replacements)
         let respelled = TranscriptCorrector.respell(corrected, candidates: screen + terms) {
             WordKnowledge.isDictionaryWord($0)
         }
@@ -679,6 +683,21 @@ final class VoiceInputCoordinator: ObservableObject {
         let coded = CodeWords.apply(formatted, identifiers: reading.identifiers, tagFiles: reading.tagsFiles)
         let text = coded.isEmpty ? coded : (expandSnippets?(coded) ?? coded)
         return (heard, text, decoded)
+    }
+
+    /// Words the speech model may have written for one of the user's terms ("cloud" for Claude)
+    /// become the term only where the sentence reads clearly better with it, so "that cloud
+    /// session" stays and "ask cloud to fix it" doesn't. Without the model they stay as heard.
+    private func settleSoundAlikes(in text: String, terms: [String]) async -> String {
+        let spots = SoundAlikes.spots(in: text, heardAs: vocabulary.heardAs, terms: terms)
+        guard !spots.isEmpty, let termAdvantage else { return text }
+        let started = Date()
+        var taken: [SoundAlike] = []
+        for spot in spots.prefix(ContextCheck.maxQuestions) {
+            if let advantage = await termAdvantage(text, spot, terms), advantage > ContextCheck.margin { taken.append(spot) }
+        }
+        Log.voice.notice("Context check: \(taken.count, privacy: .public) of \(spots.count, privacy: .public) spot(s) took the term in \(String(format: "%.2f", Date().timeIntervalSince(started)), privacy: .public)s")
+        return SoundAlikes.apply(taken, to: text)
     }
 
     /// Settings → Dictations → Transcribe again: the same pipeline on a kept recording, with no

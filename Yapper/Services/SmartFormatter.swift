@@ -1,15 +1,19 @@
 import Foundation
 import CryptoKit
 
-/// The formatting model: Qwen3.5 2B (Apache-2.0), 4-bit, as a GGUF for llama.cpp. Downloaded on
+/// The formatting model: Qwen3.5 0.8B (Apache-2.0), 4-bit, as a GGUF for llama.cpp. Downloaded on
 /// request into Application Support, checked against Hugging Face's SHA-256, never bundled.
+///
+/// It was the 2B until 2026-10-22. On the user's own dictations the 0.8B did the context check
+/// exactly as well (49 of 56 sound-alikes, none broken) at under half the size and twice the
+/// speed; it applies fewer self-corrections, but leaves the words as spoken when it doesn't.
 enum FormatterModel {
-    static let displayName = "Qwen3.5 2B"
-    static let fileName = "Qwen3.5-2B-Q4_K_M.gguf"
-    static let url = URL(string: "https://huggingface.co/unsloth/Qwen3.5-2B-GGUF/resolve/main/Qwen3.5-2B-Q4_K_M.gguf")!
-    static let sha256 = "aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223"
-    static let byteCount: Int64 = 1_280_835_840
-    static let approxSize = "1.3 GB"
+    static let displayName = "Qwen3.5 0.8B"
+    static let fileName = "Qwen3.5-0.8B-Q4_K_M.gguf"
+    static let url = URL(string: "https://huggingface.co/unsloth/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-Q4_K_M.gguf")!
+    static let sha256 = "bd258782e35f7f458f8aced1adc053e6e92e89bc735ba3be89d38a06121dc517"
+    static let byteCount: Int64 = 532_517_120
+    static let approxSize = "530 MB"
 
     static var folder: URL {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
@@ -25,7 +29,7 @@ enum FormatterModel {
         return size == byteCount
     }
 
-    /// Metal makes a 2B model fast enough to sit in the paste path; on Intel it isn't.
+    /// Metal makes a small model fast enough to sit in the paste path; on Intel it isn't.
     static var isSupported: Bool {
         #if arch(arm64)
         return true
@@ -121,7 +125,7 @@ enum FormatEngine {
 
 /// Voice In's formatting step: turns "first… second…" into a list and "3, no wait, 4" into "4",
 /// on this Mac. Loads the model the moment you start talking, so it's ready by the time you
-/// let go, and unloads it after a few idle minutes to give the 1.5 GB back.
+/// let go, and unloads it after a few idle minutes to give the memory back.
 @MainActor
 final class SmartFormatter: ObservableObject {
     @Published private(set) var status: FormatterStatus
@@ -166,6 +170,31 @@ final class SmartFormatter: ObservableObject {
         scheduleUnload()
         Log.voice.notice("Format (\(mode.rawValue, privacy: .public)): \(String(describing: result.outcome), privacy: .public) in \(String(format: "%.2f", Date().timeIntervalSince(started)), privacy: .public)s")
         return result.text
+    }
+
+    /// The user started talking and the vocabulary has sound-alikes to check: load the model and
+    /// read the context check's opening now, so the check is quick when they let go.
+    func warmContextCheck(terms: [String]) {
+        guard status == .ready, !terms.isEmpty else { return }
+        let runner = self.runner ?? LlamaRunner(modelURL: FormatterModel.fileURL)
+        self.runner = runner
+        scheduleUnload()
+        let prefix = ContextCheck.prefix(terms: terms)
+        Task {
+            do { try await runner.prime(prefix: prefix) } catch {
+                Log.voice.error("Context check load failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+    }
+
+    /// How much better `text` reads with the term at `spot`. Nil without the model.
+    func termAdvantage(in text: String, at spot: SoundAlike, terms: [String]) async -> Double? {
+        guard status == .ready else { return nil }
+        let runner = self.runner ?? LlamaRunner(modelURL: FormatterModel.fileURL)
+        self.runner = runner
+        let advantage = await ContextCheck.advantage(runner, in: text, at: spot, terms: terms)
+        scheduleUnload()
+        return advantage
     }
 
     /// The app is quitting: give the model back now, while llama.cpp can still free it cleanly.

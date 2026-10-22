@@ -49,6 +49,10 @@ struct LearnedBatch: Equatable, Sendable {
 final class VocabularyStore: ObservableObject {
     @Published var terms: [String] { didSet { save() } }
     @Published var replacements: [Replacement] { didSet { save() } }
+    /// Per term (keyed lowercased), what the speech model writes when it mishears it: "claw" and
+    /// "cloud" for Claude. Unlike a replacement these are never applied blindly: each one found
+    /// becomes the term only where the sentence reads clearly better with it (`ContextCheck`).
+    @Published var heardAs: [String: [String]] { didSet { save() } }
     @Published private(set) var lastTranscript: LastTranscript?
     /// How each term arrived, keyed by its lowercased spelling. Terms typed in have no entry.
     @Published private(set) var termOrigins: [String: VocabOrigin] = [:] { didSet { save() } }
@@ -60,6 +64,7 @@ final class VocabularyStore: ObservableObject {
         var replacements: [Replacement] = []
         var lastTranscript: LastTranscript?
         var termOrigins: [String: VocabOrigin]?
+        var heardAs: [String: [String]]?
     }
 
     private let url: URL
@@ -69,6 +74,7 @@ final class VocabularyStore: ObservableObject {
         let file = (try? Data(contentsOf: self.url)).flatMap { try? JSONDecoder().decode(File.self, from: $0) } ?? File()
         terms = file.terms
         replacements = file.replacements
+        heardAs = file.heardAs ?? [:]
         lastTranscript = file.lastTranscript
         termOrigins = file.termOrigins ?? [:]
     }
@@ -188,7 +194,7 @@ final class VocabularyStore: ObservableObject {
 
     private func save() {
         let file = File(terms: terms, replacements: replacements, lastTranscript: lastTranscript,
-                        termOrigins: termOrigins.isEmpty ? nil : termOrigins)
+                        termOrigins: termOrigins.isEmpty ? nil : termOrigins, heardAs: heardAs.isEmpty ? nil : heardAs)
         if let data = try? JSONEncoder().encode(file) {
             try? data.write(to: url, options: .atomic)
         }
