@@ -5,8 +5,11 @@ import Foundation
 /// are extra ways in. A Talk shortcut works both ways: hold it to talk and let go to type, or
 /// press it once to start and again to finish (see `TalkShortcut`). A Keep listening shortcut
 /// does what Space does mid-talk, and on its own starts a dictation that the next press finishes.
+/// Press Return has no Yapper-key gesture at all: it's shortcuts only, so any key or mouse button
+/// can be Return.
 enum HotkeyAction: String, CaseIterable, Codable, Identifiable, Sendable {
     case readLatest, talk, keepListening, readSelection, repasteLast, toggleConversation, skipNext, dumpAXTree
+    case pressReturn
 
     var id: String { rawValue }
 
@@ -20,6 +23,7 @@ enum HotkeyAction: String, CaseIterable, Codable, Identifiable, Sendable {
         case .toggleConversation: "Toggle Conversation Mode"
         case .skipNext:           "Skip ahead"
         case .dumpAXTree:         "AX debug dump"
+        case .pressReturn:        "Press Return"
         }
     }
 
@@ -36,6 +40,7 @@ enum HotkeyAction: String, CaseIterable, Codable, Identifiable, Sendable {
         case .toggleConversation: [KeyShortcut.Code.returnKey, KeyShortcut.Code.keypadEnter]
         case .skipNext:           [KeyShortcut.Code.rightArrow]
         case .dumpAXTree:         [KeyShortcut.Code.d]
+        case .pressReturn:        []
         }
     }
 }

@@ -800,6 +800,15 @@ private struct HotkeysPanel: View {
                 }
             }
 
+            VStack(alignment: .leading, spacing: 0) {
+                SectionLabel(text: "Keys for the app")
+                HotkeyList {
+                    row(.pressReturn,
+                        subtitle: "Presses Return in the app you're in, from any key or mouse button. Does nothing while a dictation is still typing.",
+                        last: true)
+                }
+            }
+
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Image(systemName: "plus.circle")
                     .foregroundStyle(Brand.faint)
@@ -853,6 +862,8 @@ private struct HotkeysPanel: View {
     private func row(_ action: HotkeyAction, subtitle: String, last: Bool = false) -> some View {
         let extras = settings.customShortcuts[action] ?? []
         let isRecording = recording == action
+        // Press Return has no Yapper-key gesture, only what's recorded here.
+        let hasChord = action != .pressReturn
         var chord: [KeyCap] = [.named(settings.yapperKey.keycap)]
         if let key = chordKey(action) { chord.append(key) }
         return HotkeyListRow(title: action.title,
@@ -860,13 +871,19 @@ private struct HotkeysPanel: View {
                              warning: problems[action] != nil,
                              last: last) {
             HStack(spacing: 8) {
-                ChordKeys(keys: chord, suffix: action == .talk ? "hold" : nil)
-                ForEach(extras, id: \.self) { shortcut in
-                    OrLabel()
+                if hasChord {
+                    ChordKeys(keys: chord, suffix: action == .talk ? "hold" : nil)
+                } else if extras.isEmpty, !isRecording {
+                    Text("Not set")
+                        .font(.system(size: 11.5, weight: .medium))
+                        .foregroundStyle(Brand.faint)
+                }
+                ForEach(Array(extras.enumerated()), id: \.element) { index, shortcut in
+                    if hasChord || index > 0 { OrLabel() }
                     ShortcutCap(label: shortcut.parts.joined()) { remove(shortcut, from: action) }
                 }
                 if isRecording {
-                    OrLabel()
+                    if hasChord || !extras.isEmpty { OrLabel() }
                     ShortcutCap(label: "Type shortcut", remove: nil)
                 }
                 if isRecording {
@@ -881,7 +898,7 @@ private struct HotkeysPanel: View {
 
     private func chordKey(_ action: HotkeyAction) -> KeyCap? {
         switch action {
-        case .readLatest, .talk:  nil
+        case .readLatest, .talk, .pressReturn: nil
         case .keepListening:      .named("Space")
         case .readSelection:      .letter("S")
         case .repasteLast:        .letter("V")

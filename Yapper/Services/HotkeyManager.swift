@@ -52,6 +52,8 @@ final class HotkeyManager {
     /// A recorded Keep listening shortcut: lock a talk in progress, finish a locked one, or
     /// start one already locked.
     var onKeepListening: (() -> Void)?
+    /// A recorded Press Return shortcut: Return goes to the focused app.
+    var onPressReturn: (() -> Void)?
     /// Answers "is a talk hold in progress?" — decides whether Space is Yapper's or the app's.
     var canLockMic: () -> Bool = { false }
     /// Answers "would a skip do anything right now?" — playing or queued. Decides whether
@@ -294,6 +296,7 @@ final class HotkeyManager {
         case .toggleConversation: onToggleConversationMode?()
         case .skipNext:           onSkipNext?()
         case .dumpAXTree:         onDumpAXTree?()
+        case .pressReturn:        onPressReturn?()
         }
     }
 

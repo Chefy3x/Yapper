@@ -82,6 +82,13 @@ struct KeyShortcutTests {
         #expect(KeyShortcut.action(forMouseButton: 3, flags: .maskControl, in: [.talk: [f]]) == nil)
     }
 
+    @Test func aMouseButtonCanBeReturn() {
+        let forward = KeyShortcut(mouseButton: 4, modifiers: 0)
+        #expect(forward.problem(adding: .pressReturn, among: [:], yapperKey: .rightOption) == nil)
+        #expect(KeyShortcut.action(forMouseButton: 4, flags: [], in: [.pressReturn: [forward]]) == .pressReturn)
+        #expect(HotkeyAction.pressReturn.chordKeyCodes.isEmpty)
+    }
+
     @Test func leftAndRightClicksAreRefused() {
         #expect(KeyShortcut(mouseButton: 0, modifiers: KeyShortcut.command).problem(adding: .talk, among: [:], yapperKey: .rightOption) != nil)
         #expect(KeyShortcut(mouseButton: 1, modifiers: 0).problem(adding: .talk, among: [:], yapperKey: .rightOption) != nil)

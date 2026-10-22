@@ -731,6 +731,17 @@ final class AppState: ObservableObject {
             self.voiceInput.lock(finishKey: finishKey)
             if self.voiceInput.state == .idle { self.reconsiderMediaResume() }
         }
+        hotkeys.onPressReturn = { [weak self] in
+            guard let self else { return }
+            // Mid-dictation it would land before the words do and send half a message.
+            guard self.voiceInput.state == .idle, !self.voiceInput.priming else {
+                self.lastEvent = "Still typing — press Return again once it's in"
+                Log.hotkey.info("Press Return shortcut ignored: Voice In busy")
+                return
+            }
+            Log.hotkey.info("Press Return shortcut")
+            ReturnKey.press()
+        }
         hotkeys.onTalkShortcutReleased = { [weak self] heldFor in
             guard let self else { return }
             // Both are no-ops unless this press is the one listening.

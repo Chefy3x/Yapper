@@ -272,3 +272,20 @@ private final class PastePromise: NSObject, NSPasteboardItemDataProvider, @unche
         item.setString(text, forType: type)
     }
 }
+
+/// Return, pressed because the user pressed a shortcut for it (a mouse button that sends, say).
+/// Delivery itself never presses Return; only this does, and only on the user's own press.
+enum ReturnKey {
+    static func press() {
+        // A private source carries only the flags set here, so the modifiers of the shortcut
+        // that asked for it, still held, don't turn it into ⌘↩ or ⇧↩.
+        let code = CGKeyCode(KeyShortcut.Code.returnKey)
+        guard let src = CGEventSource(stateID: .privateState),
+              let down = CGEvent(keyboardEventSource: src, virtualKey: code, keyDown: true),
+              let up = CGEvent(keyboardEventSource: src, virtualKey: code, keyDown: false) else { return }
+        down.flags = []
+        up.flags = []
+        down.post(tap: .cghidEventTap)
+        up.post(tap: .cghidEventTap)
+    }
+}
