@@ -54,12 +54,11 @@ struct SettingsScreenshots {
         try openingImage.write(to: out.appendingPathComponent("hud-opening.png"))
     }
 
-    /// The sounds, as the app renders them, for comparing against the listening page.
+    /// The synthesised sounds, as the app renders them, for comparing against the listening page.
     @Test(.enabled(if: outDir != nil)) func renderSounds() throws {
         let out = URL(fileURLWithPath: Self.outDir!, isDirectory: true)
         try FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
-        for (sound, name) in [(DictationSound.start, "start"), (.done, "done"), (.failed, "failed"),
-                              (.mouthOpen, "mouth-open"), (.mouthGrin, "mouth-grin"), (.mouthGrimace, "mouth-grimace")] {
+        for (sound, name) in [(DictationSound.start, "start"), (.done, "done"), (.failed, "failed")] {
             try DictationSounds.wav(sound.render(), sampleRate: SoundSynth.sampleRate)
                 .write(to: out.appendingPathComponent("sound-\(name).wav"))
         }

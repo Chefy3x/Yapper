@@ -208,7 +208,7 @@ final class AppState: ObservableObject {
         if settings.dictationSounds { _ = sounds }   // render the sounds now, not on the first hold
         voiceInput.playStartCue = { [weak self] in
             guard let self, self.settings.dictationSounds else { return nil }
-            return self.sounds.playStart(mouth: self.mouthOnShow)
+            return self.sounds.playStart()
         }
         voiceInput.stopStartCue = { [weak self] in
             guard let self, self.settings.dictationSounds else { return }
@@ -316,10 +316,9 @@ final class AppState: ObservableObject {
         if settings.dictationSounds { sounds.playDone(mouth: mouthOnShow) }
     }
 
-    /// The Loud Mouth is the pill: its sounds play instead of the chimes, in step with its face.
-    /// Parked 2026-10-22: the user kept the chimes. Flip `mouthSounds` to hear them again.
-    private var mouthOnShow: Bool { Self.mouthSounds && settings.dictationHUD && settings.pillStyle == .mouth }
-    private static let mouthSounds = false
+    /// The Loud Mouth is the pill: its chuckles play instead of the done and failed chimes, in step
+    /// with its grin and grimace. It opens to the start chime like the bars.
+    private var mouthOnShow: Bool { settings.dictationHUD && settings.pillStyle == .mouth }
 
     /// A voice turn ended: tell the HUD, play the sound (a paste already had its own when it
     /// landed), and keep it in Dictations. Everything here runs after the paste, so none of it
@@ -330,7 +329,7 @@ final class AppState: ObservableObject {
         if settings.dictationSounds {
             switch report.outcome {
             case .pasted: break
-            // The mouth grimaces at a missed paste, so it sounds like it too.
+            // The mouth grimaces at a missed paste, so it sounds like a miss too.
             case .copied: if mouthOnShow { sounds.playFailed(mouth: true) } else { sounds.playDone(mouth: false) }
             case .empty, .failed: sounds.playFailed(mouth: mouthOnShow)
             }

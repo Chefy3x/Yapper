@@ -11,35 +11,48 @@ import AVFoundation
 /// polish of Apple's Rebound, whose quality is short, clean notes into a quiet, wide, slowly
 /// moving hall roughly 32 dB under them.
 ///
-/// The Loud Mouth has its own three, dry and close, made of mouth noises timed to its animation:
-/// - mouthOpen: the lips parting as it springs up, the pop's pitch rising as the mouth widens.
-/// - mouthGrin: a pleased "mm-hm", then at 0.7 s, as it drops back into the pill, the lips
-///   parting off the grin, the pop's pitch falling.
-/// - mouthGrimace: a tut and a let-down "hm", then the same pop out.
+/// The Loud Mouth opens to the same start sound, but has its own done and failed sounds,
+/// recordings bundled as WAVs and played as they are: single syllables of one low chuckle (CC0,
+/// freesound.org, remarknl "Evil_chuckle", take 3), warmed, cut under 175 Hz, in a short dark
+/// room, picked and treated by ear with the user.
+/// - mouthGrin: its first syllable, as the grin starts.
+/// - mouthGrimace: its last, as the mouth grimaces at a turn that typed nothing.
 enum DictationSound: CaseIterable, Sendable {
     case start, done, failed
-    case mouthOpen, mouthGrin, mouthGrimace
+    case mouthGrin, mouthGrimace
 
-    /// The sounds to play with the Loud Mouth on show, or with the bars.
-    static func start(mouth: Bool) -> DictationSound { mouth ? .mouthOpen : .start }
+    /// The done and failed sounds with the Loud Mouth on show, or with the bars.
     static func done(mouth: Bool) -> DictationSound { mouth ? .mouthGrin : .done }
     static func failed(mouth: Bool) -> DictationSound { mouth ? .mouthGrimace : .failed }
 
-    var isMouth: Bool { [.mouthOpen, .mouthGrin, .mouthGrimace].contains(self) }
+    /// The bundled WAV a recorded sound plays from; nil for the synthesised chimes.
+    var recording: String? {
+        switch self {
+        case .mouthGrin: "mouth-grin"
+        case .mouthGrimace: "mouth-grimace"
+        case .start, .done, .failed: nil
+        }
+    }
 
-    /// Peak level, linear. The start leads; the others sit a little under it.
-    var peak: Float { self == .start || self == .mouthOpen ? 0.32 : 0.27 }
+    var isMouth: Bool { recording != nil }
 
-    /// What it takes to get this sound back out of a recording it played into.
-    var cue: StartCue { isMouth ? .mouth : .chime }
+    /// Peak level of a synthesised sound, linear. The start leads; the others sit a little under it.
+    var peak: Float { self == .start ? 0.32 : 0.27 }
 
+    /// The sound as WAV data, ready for a player: the recording from `bundle`, or rendered.
+    func wav(in bundle: Bundle = .main) -> Data? {
+        guard let recording else { return DictationSounds.wav(render(), sampleRate: SoundSynth.sampleRate) }
+        return bundle.url(forResource: recording, withExtension: "wav").flatMap { try? Data(contentsOf: $0) }
+    }
+
+    /// Synthesises a chime. The mouth's sounds are recordings (see `wav(in:)`) and render empty.
     func render(sampleRate r: Double = SoundSynth.sampleRate) -> SoundSynth.Stereo {
         let c4 = 261.63, g4 = 392.0
         let events: [SoundSynth.Event]
         let wetDB: Double
         switch self {
-        case .mouthOpen, .mouthGrin, .mouthGrimace:
-            return SoundSynth.finish(SoundSynth.dry(mouthEvents(sampleRate: r), sampleRate: r), peak: peak, sampleRate: r)
+        case .mouthGrin, .mouthGrimace:
+            return SoundSynth.Stereo(left: [], right: [])
         case .start:
             events = [.init(start: 0, samples: SoundSynth.thud(sampleRate: r), gain: 0.55),
                       .init(start: 0.11, samples: SoundSynth.roundedNote(c4, sampleRate: r), gain: 0.7)]
@@ -53,25 +66,6 @@ enum DictationSound: CaseIterable, Sendable {
             wetDB = -30
         }
         return SoundSynth.finish(SoundSynth.mix(events, wetDB: wetDB, sampleRate: r), peak: peak, sampleRate: r)
-    }
-
-    /// The mouth's parts in time. The pop out lands at 0.7 s, when the reaction ends and the
-    /// mouth drops back into the pill.
-    private func mouthEvents(sampleRate r: Double) -> [SoundSynth.Event] {
-        let out = 0.68
-        switch self {
-        case .mouthOpen:
-            return [.init(start: 0.03, samples: SoundSynth.lipPop(from: 330, to: 560, sampleRate: r, seed: 1), gain: 1)]
-        case .mouthGrin:
-            return [.init(start: 0.02, samples: SoundSynth.mmHm(sampleRate: r), gain: 1),
-                    .init(start: out, samples: SoundSynth.lipPop(from: 520, to: 300, sampleRate: r, seed: 2), gain: 0.8)]
-        case .mouthGrimace:
-            return [.init(start: 0, samples: SoundSynth.tsk(sampleRate: r, seed: 3), gain: 0.9),
-                    .init(start: 0.14, samples: SoundSynth.letDownHm(sampleRate: r), gain: 0.8),
-                    .init(start: out, samples: SoundSynth.lipPop(from: 520, to: 300, sampleRate: r, seed: 4), gain: 0.8)]
-        default:
-            return []
-        }
     }
 }
 
@@ -216,129 +210,6 @@ enum SoundSynth {
         }
         return out
     }
-
-    // MARK: The mouth's pieces
-
-    /// Lays the parts out dry in the centre, with no hall: a mouth is close.
-    static func dry(_ events: [Event], sampleRate r: Double) -> Stereo {
-        let length = events.map { Int($0.start * r) + $0.samples.count }.max() ?? 0
-        var mono = [Float](repeating: 0, count: length)
-        for e in events {
-            let first = Int(e.start * r)
-            for (i, s) in e.samples.enumerated() { mono[first + i] += s * e.gain }
-        }
-        return Stereo(left: mono, right: mono)
-    }
-
-    /// Noise that comes out the same on every render, so a sound always does.
-    struct Noise {
-        var state: UInt64
-        mutating func next() -> Double {
-            state = state &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
-            return Double(Int64(bitPattern: state) >> 11) / Double(1 << 52)
-        }
-    }
-
-    /// A two-pole resonance rung by `x`, its frequency free to move; unity gain at its peak.
-    static func resonate(_ x: [Double], bandwidth: Double, sampleRate r: Double,
-                         frequency: (Double) -> Double) -> [Double] {
-        let radius = exp(-.pi * bandwidth / r)
-        var y1 = 0.0, y2 = 0.0
-        return x.enumerated().map { i, v in
-            let theta = 2 * .pi * frequency(Double(i) / r) / r
-            let g = (1 - radius) * (1 - 2 * radius * cos(2 * theta) + radius * radius).squareRoot()
-            let y = g * v + 2 * radius * cos(theta) * y1 - radius * radius * y2
-            y2 = y1; y1 = y
-            return y
-        }
-    }
-
-    /// Lips coming apart: a push of air, then the mouth's own resonance ringing for a moment, its
-    /// pitch gliding from `from` to `to` as the mouth's shape changes (up as it opens wide, down as
-    /// it lets go of a grin).
-    static func lipPop(from f0: Double, to f1: Double, sampleRate r: Double, seed: UInt64) -> [Float] {
-        var noise = Noise(state: seed)
-        var x = (0..<Int(0.09 * r)).map { i -> Double in
-            let t = Double(i) / r
-            return noise.next() * fadeIn(t, 0.0005) * exp(-t / 0.003) * 0.4
-        }
-        x[0] += 1
-        let body = resonate(x, bandwidth: 32, sampleRate: r) { t in f1 + (f0 - f1) * exp(-t / 0.015) }
-        let air = resonate(x, bandwidth: 1_200, sampleRate: r) { _ in 1_800 }
-        let popped = (0..<x.count).map { i -> Double in
-            let t = Double(i) / r
-            let end = t < 0.055 ? 1 : exp(-(t - 0.055) / 0.006)
-            return (body[i] + 0.06 * air[i]) * end
-        }
-        let level = popped.map(abs).max() ?? 1
-        return popped.map { Float($0 / level) }
-    }
-
-    /// A hum through closed lips, its pitch following `pitch`: a voice's buzz (harmonics falling
-    /// away 9 dB an octave, a slight wobble) through the low murmur of an [m], with a faint trace of
-    /// the formant above it. `envelope` shapes the loudness.
-    static func hum(seconds: Double, pitch: (Double) -> Double, envelope: (Double) -> Double,
-                    sampleRate r: Double) -> [Double] {
-        var phase = 0.0
-        let source = (0..<Int(seconds * r)).map { i -> Double in
-            let t = Double(i) / r
-            let f = pitch(t) * (1 + 0.006 * sin(2 * .pi * 5.5 * t))
-            phase += 2 * .pi * f / r
-            var v = 0.0
-            for k in 1...max(1, Int(3_500 / f)) { v += sin(Double(k) * phase) / pow(Double(k), 1.5) }
-            return v * envelope(t)
-        }
-        let murmur = resonate(source, bandwidth: 80, sampleRate: r) { _ in 270 }
-        let upper = resonate(source, bandwidth: 300, sampleRate: r) { _ in 2_300 }
-        return zip(murmur, upper).map { $0 + 0.08 * $1 }
-    }
-
-    /// A syllable's loudness: in over `attack`, steady, out over `release`.
-    static func syllable(_ t: Double, length: Double, attack: Double, release: Double) -> Double {
-        guard t >= 0, t < length else { return 0 }
-        let fall = length - t < release ? 0.5 - 0.5 * cos(.pi * (length - t) / release) : 1
-        return fadeIn(t, attack) * fall
-    }
-
-    /// "Mm-hm!": a short hum, a breath, then a longer one rising at its end, the way a yes does.
-    static func mmHm(sampleRate r: Double) -> [Float] {
-        let first = 0.12, gap = 0.05, second = 0.24
-        let humming = hum(seconds: first + gap + second, pitch: { t in
-            t < first + gap ? 200 + 10 * t / first : 205 + 65 * (1 - exp(-(t - first - gap) / 0.07))
-        }, envelope: { t in
-            syllable(t, length: first, attack: 0.02, release: 0.035)
-                + 1.15 * syllable(t - first - gap, length: second, attack: 0.015, release: 0.08)
-        }, sampleRate: r)
-        // The [h] between them: breath through the nose, quiet and dark.
-        var noise = Noise(state: 7)
-        let breath = lowpass((0..<humming.count).map { i in
-            Float(noise.next() * syllable(Double(i) / r - first + 0.01, length: gap + 0.02, attack: 0.015, release: 0.02))
-        }, cutoff: 1_500, sampleRate: r)
-        let level = humming.map(abs).max() ?? 1
-        return zip(humming, breath).map { Float($0 / level) + 0.06 * $1 }
-    }
-
-    /// A let-down "hm", falling.
-    static func letDownHm(sampleRate r: Double) -> [Float] {
-        let length = 0.2
-        let humming = hum(seconds: length, pitch: { t in 185 - 45 * t / length },
-                          envelope: { t in syllable(t, length: length, attack: 0.02, release: 0.09) }, sampleRate: r)
-        let level = humming.map(abs).max() ?? 1
-        return humming.map { Float($0 / level) }
-    }
-
-    /// The tongue snapping off the roof of the mouth: a sharp crack, rung bright and brief.
-    static func tsk(sampleRate r: Double, seed: UInt64) -> [Float] {
-        var noise = Noise(state: seed)
-        var x = (0..<Int(0.03 * r)).map { i in noise.next() * exp(-Double(i) / r / 0.0012) * 0.5 }
-        x[0] += 1
-        let crack = resonate(x, bandwidth: 450, sampleRate: r) { _ in 3_000 }
-        let bright = resonate(x, bandwidth: 800, sampleRate: r) { _ in 4_600 }
-        let hollow = resonate(x, bandwidth: 250, sampleRate: r) { _ in 1_300 }
-        let mixed = (0..<x.count).map { crack[$0] + 0.5 * bright[$0] + 0.35 * hollow[$0] }
-        let level = mixed.map(abs).max() ?? 1
-        return mixed.map { Float($0 / level) }
-    }
 }
 
 /// The start sound plays into an open mic (it opens at key-down so the first word isn't lost),
@@ -359,13 +230,6 @@ struct StartCue: Sendable {
     /// C4 is a pure tone, so there's no overtone to chase; a notch an octave up would only cost
     /// the voice.
     static let chime = StartCue(duration: 0.45, tail: 0.55, highpass: 230, notchFrequencies: [261.63], notchQ: 4)
-
-    /// The Loud Mouth's lips parting: dry and over by 0.1 s, its body one resonance gliding from
-    /// 330 to 560 Hz but ringing mostly on the way, which three notches take about 15 dB down. A
-    /// gliding pop can't be notched as clean as a held note, but it's over before you speak, and
-    /// the breath at its front is too short and quiet for the speech model to make anything of.
-    static let mouth = StartCue(duration: 0.1, tail: 0.06, highpass: nil,
-                                notchFrequencies: [340, 420, 500], notchQ: 2.4)
 
     func filters(sampleRate: Double) -> [Biquad] {
         (highpass.map { Array(repeating: Biquad.highpass(frequency: $0, q: 0.7071, sampleRate: sampleRate), count: 3) } ?? [])
@@ -433,20 +297,18 @@ struct Biquad {
     }
 }
 
-/// Plays the sounds. They're rendered once, off the main thread, as soon as Yapper starts,
-/// into ready players, so playing one costs the turn nothing.
+/// Plays the sounds. They're rendered (or read from the bundle) once, off the main thread, as
+/// soon as Yapper starts, into ready players, so playing one costs the turn nothing.
 @MainActor
 final class DictationSounds {
     private var players: [DictationSound: AVAudioPlayer] = [:]
     /// Bumped by every start and stop of the start sound, so a late fade-out can't cut a new one.
     private var startGeneration = 0
-    /// The start sound last played: the chime or the mouth's.
-    private var startSound = DictationSound.start
 
     init() {
         Task { [weak self] in
             let rendered = await Task.detached(priority: .utility) {
-                DictationSound.allCases.map { ($0, Self.wav($0.render(), sampleRate: SoundSynth.sampleRate)) }
+                DictationSound.allCases.compactMap { sound in sound.wav().map { (sound, $0) } }
             }.value
             for (sound, data) in rendered {
                 let player = try? AVAudioPlayer(data: data)
@@ -458,21 +320,20 @@ final class DictationSounds {
 
     /// Returns when the sound started and how to take it back out, for `StartCue.remove`. Nil if
     /// it couldn't play (or the sounds are still being rendered in the first moment after launch).
-    func playStart(mouth: Bool) -> (at: Date, cue: StartCue)? {
-        // A grin's pop out still to come belongs to the last turn.
-        for ending in [DictationSound.mouthGrin, .mouthGrimace] { fadeOut(ending) }
-        let sound = DictationSound.start(mouth: mouth)
-        guard let start = players[sound] else { return nil }
+    func playStart() -> (at: Date, cue: StartCue)? {
+        // A grin or grimace still sounding belongs to the last turn.
+        fadeOut(.mouthGrin)
+        fadeOut(.mouthGrimace)
+        guard let start = players[.start] else { return nil }
         startGeneration += 1
-        startSound = sound
         start.volume = 1
         start.currentTime = 0
-        return start.play() ? (Date(), sound.cue) : nil
+        return start.play() ? (Date(), .chime) : nil
     }
 
     /// Fades the start sound out over a few milliseconds (a hard stop clicks).
     func stopStart() {
-        guard let start = players[startSound], start.isPlaying else { return }
+        guard let start = players[.start], start.isPlaying else { return }
         startGeneration += 1
         let generation = startGeneration
         start.setVolume(0, fadeDuration: 0.04)

@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import AVFoundation
 
 // Voice In's sounds, and taking the start sound back out of the recording it plays into.
 struct StartCueTests {
@@ -25,6 +26,17 @@ struct StartCueTests {
         return zip(s.left, s.right).map { ($0 + $1) / 2 }
     }
 
+    /// One of the mouth's recordings, read from the app's resources in the source tree (the test
+    /// bundle doesn't carry them).
+    private func recording(_ sound: DictationSound) throws -> AVAudioPCMBuffer {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Yapper/Resources/\(try #require(sound.recording)).wav")
+        let file = try AVAudioFile(forReading: url)
+        let buffer = try #require(AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.length)))
+        try file.read(into: buffer)
+        return buffer
+    }
+
     @Test func theStartSoundIsMostlyRemovedFromTheRecording() {
         let cue = startAsHeard()
         var recording = [Float](repeating: 0, count: Int(3 * rate))
@@ -39,24 +51,6 @@ struct StartCueTests {
         #expect(after < before / 100)
     }
 
-    @Test func theMouthsPopIsTakenWellDown() {
-        let cue = startAsHeard(.mouthOpen)
-        var recording = [Float](repeating: 0, count: Int(3 * rate))
-        let at = Int(0.5 * rate)
-        for (i, s) in cue.enumerated() where at + i < recording.count { recording[at + i] += s }
-        let window = at..<(at + Int(StartCue.mouth.duration * rate))
-        let before = energy(recording[window])
-        DictationSound.mouthOpen.cue.remove(from: &recording, cueOffset: 0.5, sampleRate: rate)
-        // A gliding pop can't be notched as clean as the chime's held note: about 9 dB, the
-        // breath at its front included (the pop's body alone goes about 15 dB down).
-        #expect(energy(recording[window]) < before / 6)
-    }
-
-    @Test func eachStartSoundSaysHowToTakeItOut() {
-        #expect(DictationSound.start(mouth: false).cue.highpass == StartCue.chime.highpass)
-        #expect(DictationSound.start(mouth: true).cue.notchFrequencies == StartCue.mouth.notchFrequencies)
-    }
-
     @Test func speechAroundTheCueKeepsItsEnergy() {
         let original = voice(seconds: 2.5)
         var filtered = original
@@ -66,10 +60,6 @@ struct StartCueTests {
         // And outside the window not one sample changes.
         let end = Int((0.5 + StartCue.chime.duration + 0.56) * rate)
         #expect(Array(filtered[end...]) == Array(original[end...]))
-        // The mouth's notches cost the voice a little more, over a much shorter window.
-        var mouthed = original
-        StartCue.mouth.remove(from: &mouthed, cueOffset: 0.5, sampleRate: rate)
-        #expect(energy(mouthed[...]) / a > 0.95)
     }
 
     @Test func aCueBeforeTheMicOpenedIsHandledAtTheEdge() {
@@ -94,24 +84,22 @@ struct StartCueTests {
         }
     }
 
-    @Test func theMouthsSoundsAreDryShortAndAtTheirLevel() {
+    @Test func theMouthsRecordingsAreShortAndLeveledWithTheChimes() throws {
         for sound in DictationSound.allCases where sound.isMouth {
-            let s = sound.render()
-            #expect(Double(s.count) / SoundSynth.sampleRate <= 0.8)
-            let peak = zip(s.left, s.right).map { max(abs($0), abs($1)) }.max() ?? 0
-            #expect(abs(peak - sound.peak) < 0.001)
-            #expect(s.left == s.right)                 // close and centred, no hall
-            #expect(abs(s.left.last ?? 1) < 1e-4)
+            let buffer = try recording(sound)
+            let data = try #require(buffer.floatChannelData)
+            #expect(Double(buffer.frameLength) / buffer.format.sampleRate < 0.5)   // done well inside the 0.7 s grin
+            let peak = (0..<Int(buffer.format.channelCount)).flatMap { ch in
+                UnsafeBufferPointer(start: data[ch], count: Int(buffer.frameLength)).map(abs)
+            }.max() ?? 0
+            #expect(abs(20 * log10(Double(peak)) - -10) < 1)                       // the chimes peak about -10 dB
         }
     }
 
-    @Test func theGrinsPopOutLandsAsTheMouthDropsAway() {
-        // The reaction holds 0.7 s, then the pill closes.
-        let s = DictationSound.mouthGrin.render()
-        let r = SoundSynth.sampleRate
-        let late = s.left[Int(0.66 * r)...].map(abs).max() ?? 0
-        let quiet = s.left[Int(0.55 * r)..<Int(0.66 * r)].map(abs).max() ?? 1
-        #expect(late > 0.1 && quiet < 0.01)
+    @Test func onlyTheMouthsSoundsAreRecordings() {
+        #expect(DictationSound.allCases.filter(\.isMouth) == [.mouthGrin, .mouthGrimace])
+        #expect(DictationSound.mouthGrimace.render().count == 0)
+        #expect(DictationSound.failed(mouth: true) == .mouthGrimace && DictationSound.failed(mouth: false) == .failed)
     }
 
     @Test func theHallSitsFarUnderTheNotes() {
@@ -125,7 +113,6 @@ struct StartCueTests {
 
     @Test func rendersTheSameEveryTime() {
         #expect(DictationSound.done.render() == DictationSound.done.render())
-        #expect(DictationSound.mouthGrimace.render() == DictationSound.mouthGrimace.render())
     }
 
     @Test func soundsWriteAsPlayableStereoWAV() {
