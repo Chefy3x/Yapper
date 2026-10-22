@@ -384,24 +384,43 @@ enum ShortcutReference {
         case readAloud = "Read aloud"
         /// Both at once: Yapper reads, then listens for your answer.
         case conversation = "Conversation"
+        /// Settings → Hotkeys only; never in the menu or the guide.
+        case debugging = "For debugging"
+
+        /// The groups the menu bar and the guide draw.
+        static let everyday: [Group] = [.voiceIn, .readAloud, .conversation]
+    }
+
+    /// Which side every action belongs to, for Settings → Hotkeys as much as for the menu.
+    static func group(of action: HotkeyAction) -> Group {
+        switch action {
+        case .talk, .keepListening, .repasteLast, .pressReturn: .voiceIn
+        case .readLatest, .readSelection, .skipNext:            .readAloud
+        case .toggleConversation:                               .conversation
+        case .dumpAXTree:                                       .debugging
+        }
     }
 
     struct Item {
-        let group: Group
+        let action: HotkeyAction
         let caps: [MiniKeycap.Content]
-        let label: String
+        /// A few words on how it goes, after the action's name.
+        let hint: String?
+
+        var group: Group { ShortcutReference.group(of: action) }
+        var label: String { hint.map { "\(action.title) — \($0)" } ?? action.title }
     }
 
     static func all(yapperKey key: YapperKey) -> [Item] {
         let cap = MiniKeycap.Content.text(key.keycap)
         return [
-            Item(group: .voiceIn, caps: [cap, .text("hold")], label: "Talk — release to type"),
-            Item(group: .voiceIn, caps: [cap, .text("hold"), .text("Space")], label: "Lock the mic — press again to type"),
-            Item(group: .voiceIn, caps: [cap, .text("V")], label: "Paste the last dictation again"),
-            Item(group: .readAloud, caps: [cap], label: "Read latest / pause"),
-            Item(group: .readAloud, caps: [cap, .text("S")], label: "Read selected text"),
-            Item(group: .readAloud, caps: [cap, .symbol("arrow.right")], label: "Skip ahead"),
-            Item(group: .conversation, caps: [cap, .symbol("return")], label: "Conversation Mode"),
+            Item(action: .talk, caps: [cap, .text("hold")], hint: "release to type"),
+            Item(action: .keepListening, caps: [cap, .text("hold"), .text("Space")], hint: "press again to type"),
+            Item(action: .repasteLast, caps: [cap, .text("V")], hint: "when a paste missed"),
+            Item(action: .readLatest, caps: [cap], hint: "tap again to pause"),
+            Item(action: .readSelection, caps: [cap, .text("S")], hint: nil),
+            Item(action: .skipNext, caps: [cap, .symbol("arrow.right")], hint: "to the next reply"),
+            Item(action: .toggleConversation, caps: [cap, .symbol("return")], hint: nil),
         ]
     }
 

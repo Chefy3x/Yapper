@@ -782,39 +782,46 @@ private struct HotkeysPanel: View {
         VStack(alignment: .leading, spacing: 28) {
             yapperKeyCard
 
+            // Grouped by direction, like the menu bar: one key talks and reads, so the page says
+            // which side each action is on rather than how its keys are pressed.
             VStack(alignment: .leading, spacing: 0) {
-                SectionLabel(text: "On the Yapper key")
+                SectionLabel(text: ShortcutReference.Group.voiceIn.rawValue)
                 HotkeyList {
-                    row(.readLatest, subtitle: "Tap. Pauses and resumes while playing; double-tap reads the focused chat.")
                     row(.talk, subtitle: settings.customShortcuts[.talk] == nil
                         ? "Hold and speak. Let go, or press Return, to type it where you are. You send it."
                         : "Hold and speak, let go to type. Or tap a shortcut to start and again to finish.")
                     row(.keepListening, subtitle: settings.customShortcuts[.keepListening] == nil
                         ? "While talking, press Space and let go. Press the key again to finish."
-                        : "While talking, press Space or a shortcut. A shortcut alone starts listening; press it again to finish.",
-                        last: true)
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 0) {
-                SectionLabel(text: "Chords")
-                HotkeyList {
-                    row(.readSelection, subtitle: "Speak the selected text.")
+                        : "While talking, press Space or a shortcut. A shortcut alone starts listening; press it again to finish.")
                     row(.repasteLast, subtitle: settings.yapperKey == .rightCommand
                         ? "Right ⌘ + V is the system's paste, so add a shortcut for this one."
                         : "Type what you last said again, when a paste missed.")
-                    row(.toggleConversation, subtitle: "Read new assistant replies as they arrive.")
-                    row(.skipNext, subtitle: "Next queued reply. Idle, the chord stays the app's.")
-                    row(.dumpAXTree, subtitle: "Save the focused app's accessibility tree, for debugging.", last: true)
+                    row(.pressReturn,
+                        subtitle: "Presses Return in the app you're in, from any key or mouse button. Does nothing while a dictation is still typing.",
+                        last: true)
                 }
             }
 
             VStack(alignment: .leading, spacing: 0) {
-                SectionLabel(text: "Keys for the app")
+                SectionLabel(text: ShortcutReference.Group.readAloud.rawValue)
                 HotkeyList {
-                    row(.pressReturn,
-                        subtitle: "Presses Return in the app you're in, from any key or mouse button. Does nothing while a dictation is still typing.",
-                        last: true)
+                    row(.readLatest, subtitle: "Tap. Pauses and resumes while playing; double-tap reads the focused chat.")
+                    row(.readSelection, subtitle: "Speak the selected text.")
+                    row(.skipNext, subtitle: "Next queued reply. Idle, the chord stays the app's.", last: true)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 0) {
+                SectionLabel(text: ShortcutReference.Group.conversation.rawValue)
+                HotkeyList {
+                    row(.toggleConversation, subtitle: "Read new assistant replies as they arrive.", last: true)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 0) {
+                SectionLabel(text: ShortcutReference.Group.debugging.rawValue)
+                HotkeyList {
+                    row(.dumpAXTree, subtitle: "Save the focused app's accessibility tree.", last: true)
                 }
             }
 

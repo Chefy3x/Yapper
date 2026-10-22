@@ -83,6 +83,20 @@ struct ShortcutReferenceTests {
         #expect(ShortcutReference.items(in: .readAloud, yapperKey: key).count == 3)
         #expect(ShortcutReference.items(in: .voiceIn, yapperKey: key).count == 3)
         #expect(ShortcutReference.items(in: .conversation, yapperKey: key).count == 1)
+        #expect(ShortcutReference.items(in: .debugging, yapperKey: key).isEmpty)
+    }
+
+    // The menu and Settings → Hotkeys say the same name for the same action.
+    @Test func menuLinesStartWithTheActionsName() {
+        for item in ShortcutReference.all(yapperKey: .rightOption) {
+            #expect(item.label.hasPrefix(item.action.title))
+        }
+    }
+
+    // Every action has a side, and only the AX dump is a debugging one.
+    @Test func everyActionHasAGroup() {
+        let debugging = HotkeyAction.allCases.filter { ShortcutReference.group(of: $0) == .debugging }
+        #expect(debugging == [.dumpAXTree])
     }
 }
 

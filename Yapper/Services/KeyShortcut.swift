@@ -13,14 +13,15 @@ enum HotkeyAction: String, CaseIterable, Codable, Identifiable, Sendable {
 
     var id: String { rawValue }
 
+    /// The action's one name: Settings → Hotkeys, the menu bar and the guide all use it.
     var title: String {
         switch self {
         case .readLatest:         "Read latest"
         case .talk:               "Talk"
-        case .keepListening:      "Keep listening"
+        case .keepListening:      "Lock the mic"
         case .readSelection:      "Read selection"
-        case .repasteLast:        "Paste last transcript"
-        case .toggleConversation: "Toggle Conversation Mode"
+        case .repasteLast:        "Paste last dictation"
+        case .toggleConversation: "Conversation Mode"
         case .skipNext:           "Skip ahead"
         case .dumpAXTree:         "AX debug dump"
         case .pressReturn:        "Press Return"

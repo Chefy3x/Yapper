@@ -5,7 +5,7 @@ import Combine
 struct TurnReport: Sendable {
     enum Outcome: Sendable, Equatable {
         case pasted
-        case copied             // the paste didn't land; the words wait for Paste last transcript
+        case copied             // the paste didn't land; the words wait for Paste last dictation
         case empty              // nothing worth typing
         case failed(String)
     }
@@ -725,7 +725,7 @@ final class VoiceInputCoordinator: ObservableObject {
                     Task { @MainActor [weak self] in self?.onPasteLanded?() }
                 })
             } catch PasteDelivery.DeliveryError.notPasted {
-                // The words are kept for Paste last transcript; say how to get them instead of "failed".
+                // The words are kept for Paste last dictation; say how to get them instead of "failed".
                 vocabulary.record(original: heard, delivered: text)
                 onEvent?(notPastedHint)
                 await finish(.copied)
