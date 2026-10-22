@@ -401,11 +401,12 @@ struct MouthShaper: Sendable {
         }
     }
 
-    /// A seal or an f/v this sure of itself is held at least `hold` seconds.
+    /// A seal or an f/v is held at least `hold` seconds.
     static let hold: Float = 0.07
     /// The way an animator times a mouth: the net's answers are eased over `listen` seconds, the
     /// mouth commits to one shape and keeps it at least `minHold`, and only changes for a shape
-    /// that's clearly ahead (`margin`). A seal or an f/v can cut in sooner, since it's what reads.
+    /// that's clearly ahead (`margin`). A seal, an f/v or an open vowel the net is sure of cuts in
+    /// sooner: they're what reads, and a short vowel ("but", "something") is over in 50 ms.
     /// While the sound is steady (a held sound) it doesn't change at all.
     static let listen: Float = 0.03, minHold: Float = 0.15, margin: Float = 0.25
     /// How sure the net must be of a shape before its minimum opening applies in full.
@@ -422,10 +423,11 @@ struct MouthShaper: Sendable {
     private var flare = MouthMoveFollower()
     private var smile = MouthMoveFollower()
     private var tongue = MouthMoveFollower(), tongueOut = MouthMoveFollower(), tongueTip = MouthMoveFollower()
-    private var closeHeld: (v: Float, left: Float) = (0, 0)
-    private var fvHeld: (v: Float, left: Float) = (0, 0)
     private var heard: MouthShapes?
     private var shown: MouthShape?
+    /// A seal or an f/v the mouth has moved on from before the lips got there, and the lips last time.
+    private var landing: (close: Bool, fv: Bool) = (false, false)
+    private var last = Lips()
     private var shownFor: Float = 0
 
     /// The shape the mouth is committed to, if any yet.
@@ -433,8 +435,7 @@ struct MouthShaper: Sendable {
 
     mutating func reset() {
         width.reset(); close.reset(); fv.reset(); jaw.reset(); open.reset(); part.reset(); upper.reset(); lower.reset(); press.reset(); flare.reset(); smile.reset(); tongue.reset(); tongueOut.reset(); tongueTip.reset()
-        closeHeld = (0, 0); fvHeld = (0, 0)
-        heard = nil; shown = nil; shownFor = 0
+        heard = nil; shown = nil; shownFor = 0; landing = (false, false); last = Lips()
     }
 
     /// Eases the net's answer and decides which shape the mouth shows: the one it's showing until
@@ -447,7 +448,7 @@ struct MouthShaper: Sendable {
         shownFor += dt
         let steady = shapes[MouthShape.steadyLane] > 0.5    // a held sound: keep the shape
         if let now = shown, top != now, !steady {
-            let cutIn = (top == .mbp || top == .fv || top == .ah) && h[top.rawValue] > 0.5
+            let cutIn = (top == .mbp || top == .fv || top == .ah || top == .oh) && h[top.rawValue] > 0.5
             // a seal or an f/v is over in a moment: holding it the full `minHold` would keep the
             // mouth shut through the vowel after it ("my", "but")
             let least = now == .mbp || now == .fv ? Self.hold : Self.minHold
@@ -486,20 +487,20 @@ struct MouthShaper: Sendable {
         // a shape that opens the jaw (oo, ah, l) opens it only as far as the net is sure of it, so a
         // moment's mishearing doesn't throw the jaw open
         if let h = heard { g.open *= min(1, h[shown.rawValue] / Self.sureOpen) }
-        func held(_ x: Float, _ h: inout (v: Float, left: Float)) -> Float {
-            h.left -= dt
-            if x >= 0.5 && x >= h.v || h.left <= 0 { h = (x, x >= 0.5 ? Self.hold : 0) }
-            return max(x, h.left > 0 ? h.v : 0)
-        }
-        let c = held(g.close, &closeHeld), f = held(g.fv, &fvHeld)
-        // a held seal or f/v keeps the jaw shut with it
+        // a seal or an f/v still lands after a shorter one the net moved on from, but no longer:
+        // holding it past that kept the jaw shut through the vowel after it ("but")
+        if shown == .mbp { landing.close = true } else if last.close >= 0.8 { landing.close = false }
+        if shown == .fv { landing.fv = true } else if last.fv >= 0.8 { landing.fv = false }
+        let c = landing.close ? 1 : g.close, f = landing.fv ? 1 : g.fv
+        // a seal or f/v keeps the jaw shut with it
         let cap = min(g.jaw, Self.lips(.mbp).jaw + (MouthRig.jawLimit - Self.lips(.mbp).jaw) * (1 - c),
                       Self.lips(.fv).jaw + (MouthRig.jawLimit - Self.lips(.fv).jaw) * (1 - f))
         let w = width.step(g.wide - g.round, dt: dt)
-        return Lips(wide: max(0, w), round: max(0, -w), close: close.step(c, dt: dt), fv: fv.step(f, dt: dt),
+        last = Lips(wide: max(0, w), round: max(0, -w), close: close.step(c, dt: dt), fv: fv.step(f, dt: dt),
                     part: part.step(g.part, dt: dt), jaw: jaw.step(cap, dt: dt), open: open.step(g.open, dt: dt), upper: upper.step(g.upper, dt: dt), lower: lower.step(g.lower, dt: dt),
                     press: press.step(Self.lips(.mbp).press * c, dt: dt), flare: flare.step(g.flare, dt: dt),
                     smile: smile.step(g.smile, dt: dt), tongue: tongue.step(g.tongue, dt: dt), tongueOut: tongueOut.step(g.tongueOut, dt: dt), tongueTip: tongueTip.step(g.tongueTip, dt: dt))
+        return last
     }
 
     /// The width to hand `MouthPerformance` in place of the reader's.
