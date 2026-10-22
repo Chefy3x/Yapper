@@ -538,7 +538,7 @@ extension VoiceInputCoordinatorTests {
         let rig = makeRig(handsFree: true)
         await settle()
         var cues = 0
-        rig.coordinator.playStartCue = { cues += 1; return Date() }
+        rig.coordinator.playStartCue = { cues += 1; return (Date(), .chime) }
         rig.coordinator.armHandsFree()
         #expect(rig.coordinator.state == .listening(.handsFree))
         #expect(cues == 0)
@@ -552,7 +552,7 @@ extension VoiceInputCoordinatorTests {
         let rig = makeRig()
         await settle()
         var cues = 0
-        rig.coordinator.playStartCue = { cues += 1; return Date() }
+        rig.coordinator.playStartCue = { cues += 1; return (Date(), .chime) }
         rig.coordinator.keyPressed(playbackActive: false)
         #expect(cues == 1)                     // announced the moment the mic opens
         #expect(rig.coordinator.priming)
@@ -566,7 +566,7 @@ extension VoiceInputCoordinatorTests {
         let rig = makeRig()
         await settle()
         var stops = 0
-        rig.coordinator.playStartCue = { Date() }
+        rig.coordinator.playStartCue = { (Date(), .chime) }
         rig.coordinator.stopStartCue = { stops += 1 }
         rig.coordinator.keyPressed(playbackActive: false)
         rig.coordinator.keyAbandoned()

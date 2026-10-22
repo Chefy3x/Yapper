@@ -81,9 +81,9 @@ final class VoiceInputCoordinator: ObservableObject {
     /// milliseconds before the turn reports (the clipboard is still being put back).
     var onPasteLanded: (() -> Void)?
     /// Plays the start sound as a hold begins (or at key-down, when the mic opens early),
-    /// returning when it started (nil: nothing played). The mic is already open by then, so the
-    /// sound is notched back out of the recording.
-    var playStartCue: (@MainActor () -> Date?)?
+    /// returning when it started and which it was (nil: nothing played). The mic is already open
+    /// by then, so the sound is notched back out of the recording.
+    var playStartCue: (@MainActor () -> (at: Date, cue: StartCue)?)?
     /// Cuts the start sound short: the key-down press it announced turned out to be a tap.
     var stopStartCue: (@MainActor () -> Void)?
 
@@ -134,7 +134,7 @@ final class VoiceInputCoordinator: ObservableObject {
     /// When the capture now running was opened, and when this turn's start cue began playing:
     /// together they say where in the recording the cue sits.
     private var captureOpenedAt: Date?
-    private var cueAt: Date?
+    private var cuePlayed: (at: Date, cue: StartCue)?
     private var turnStartedAt = Date()
     private var cancellables: Set<AnyCancellable> = []
 
@@ -260,7 +260,7 @@ final class VoiceInputCoordinator: ObservableObject {
         listeningSince = Date()
         captureOpenedAt = listeningSince
         // Say so now, like a key that only ever dictates would; a tap takes it back.
-        cueAt = playStartCue?()
+        cuePlayed = playStartCue?()
         resetSilentWatch()
         primeWatchdog = Task { [weak self] in
             // A press that never resolves (an event tap hiccup) must not leave the mic open.
@@ -278,8 +278,8 @@ final class VoiceInputCoordinator: ObservableObject {
         primeWatchdog = nil
         _ = capture.stop()
         listeningSince = nil
-        if cueAt != nil { stopStartCue?() }
-        cueAt = nil
+        if cuePlayed != nil { stopStartCue?() }
+        cuePlayed = nil
     }
 
     func beginPushToTalk() {
@@ -292,7 +292,7 @@ final class VoiceInputCoordinator: ObservableObject {
             turnStartedAt = listeningSince ?? Date()
             state = .listening(.pushToTalk)
             priming = false   // after the state, so the HUD never sees idle-and-not-priming between
-            if cueAt == nil { cueAt = playStartCue?() }   // played at key-down already
+            if cuePlayed == nil { cuePlayed = playStartCue?() }   // played at key-down already
             readScreen()
             onEvent?("Listening… release to type")
             Log.voice.info("Listening (push-to-talk, mic open since key-down)")
@@ -304,7 +304,7 @@ final class VoiceInputCoordinator: ObservableObject {
         guard preflight(interactive: true) else { return }
         onBargeIn?()
         startListening(.pushToTalk)
-        if state == .listening(.pushToTalk) { cueAt = playStartCue?() }
+        if state == .listening(.pushToTalk) { cuePlayed = playStartCue?() }
     }
 
     /// Space during a hold. For the five-minute thought that shouldn't mean five minutes holding a key.
@@ -417,7 +417,7 @@ final class VoiceInputCoordinator: ObservableObject {
         listeningSince = Date()
         captureOpenedAt = listeningSince
         turnStartedAt = listeningSince ?? Date()
-        cueAt = nil
+        cuePlayed = nil
         resetSilentWatch()
         vad = mode == .handsFree ? VoiceActivityDetector(config: vadConfig) : nil
         state = .listening(mode)
@@ -580,8 +580,9 @@ final class VoiceInputCoordinator: ObservableObject {
     private func finishTurn(transcribe: Bool) {
         let heldFor = listeningSince.map { Date().timeIntervalSince($0) } ?? 0
         var samples = stopCapture(discard: !transcribe)
-        var cue = cueAt.flatMap { at in captureOpenedAt.map { at.timeIntervalSince($0) } }
-        cueAt = nil
+        let startCue = cuePlayed?.cue
+        var cue = cuePlayed.flatMap { played in captureOpenedAt.map { played.at.timeIntervalSince($0) } }
+        cuePlayed = nil
         if leadTrim > 0 {
             let dropped = min(leadTrim, samples.count / 2)
             samples = Array(samples.dropFirst(dropped))
@@ -590,9 +591,12 @@ final class VoiceInputCoordinator: ObservableObject {
             cue = cue.map { $0 - Double(dropped) / AudioCapture.targetSampleRate }
         }
         guard transcribe else { return }
-        // The start sound played into an open mic. A steep high-pass and a notch on its note take
-        // it back out in about a millisecond; speech above them is left as it was.
-        if let cue { StartCue.remove(from: &samples, cueOffset: cue, sampleRate: AudioCapture.targetSampleRate) }
+        // The start sound played into an open mic. Its own filters (a steep high-pass and a notch
+        // for the chime, notches for the mouth's pop) take it back out in about a millisecond;
+        // speech away from them is left as it was.
+        if let cue, let startCue {
+            startCue.remove(from: &samples, cueOffset: cue, sampleRate: AudioCapture.targetSampleRate)
+        }
         let seconds = Double(samples.count) / AudioCapture.targetSampleRate
         guard seconds >= minUtterance, heldFor >= minUtterance else {
             state = .idle
