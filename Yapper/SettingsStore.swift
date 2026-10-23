@@ -271,7 +271,8 @@ final class SettingsStore: ObservableObject {
         self.keepDictationAudio = defaults.object(forKey: Key.keepDictationAudio.rawValue) as? Bool ?? true
         self.dictationSounds = defaults.object(forKey: Key.dictationSounds.rawValue) as? Bool ?? true
         self.dictationHUD = defaults.object(forKey: Key.dictationHUD.rawValue) as? Bool ?? true
-        self.pillStyle = PillStyle(rawValue: defaults.string(forKey: Key.pillStyle.rawValue) ?? "") ?? .mouth
+        let storedPill = PillStyle(rawValue: defaults.string(forKey: Key.pillStyle.rawValue) ?? "") ?? .default
+        self.pillStyle = PillStyle.mouthAvailable ? storedPill : .bars
         let storedScale = defaults.object(forKey: Key.cassetteScale.rawValue) as? Double ?? 1.0
         self.cassetteScale = min(max(storedScale, Self.cassetteScaleRange.lowerBound),
                                  Self.cassetteScaleRange.upperBound)
@@ -299,6 +300,16 @@ enum SettingsDesign: String, CaseIterable, Identifiable {
 enum PillStyle: String, CaseIterable, Identifiable {
     case mouth, bars
     var id: String { rawValue }
+
+    /// The Loud Mouth isn't public yet: release builds draw the bars and don't offer the choice,
+    /// while development builds keep it on, so it can be worked on in daily use.
+    #if DEBUG
+    static let mouthAvailable = true
+    #else
+    static let mouthAvailable = false
+    #endif
+
+    static var `default`: PillStyle { mouthAvailable ? .mouth : .bars }
     var displayName: String {
         switch self {
         case .mouth: "Mouth"

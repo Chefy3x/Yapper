@@ -13,7 +13,7 @@ final class RecordingHUDModel: ObservableObject {
 
     @Published var phase: Phase = .hidden
     /// The Loud Mouth on the pill, or the level bars.
-    @Published var style: PillStyle = .mouth
+    @Published var style: PillStyle = .default
     /// The mic level the bars follow, eased every frame.
     let motion = PillMotion()
     /// What the mouth lip-syncs: the mic, read every 10 ms.

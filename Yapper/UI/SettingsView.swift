@@ -1518,8 +1518,10 @@ struct VoiceInSection: View {
                 toggleRow(icon: "capsule", title: "Recording pill",
                           detail: "A small pill at the bottom of the screen shows your mic level while you talk, then a tick when the words land.",
                           isOn: $settings.dictationHUD)
-                RowDivider()
-                pillStyleRow
+                if PillStyle.mouthAvailable {
+                    RowDivider()
+                    pillStyleRow
+                }
                 if settings.pillStyle == .mouth && mouthEars.count > 1 {
                     RowDivider()
                     mouthEarRow
