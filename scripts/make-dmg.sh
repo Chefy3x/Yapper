@@ -16,9 +16,13 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 command -v create-dmg >/dev/null || { echo "error: create-dmg not found (brew install create-dmg)" >&2; exit 1; }
 [[ -d "$APP" ]] || { echo "error: no app at $APP" >&2; exit 1; }
 
-STAGING=$(mktemp -d)
-trap 'rm -rf "$STAGING"' EXIT
-ditto "$APP" "$STAGING/Yapper.app"
+# Built under the system temp folder, never next to $DMG: create-dmg makes its writable
+# image beside the output, and Finder's .DS_Store records that image's path, so a build in
+# the home folder would ship the username inside every DMG.
+WORK=$(mktemp -d)
+trap 'rm -rf "$WORK"' EXIT
+mkdir "$WORK/staging"
+ditto "$APP" "$WORK/staging/Yapper.app"
 rm -f "$DMG"
 
 # Icon positions are centres, in the 600×400 window the background was drawn for. The
@@ -34,5 +38,16 @@ create-dmg \
     --hide-extension "Yapper.app" \
     --app-drop-link 450 200 \
     --no-internet-enable \
-    "$DMG" "$STAGING" >/dev/null
+    "$WORK/Yapper.dmg" "$WORK/staging" >/dev/null
+
+# The image is compressed, so check the layout file itself on a read-only mount.
+mkdir "$WORK/mnt"
+hdiutil attach -nobrowse -readonly -quiet -mountpoint "$WORK/mnt" "$WORK/Yapper.dmg"
+leak=$(LC_ALL=C grep -c -a -e "$HOME" -e ":Users:$USER:" "$WORK/mnt/.DS_Store" || true)
+hdiutil detach -quiet "$WORK/mnt"
+if [[ "$leak" != 0 ]]; then
+    echo "error: the DMG's .DS_Store still carries $HOME" >&2
+    exit 1
+fi
+mv "$WORK/Yapper.dmg" "$DMG"
 echo "==> $DMG"
