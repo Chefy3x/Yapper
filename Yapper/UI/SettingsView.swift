@@ -2023,8 +2023,14 @@ private struct AboutPanel: View {
             .padding(.top, 6)
 
             // The only manual check: the menu bar stays short, and Sparkle checks on its own schedule.
-            Button("Check for Updates…") { updater.checkForUpdates() }
-                .disabled(!updater.canCheckForUpdates)
+            if UpdaterService.isEnabled {
+                Button("Check for Updates…") { updater.checkForUpdates() }
+                    .disabled(!updater.canCheckForUpdates)
+            } else {
+                Text("Development build: updates are off.")
+                    .settingsFont(size: 12)
+                    .foregroundStyle(Brand.muted)
+            }
 
             VStack(spacing: 4) {
                 Text("Free and open source. Speech is transcribed on this Mac.")
