@@ -48,7 +48,7 @@ struct MouthFilm {
         var fed = 0
         var jawTrace = "t,J,shape,p,wide,pucker,funnel,part,close,fv\n"
         let talk = Double(audio.count) / MouthLive.rate + 0.3
-        let total = talk + 0.9 + 0.7
+        let total = talk + 0.9 + 0.4
         for f in 0..<Int(total * fps) {
             let now = Double(f) / fps
             while fed + hop <= audio.count, Double(fed + hop) / MouthLive.rate + 0.002 <= now {

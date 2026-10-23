@@ -218,14 +218,14 @@ final class RecordingHUDPresenter {
         withAnimation(Self.closing) { model.phase = .hidden }
     }
 
-    /// The mouth eases into a grin or a grimace and holds it, about 0.7 s in all, then the pill
+    /// The mouth eases into a grin or a grimace and holds it, about 0.4 s in all, then the pill
     /// closes. Without the mouth on show it just closes. A second reaction to the same turn is ignored.
     func react(_ r: MouthReaction) {
         guard model.phase != .hidden, model.style == .mouth else { close(); return }
         guard reacting == nil else { return }
         model.reaction = r
         reacting = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .milliseconds(700))
+            try? await Task.sleep(for: .milliseconds(400))
             guard let self, !Task.isCancelled else { return }
             self.reacting = nil
             self.close()
@@ -352,10 +352,10 @@ private extension AnyTransition {
     static var pillOpen: AnyTransition {
         .modifier(active: PillOpen(open: 0), identity: PillOpen(open: 1))
     }
-    /// The mouth springs up out of the pill and drops back into it.
+    /// The mouth springs up out of the pill and drops back into it, settling about when the pill does.
     static var mouthPop: AnyTransition {
         .asymmetric(insertion: .scale(scale: 0.3, anchor: .bottom).combined(with: .opacity)
-                        .animation(.spring(response: 0.34, dampingFraction: 0.58)),
+                        .animation(.spring(response: 0.26, dampingFraction: 0.8)),
                     removal: .scale(scale: 0.5, anchor: .bottom).combined(with: .opacity)
                         .animation(.easeIn(duration: 0.14)))
     }

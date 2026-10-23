@@ -70,12 +70,12 @@ final class VoiceToastPresenter {
         show(.learned(words), for: 6)
     }
 
-    /// Waits for the pill's reaction to finish and the pill to close (0.7 s + 0.16 s), then offers
+    /// Waits for the pill's reaction to finish and the pill to close (0.4 s + 0.16 s), then offers
     /// the words back in its place.
     func missedPaste(_ text: String) {
         guard !text.isEmpty else { return }
         pending = text
-        show(.missedPaste, for: 30, after: 0.9)
+        show(.missedPaste, for: 30, after: 0.6)
     }
 
     /// Paste the held words (or `text`) into whatever is focused, and say whether it landed.
