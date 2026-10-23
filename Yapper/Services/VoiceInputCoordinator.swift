@@ -392,7 +392,7 @@ final class VoiceInputCoordinator: ObservableObject {
                 case .downloading(let p): onEvent?("Downloading speech model… \(Int(p * 100))%")
                 case .loading: onEvent?("Speech model loading…")
                 case .failed(let msg): onEvent?("Speech model failed: \(msg)")
-                default: onEvent?("Download a speech model in Settings → Conversation")
+                default: onEvent?("Download a speech model in Settings → Models")
                 }
             }
             return false
@@ -480,7 +480,7 @@ final class VoiceInputCoordinator: ObservableObject {
         if reopenedForSilence {
             heardSignal = true   // stop watching; one warning per turn is enough
             Log.voice.notice("Mic still delivering silence after a reopen")
-            onEvent?("Your mic is sending silence. Check the input in Settings → Conversation")
+            onEvent?("Your mic is sending silence. Check the input in Settings → Talk")
             return
         }
         reopenedForSilence = true

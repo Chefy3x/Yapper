@@ -52,7 +52,7 @@ struct OnboardingGateTests {
     }
 }
 
-// The menu bar strip and the guide's closing recap render from one list, so they can't drift.
+// The guide's closing recap renders from one list, so it can't drift from the app's keys.
 struct ShortcutReferenceTests {
 
     @Test func listsTheUserFacingGestures() {

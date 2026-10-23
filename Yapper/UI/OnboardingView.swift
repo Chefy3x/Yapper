@@ -3,15 +3,19 @@ import AppKit
 
 /// The first-run guide.
 ///
-/// It exists for one reason: Yapper's entire control surface is a tap on one modifier key, and
-/// that is an invented gesture with no affordance anywhere in macOS. A new user can install the
-/// app, grant permission, and never once make it speak — not because they missed something
-/// obvious, but because there is nothing to miss. So the middle step doesn't *describe* the
-/// gesture, it makes the user perform it once against real text and confirms it landed.
+/// It exists for one reason: Yapper's entire control surface is one modifier key, and that is an
+/// invented gesture with no affordance anywhere in macOS. A new user can install the app, grant
+/// permission, and never once make it speak — not because they missed something obvious, but
+/// because there is nothing to miss. So the read-aloud step doesn't *describe* the gesture, it
+/// makes the user perform it once against real text and confirms it landed.
 ///
-/// Three steps, no tour: permission (hard gate), the gesture (the teaching moment), voice (the
-/// first impression). Conversation Mode, the mini player, and history are all discoverable in
-/// Settings and stay out of here.
+/// Five steps, no tour: permission (hard gate), side one (the read-aloud drill), side two (Voice
+/// In: microphone and the speech model, so the first hold works), voice (the first impression),
+/// and the key's whole contract to close on. Conversation Mode, the mini player, history and the
+/// dictionary are all in Settings and stay out of here.
+///
+/// It wears the light Settings look whatever the mini player wears, as Settings does: the
+/// cassette stays on the deck.
 struct OnboardingView: View {
     @EnvironmentObject private var state: AppState
     @EnvironmentObject private var settings: SettingsStore
@@ -26,15 +30,17 @@ struct OnboardingView: View {
 
     @State private var step: Step
     @State private var gestureDone = false
-    @State private var wrongGestureHint = false
+    @State private var gestureHint: GestureHint?
+    @State private var keyProvider: KeyedProvider = .elevenLabs
+
     enum Step: Int, CaseIterable {
-        case permission, gesture, voice
+        case permission, readAloud, voiceIn, voice, manual
     }
 
-    /// Matches the Settings window: the tape identity rides along with the Cassette shell.
-    private var skin: SettingsSkin {
-        settings.miniPlayerTheme == .cassette ? .tape : .standard
-    }
+    /// What the drill says when the key did something other than Key + S.
+    private enum GestureHint { case tap, hold }
+
+    private let skin: SettingsSkin = .standard
 
     var body: some View {
         VStack(spacing: 0) {
@@ -44,48 +50,67 @@ struct OnboardingView: View {
                 Group {
                     switch step {
                     case .permission: permissionStep
-                    case .gesture:    gestureStep
+                    case .readAloud:  readAloudStep
+                    case .voiceIn:    voiceInStep
                     case .voice:      voiceStep
+                    case .manual:     manualStep
                     }
                 }
-                .padding(.horizontal, 34)
-                .padding(.top, 4)
-                .padding(.bottom, 24)
+                .padding(.horizontal, 36)
+                .padding(.top, 6)
+                .padding(.bottom, 28)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             footer
         }
-        // Sized so the tallest step (voice + shortcut recap) fits without scrolling.
-        .frame(width: 580, height: 620)
-        .background(skin == .tape ? AnyShapeStyle(Tape.void) : AnyShapeStyle(Color(nsColor: .windowBackgroundColor)))
+        // Sized so the tallest step (the shortcut recap) fits without scrolling.
+        .frame(width: 600, height: 680)
+        .foregroundStyle(Brand.ink)
+        .background(Brand.canvas.ignoresSafeArea())
         .environment(\.settingsSkin, skin)
-        .tint(skin.accent)
-        .preferredColorScheme(skin == .tape ? .dark : nil)
-        .onAppear { state.refreshPermissionState() }
+        .tint(skin.controlTint)
+        .buttonStyle(SoftButtonStyle())
+        .preferredColorScheme(.light)
+        .onAppear {
+            state.refreshPermissionState()
+            state.voiceInput.refreshMicrophonePermission()
+        }
     }
 
     // MARK: - Chrome
 
+    /// The Settings page header in small: the dark counter chip, then the eyebrow.
     private var header: some View {
-        VStack(spacing: 14) {
-            Text(skin == .tape ? "SET UP YAPPER" : "Set up Yapper")
-                .font(skin == .tape ? Tape.mono(10, .bold) : .system(size: 10, weight: .semibold))
-                .tracking(1.4)
-                .foregroundStyle(.secondary)
+        HStack(spacing: 9) {
+            Text(String(format: "%03d", step.rawValue + 1))
+                .font(Brand.label(10))
+                .tracking(1)
+                .foregroundStyle(Brand.blueOnDark)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 4)
+                .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(Brand.lcd))
+                .contentTransition(.numericText())
+            Text("SET UP YAPPER")
+                .font(Brand.label(10.5))
+                .tracking(1.5)
+                .foregroundStyle(Brand.muted)
+
+            Spacer()
 
             HStack(spacing: 6) {
                 ForEach(Step.allCases, id: \.rawValue) { s in
                     Capsule()
-                        .fill(s.rawValue <= step.rawValue ? skin.accent : Color.primary.opacity(0.14))
+                        .fill(s.rawValue <= step.rawValue ? Brand.ink : Brand.lineStrong)
                         .frame(width: s == step ? 22 : 7, height: 7)
                         .animation(.easeOut(duration: 0.2), value: step)
                 }
             }
         }
-        .padding(.top, 26)
+        .padding(.horizontal, 36)
+        // The hosting view starts below the title bar, so this only has to clear the traffic lights' row.
+        .padding(.top, 18)
         .padding(.bottom, 22)
-        .frame(maxWidth: .infinity)
     }
 
     private var footer: some View {
@@ -93,8 +118,8 @@ struct OnboardingView: View {
             if step == .permission {
                 Button("Skip setup", action: finish)
                     .buttonStyle(.plain)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Brand.muted)
             } else {
                 Button {
                     withAnimation(.easeOut(duration: 0.18)) {
@@ -102,10 +127,10 @@ struct OnboardingView: View {
                     }
                 } label: {
                     Label("Back", systemImage: "chevron.left")
-                        .font(.system(size: 11))
+                        .font(.system(size: 12))
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Brand.muted)
             }
 
             Spacer()
@@ -113,23 +138,34 @@ struct OnboardingView: View {
             switch step {
             case .permission:
                 Button("Continue") { advance() }
+                    .buttonStyle(InkButtonStyle())
                     .keyboardShortcut(.defaultAction)
                     .disabled(!state.hasAccessibilityPermission)
-            case .gesture:
+            case .readAloud:
                 // Never a hard gate: a trackpad-only user or an odd keyboard layout must still be
                 // able to reach the end. The label just stops pretending they finished the drill.
                 Button(gestureDone ? "Continue" : "Skip this step") { advance() }
+                    .buttonStyle(InkButtonStyle())
+                    .keyboardShortcut(.defaultAction)
+            case .voiceIn:
+                Button(voiceInSettled ? "Continue" : "Skip for now") { advance() }
+                    .buttonStyle(InkButtonStyle())
                     .keyboardShortcut(.defaultAction)
             case .voice:
+                Button("Continue") { advance() }
+                    .buttonStyle(InkButtonStyle())
+                    .keyboardShortcut(.defaultAction)
+            case .manual:
                 Button("Done", action: finish)
+                    .buttonStyle(InkButtonStyle())
                     .keyboardShortcut(.defaultAction)
             }
         }
-        .padding(.horizontal, 24)
+        .padding(.horizontal, 26)
         .padding(.vertical, 16)
-        .background(.ultraThinMaterial)
+        .background(Brand.rail)
         .overlay(alignment: .top) {
-            Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1)
+            Rectangle().fill(Brand.line).frame(height: 1)
         }
     }
 
@@ -139,11 +175,12 @@ struct OnboardingView: View {
         VStack(alignment: .leading, spacing: 18) {
             StepHeading(
                 icon: "lock.shield",
-                title: "Let it read the screen",
-                blurb: "macOS gates that behind Accessibility. No permission, no shortcuts."
+                eyebrow: nil,
+                title: "Let Yapper see the chat",
+                blurb: "macOS keeps that behind Accessibility. It's how Yapper reads the reply, and how it types what you say. No permission, no shortcuts."
             )
 
-            OnboardingCard {
+            Card(padding: 18) {
                 HStack(spacing: 14) {
                     Image(systemName: state.hasAccessibilityPermission ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
                         .font(.system(size: 20))
@@ -153,10 +190,10 @@ struct OnboardingView: View {
                         Text(state.hasAccessibilityPermission ? "Accessibility granted" : "Accessibility not granted yet")
                             .font(skin.body(13, .semibold))
                         Text(state.hasAccessibilityPermission
-                             ? "Hotkeys are live."
-                             : "Find Yapper in the list, flip it on.")
-                            .font(skin.body(11))
-                            .foregroundStyle(.secondary)
+                             ? "The key is live."
+                             : "Find Yapper in the list and switch it on.")
+                            .font(skin.body(11.5))
+                            .foregroundStyle(Brand.muted)
                     }
 
                     Spacer()
@@ -168,69 +205,67 @@ struct OnboardingView: View {
                 .animation(.easeOut(duration: 0.2), value: state.hasAccessibilityPermission)
             }
 
-            Text("Recorded locally. Nothing leaves the Mac until you add an online voice.")
-                .font(skin.body(11))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            Footnote("Nothing leaves your Mac unless you add an online voice, and then only the text it reads.")
         }
     }
 
-    // MARK: - Step 2 · The gesture
+    // MARK: - Step 2 · Side one, read aloud
 
-    private var gestureStep: some View {
+    private var readAloudStep: some View {
         VStack(alignment: .leading, spacing: 18) {
             StepHeading(
-                icon: "command",
-                title: "One key. Five moves.",
-                blurb: "\(settings.yapperKey.keycap), on the right of the space bar. The line below is already selected."
+                icon: "speaker.wave.2",
+                eyebrow: "Side one · read aloud",
+                title: "Hear it once",
+                blurb: "\(keyName) is the Yapper key. The line below is already selected: hold the key and press S."
             )
 
-            SampleTextBox(text: Self.sampleLine, skin: skin)
+            SampleTextBox(text: Self.sampleLine)
 
-            OnboardingCard {
+            Card(padding: 18) {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(spacing: 10) {
                         MiniKeycap(content: .text(settings.yapperKey.keycap))
-                        Text("+").font(.system(size: 10, weight: .bold)).foregroundStyle(.tertiary)
+                        Text("+").font(.system(size: 10, weight: .bold)).foregroundStyle(Brand.faint)
                         MiniKeycap(content: .text("S"))
                         Text("Hold it, press S")
-                            .font(skin.body(12, .medium))
+                            .font(skin.body(12.5, .medium))
                         Spacer()
                     }
 
-                    Divider().opacity(0.5)
+                    Rectangle().fill(Brand.line).frame(height: 1)
 
                     if gestureDone {
-                        HStack(spacing: 8) {
+                        HStack(alignment: .top, spacing: 8) {
                             Image(systemName: "checkmark.circle.fill").foregroundStyle(skin.okTint)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("That's the manual.")
-                                    .font(skin.body(12, .semibold))
-                                if !state.lastEvent.isEmpty {
-                                    Text(state.lastEvent)
-                                        .font(skin.body(10.5))
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(2)
-                                }
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("That's side one.")
+                                    .font(skin.body(12.5, .semibold))
+                                Text("Highlight anything, anywhere, and it reads. A bare tap of the key reads the newest reply in the chat you're in; tap again to pause.")
+                                    .font(skin.body(11))
+                                    .foregroundStyle(Brand.muted)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
                         }
                         .transition(.opacity)
-                    } else if wrongGestureHint {
-                        HStack(spacing: 8) {
+                    } else if let gestureHint {
+                        HStack(alignment: .top, spacing: 8) {
                             Image(systemName: "info.circle.fill").foregroundStyle(.orange)
-                            Text("That was the bare tap. It reads the latest AI reply, and there isn't one here. Hold it, press S.")
-                                .font(skin.body(11))
-                                .foregroundStyle(.secondary)
+                            Text(gestureHint == .tap
+                                 ? "That was a tap. A tap reads the newest AI reply, and there isn't one here. Hold the key, press S."
+                                 : "That was a hold, which is Voice In: it's the next step. Here, press S while the key is down.")
+                                .font(skin.body(11.5))
+                                .foregroundStyle(Brand.muted)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         .transition(.opacity)
                     } else {
                         HStack(spacing: 8) {
                             Image(systemName: "ear")
-                                .foregroundStyle(.secondary)
-                            Text("waiting for the keys")
-                                .font(skin.body(11))
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Brand.faint)
+                            Text("Waiting for the keys…")
+                                .font(skin.body(11.5))
+                                .foregroundStyle(Brand.muted)
                         }
                     }
                 }
@@ -239,9 +274,9 @@ struct OnboardingView: View {
             if !state.hasAccessibilityPermission {
                 HStack(spacing: 8) {
                     Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                    Text("Accessibility is off, so the keys won't fire. Back one step.")
-                        .font(skin.body(11))
-                        .foregroundStyle(.secondary)
+                    Text("Accessibility is off, so the key won't fire. Go back one step.")
+                        .font(skin.body(11.5))
+                        .foregroundStyle(Brand.muted)
                 }
             }
         }
@@ -250,9 +285,11 @@ struct OnboardingView: View {
                 switch gesture {
                 case .readSelection:
                     gestureDone = true
-                    wrongGestureHint = false
+                    gestureHint = nil
                 case .readLatestOrToggle:
-                    if !gestureDone { wrongGestureHint = true }
+                    if !gestureDone { gestureHint = .tap }
+                case .pushToTalk:
+                    if !gestureDone { gestureHint = .hold }
                 default:
                     break
                 }
@@ -265,55 +302,218 @@ struct OnboardingView: View {
     private static let sampleLine =
         "This is Yapper. Select any text, anywhere, and I'll read it out loud."
 
-    // MARK: - Step 3 · Voice
+    /// Where the key is, for the one key people go looking for. The others are named plainly.
+    private var keyName: String {
+        settings.yapperKey == .rightOption
+            ? "Right ⌥, the Option key right of the space bar,"
+            : settings.yapperKey.keycap
+    }
+
+    // MARK: - Step 3 · Side two, Voice In
+
+    private var voiceInStep: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            StepHeading(
+                icon: "mic",
+                eyebrow: "Side two · voice in",
+                title: "Talk, and it types",
+                blurb: "Hold \(settings.yapperKey.keycap), talk, let go: your words land typed wherever the cursor is. Yapper never presses Return. Sending stays yours."
+            )
+
+            Card(padding: 18) {
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack(spacing: 14) {
+                        Image(systemName: "mic.fill")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(Brand.blueDeep)
+                            .iconTile(Brand.blueSoft, size: 34)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Voice in")
+                                .font(skin.body(13, .semibold))
+                            Text("Transcribed on this Mac. Your audio is never uploaded.")
+                                .font(skin.body(11.5))
+                                .foregroundStyle(Brand.muted)
+                        }
+                        Spacer()
+                        Toggle("", isOn: $settings.voiceInputEnabled)
+                            .labelsHidden()
+                            .toggleStyle(.ink)
+                    }
+
+                    if settings.voiceInputEnabled {
+                        RowDivider()
+                        microphoneRow
+                        RowDivider()
+                        speechModelRow
+                    }
+                }
+                .animation(.easeOut(duration: 0.2), value: settings.voiceInputEnabled)
+            }
+
+            Footnote(settings.voiceInputEnabled
+                     ? "Try it after setup in any text box. Long one? Tap Space mid-hold to lock the mic, and press the key again to finish."
+                     : "Voice In stays off, and Yapper never asks for the microphone. Switch it on any time in Settings → Talk.")
+        }
+    }
+
+    private var microphoneRow: some View {
+        HStack(spacing: 14) {
+            Image(systemName: state.hasMicrophonePermission ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                .font(.system(size: 18))
+                .foregroundStyle(state.hasMicrophonePermission ? skin.okTint : Color.orange)
+                .frame(width: 34)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Microphone")
+                    .font(skin.body(13, .semibold))
+                Text(state.hasMicrophonePermission ? "Access granted." : "Asked once, so Yapper can listen while you hold the key.")
+                    .font(skin.body(11.5))
+                    .foregroundStyle(Brand.muted)
+            }
+            Spacer()
+            if !state.hasMicrophonePermission {
+                Button("Allow") {
+                    Task {
+                        _ = await MicrophonePermission.request()
+                        state.voiceInput.refreshMicrophonePermission()
+                        if !state.hasMicrophonePermission { MicrophonePermission.openSystemSettings() }
+                    }
+                }
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: state.hasMicrophonePermission)
+    }
+
+    private var speechModelRow: some View {
+        let model = state.voiceInput.model
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 14) {
+                Image(systemName: state.whisperModelStatus.isReady ? "checkmark.circle.fill" : "arrow.down.circle")
+                    .font(.system(size: 18))
+                    .foregroundStyle(state.whisperModelStatus.isReady ? skin.okTint : Brand.muted)
+                    .frame(width: 34)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Speech model: \(model.displayName)")
+                        .font(skin.body(13, .semibold))
+                    Text(speechModelLine(model))
+                        .font(skin.body(11.5))
+                        .foregroundStyle(Brand.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                switch state.whisperModelStatus {
+                case .notDownloaded:
+                    Button("Download") { state.voiceInput.downloadModel() }
+                case .downloaded:
+                    Button("Load") { state.voiceInput.downloadModel() }
+                case .failed:
+                    Button("Retry") { state.voiceInput.downloadModel() }
+                case .loading:
+                    ProgressView().controlSize(.small)
+                case .downloading, .ready:
+                    EmptyView()
+                }
+            }
+            if case .downloading(let progress) = state.whisperModelStatus {
+                ProgressView(value: progress)
+                    .tint(skin.controlTint)
+                    .padding(.leading, 48)
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: state.whisperModelStatus)
+    }
+
+    private func speechModelLine(_ model: WhisperModel) -> String {
+        let size = model.approxSize.replacingOccurrences(of: "≈ ", with: "")
+        switch state.whisperModelStatus {
+        case .notDownloaded:      return "One \(size) download, then it works offline. Keep going while it comes down."
+        case .downloaded:         return "On disk. Loads in a moment."
+        case .downloading(let p): return "Downloading… \(Int(p * 100))%. Keep going, it finishes on its own."
+        case .loading:            return "Loading onto the Neural Engine…"
+        case .ready:              return "Ready."
+        case .failed(let why):    return "Download failed: \(why)"
+        }
+    }
+
+    /// Voice In is ready to use, or the user switched it off: either way, nothing left to do here.
+    private var voiceInSettled: Bool {
+        !settings.voiceInputEnabled
+            || (state.hasMicrophonePermission && (state.whisperModelStatus.isReady || state.whisperModelStatus.isBusy))
+    }
+
+    // MARK: - Step 4 · Voice
 
     private var voiceStep: some View {
         VStack(alignment: .leading, spacing: 18) {
             StepHeading(
                 icon: "waveform",
+                eyebrow: nil,
                 title: "Pick a voice",
-                blurb: "Built-in macOS voice: offline, free, flat. ElevenLabs: the one Yapper was built around."
+                blurb: "It already talks in the Mac's own voice: free, offline, no account. Add a key for one that sounds like a person."
             )
 
-            OnboardingCard {
+            Card(padding: 18) {
                 VStack(alignment: .leading, spacing: 14) {
-                    APIKeyField(provider: .elevenLabs,
-                                previewAction: { state.tts.preview(state.activeVoice) })
+                    Picker("", selection: $keyProvider) {
+                        Text("ElevenLabs").tag(KeyedProvider.elevenLabs)
+                        Text("OpenAI").tag(KeyedProvider.openAI)
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .fixedSize()
 
-                    Text("No key? Skip it — the macOS voice takes the mic, free and offline. Settings → Providers has OpenAI and the rest whenever you want them.")
-                        .font(skin.body(10.5))
-                        .foregroundStyle(.secondary)
+                    APIKeyField(provider: keyProvider,
+                                previewAction: { state.tts.preview(state.activeVoice) },
+                                onSaved: { useVoice(from: keyProvider) })
+                        .id(keyProvider)   // a fresh field per provider, not one carrying the other's state
+
+                    Text("No key? Skip it. More voices, and the models, in Settings → Voices and Providers.")
+                        .font(skin.body(11))
+                        .foregroundStyle(Brand.muted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
+        }
+    }
 
-            // The parting reference. After this window closes, the menu bar carries the same list.
-            VStack(alignment: .leading, spacing: 9) {
-                HStack(spacing: 7) {
-                    Image(systemName: "menubar.arrow.up.rectangle")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                    Text("Lives in the menu bar. This list is always up there.")
-                        .font(skin.body(11, .medium))
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.bottom, 2)
+    // MARK: - Step 5 · The manual
 
-                // Grouped the way the menu bar draws them, so the two lists read the same.
-                ForEach(ShortcutReference.Group.everyday, id: \.self) { group in
-                    ShortcutGroupHeading(group.rawValue)
-                        .padding(.top, group == .voiceIn ? 0 : 4)
-                    ForEach(Array(ShortcutReference.items(in: group, yapperKey: settings.yapperKey).enumerated()),
-                            id: \.offset) { _, item in
-                        ShortcutLine(caps: item.caps, label: item.label, capColumnWidth: 118)
+    /// The parting reference. After this window closes, Settings → Hotkeys carries the same list.
+    private var manualStep: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            StepHeading(
+                icon: "menubar.arrow.up.rectangle",
+                eyebrow: nil,
+                title: "One key. That's the manual.",
+                blurb: "Yapper lives in the menu bar, with no Dock icon. The whole list lives in Settings → Hotkeys, where you can change any of it."
+            )
+
+            Card(padding: 18) {
+                VStack(alignment: .leading, spacing: 9) {
+                    // Grouped by side of the key: voice in, read aloud, and both at once.
+                    ForEach(ShortcutReference.Group.everyday, id: \.self) { group in
+                        ShortcutGroupHeading(group.rawValue)
+                            .padding(.top, group == .voiceIn ? 0 : 8)
+                        ForEach(Array(ShortcutReference.items(in: group, yapperKey: settings.yapperKey).enumerated()),
+                                id: \.offset) { _, item in
+                            ShortcutLine(caps: item.caps, label: item.label, capColumnWidth: 168)
+                        }
                     }
                 }
             }
-            .padding(16)
-            .background(
-                RoundedRectangle(cornerRadius: skin == .tape ? 4 : 12, style: .continuous)
-                    .fill(Color.primary.opacity(0.04))
-            )
+        }
+    }
+
+    /// A key that was just saved should be the voice "Hear it" plays. The default preset is an
+    /// ElevenLabs voice, so an OpenAI key alone would otherwise go on reading in the Mac's voice.
+    private func useVoice(from provider: KeyedProvider) {
+        switch provider {
+        case .elevenLabs:
+            if state.activeVoice.provider != .elevenLabs { state.activeVoice = .defaultPreset }
+        case .openAI:
+            if state.activeVoice.provider != .openAI,
+               let marin = VoicePreset.presets.first(where: { $0.id == "openai-marin" }) {
+                state.activeVoice = marin
+            }
         }
     }
 
@@ -334,47 +534,76 @@ struct OnboardingView: View {
 
 private struct StepHeading: View {
     let icon: String
+    /// The site's side-one / side-two naming, for the two halves of the key.
+    let eyebrow: String?
     let title: String
     let blurb: String
-    @Environment(\.settingsSkin) private var skin
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             Image(systemName: icon)
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(skin.iconTint)
-                .frame(width: 36, height: 36)
-                .background(Circle().fill(skin.iconChipBG))
+                .foregroundStyle(Brand.ink.opacity(0.72))
+                .iconTile(Brand.surface, size: 38)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 38 * 0.28, style: .continuous)
+                        .strokeBorder(Brand.line, lineWidth: 1)
+                )
+                .padding(.bottom, 4)
 
-            Text(skin == .tape ? title.uppercased() : title)
-                .font(skin.display(skin == .tape ? 21 : 20))
+            if let eyebrow {
+                Text(eyebrow.uppercased())
+                    .font(Brand.label(10))
+                    .tracking(1.4)
+                    .foregroundStyle(Brand.blueDeep)
+            }
+
+            Text(title)
+                .font(Brand.display(30))
+                .tracking(-0.3)
                 .fixedSize(horizontal: false, vertical: true)
 
             Text(blurb)
-                .font(skin.body(12))
-                .foregroundStyle(.secondary)
+                .font(.system(size: 13.5))
+                .foregroundStyle(Brand.muted)
+                .lineSpacing(2)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.bottom, 2)
     }
 }
 
-private struct OnboardingCard<Content: View>: View {
-    @Environment(\.settingsSkin) private var skin
-    @ViewBuilder var content: () -> Content
+private struct Footnote: View {
+    let text: String
+    init(_ text: String) { self.text = text }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) { content() }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
+        Text(text)
+            .font(.system(size: 11.5))
+            .foregroundStyle(Brand.muted)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 2)
+    }
+}
+
+/// The Settings primary button as a ButtonStyle, so the footer keeps Return as its shortcut.
+private struct InkButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 12.5, weight: .semibold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
             .background(
-                RoundedRectangle(cornerRadius: skin == .tape ? 4 : 12, style: .continuous)
-                    .fill(skin == .tape ? AnyShapeStyle(Tape.panelGradient) : neutralPanelFill)
+                Capsule(style: .continuous)
+                    .fill(configuration.isPressed ? Brand.inkHover : Brand.ink)
+                    .shadow(color: Brand.ink.opacity(0.22), radius: 1, y: 1)
             )
-            .overlay(
-                RoundedRectangle(cornerRadius: skin == .tape ? 4 : 12, style: .continuous)
-                    .strokeBorder(skin == .tape ? Tape.line : Color.primary.opacity(0.06), lineWidth: 1)
-            )
+            .overlay(Capsule(style: .continuous).strokeBorder(.white.opacity(0.12), lineWidth: 0.5).padding(0.5))
+            .opacity(isEnabled ? 1 : 0.35)
+            .contentShape(Capsule())
     }
 }
 
@@ -389,27 +618,24 @@ private struct OnboardingCard<Content: View>: View {
 /// drag-select.
 private struct SampleTextBox: View {
     let text: String
-    let skin: SettingsSkin
 
     var body: some View {
-        // No fixed height: the standard skin fits this on one line, the tape skin's wider
-        // monospaced face wraps it to two. The view reports its own laid-out height instead.
-        PreselectedTextView(text: text, isTape: skin == .tape)
-            .padding(14)
+        // No fixed height: the view reports its own laid-out height, one line or two.
+        PreselectedTextView(text: text)
+            .padding(16)
             .background(
-                RoundedRectangle(cornerRadius: skin == .tape ? 4 : 12, style: .continuous)
-                    .fill(Color.primary.opacity(0.05))
+                RoundedRectangle(cornerRadius: Brand.cardRadius, style: .continuous)
+                    .fill(Brand.surface)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: skin == .tape ? 4 : 12, style: .continuous)
-                    .strokeBorder(skin.accent.opacity(0.35), lineWidth: 1)
+                RoundedRectangle(cornerRadius: Brand.cardRadius, style: .continuous)
+                    .strokeBorder(Brand.blue.opacity(0.35), lineWidth: 1)
             )
     }
 }
 
 private struct PreselectedTextView: NSViewRepresentable {
     let text: String
-    let isTape: Bool
 
     func makeNSView(context: Context) -> SelectingTextView {
         let tv = SelectingTextView()
@@ -420,9 +646,8 @@ private struct PreselectedTextView: NSViewRepresentable {
         tv.drawsBackground = false
         tv.textContainerInset = .zero
         tv.textContainer?.lineFragmentPadding = 0
-        tv.font = isTape ? NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
-                         : NSFont.systemFont(ofSize: 14)
-        tv.textColor = .labelColor
+        tv.font = NSFont.systemFont(ofSize: 14.5)
+        tv.textColor = NSColor(Brand.ink)
         return tv
     }
 
@@ -437,7 +662,7 @@ final class SelectingTextView: NSTextView {
     private var hasPreselected = false
 
     /// Reports the height the text actually occupies at the current width, so SwiftUI can size
-    /// the box to one line or two without a hardcoded guess per skin.
+    /// the box to one line or two without a hardcoded guess.
     override var intrinsicContentSize: NSSize {
         guard let manager = layoutManager, let container = textContainer else {
             return super.intrinsicContentSize

@@ -327,7 +327,8 @@ struct MiniKeycap: View {
         Group {
             switch content {
             case .text(let s):
-                Text(s).settingsFont(size: 10.5, weight: .semibold)
+                // A cap never breaks across lines: "Space" split into "Spac / e" reads as two keys.
+                Text(s).settingsFont(size: 10.5, weight: .semibold).lineLimit(1).fixedSize()
             case .symbol(let s):
                 Image(systemName: s).settingsFont(size: 9, weight: .bold)
             }
@@ -347,7 +348,8 @@ struct MiniKeycap: View {
 }
 
 /// One line of the Yapper-key contract: the key cluster, then what it does.
-/// Shared so the menu bar strip and the guide's recap can never drift apart.
+/// The guide's closing recap draws these from `ShortcutReference`, the same list Settings →
+/// Hotkeys is built on, so the two can never drift apart.
 struct ShortcutLine: View {
     let caps: [MiniKeycap.Content]
     let label: String
@@ -387,7 +389,7 @@ enum ShortcutReference {
         /// Settings → Hotkeys only; never in the menu or the guide.
         case debugging = "For debugging"
 
-        /// The groups the menu bar and the guide draw.
+        /// The groups the guide draws.
         static let everyday: [Group] = [.voiceIn, .readAloud, .conversation]
     }
 

@@ -61,7 +61,7 @@ final class OnboardingController: NSObject, NSWindowDelegate {
             .environmentObject(state.settings)
 
         let w = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 580, height: 620),
+            contentRect: NSRect(x: 0, y: 0, width: 600, height: 680),
             styleMask: [.titled, .closable, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -71,6 +71,9 @@ final class OnboardingController: NSObject, NSWindowDelegate {
         w.titlebarAppearsTransparent = true
         w.isMovableByWindowBackground = true
         w.isReleasedWhenClosed = false          // the controller owns the lifetime
+        // The guide is light, like Settings: keep the traffic lights and the ground light too.
+        w.appearance = NSAppearance(named: .aqua)
+        w.backgroundColor = NSColor(Brand.canvas)
         w.contentView = NSHostingView(rootView: root)
         w.delegate = self
         w.center()
