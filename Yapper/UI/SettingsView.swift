@@ -1998,6 +1998,8 @@ var neutralPanelFill: AnyShapeStyle {
 }
 
 private struct AboutPanel: View {
+    @ObservedObject private var updater = UpdaterService.shared
+
     var body: some View {
         VStack(spacing: 18) {
             YapperGlyph(size: 76)
@@ -2017,6 +2019,10 @@ private struct AboutPanel: View {
                 InfoPill(label: "PLATFORM", value: platformVersion)
             }
             .padding(.top, 6)
+
+            // The only manual check: the menu bar stays short, and Sparkle checks on its own schedule.
+            Button("Check for Updates…") { updater.checkForUpdates() }
+                .disabled(!updater.canCheckForUpdates)
 
             VStack(spacing: 4) {
                 Text("Free and open source. Speech is transcribed on this Mac.")

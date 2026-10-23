@@ -1,12 +1,9 @@
 import SwiftUI
 
-/// The menu bar popover. Talking and reading aloud share one key, so the menu keeps them apart:
-/// a Voice in group and a Read aloud group, each with its shortcuts, its own last action and its
-/// own history, and Conversation Mode, which uses both, between them.
+/// The menu bar popover, kept short: the histories, Conversation Mode, and the app. The key's
+/// shortcuts live in Settings → Hotkeys and the guide; updates check themselves (Settings → About).
 struct MenuBarContent: View {
     @EnvironmentObject private var state: AppState
-    @EnvironmentObject private var settings: SettingsStore
-    @ObservedObject private var updater = UpdaterService.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -37,12 +34,9 @@ struct MenuBarContent: View {
                 .padding(.horizontal, 12)
             }
 
-            // The Yapper-key contract is undiscoverable by design — tapping a bare modifier is an
-            // invented gesture with no affordance anywhere in macOS. The groups below are the
-            // standing answer to "what were the keys again", so nobody has to dig through Settings.
             Divider()
 
-            group(.voiceIn) {
+            VStack(alignment: .leading, spacing: 5) {
                 if state.voiceInput.hasLastRecording {
                     Button {
                         // Close the menu and hand focus back first: the paste goes to whatever is
@@ -67,21 +61,6 @@ struct MenuBarContent: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .buttonStyle(.plain)
-            }
-
-            LearnedWordsRow(vocab: state.vocabulary)
-
-            Divider()
-
-            group(.readAloud) {
-                HStack(spacing: 6) {
-                    Image(systemName: "person.wave.2.fill")
-                        .foregroundStyle(.tint)
-                    Text("Voice").foregroundStyle(.secondary)
-                    Text(state.activeVoice.displayName)
-                        .lineLimit(1)
-                }
-                .font(.callout)
 
                 SettingsButton(prepare: { state.pendingSettingsSection = .history }) {
                     Label("Read-Aloud History", systemImage: "clock.arrow.circlepath")
@@ -89,20 +68,19 @@ struct MenuBarContent: View {
                 }
                 .buttonStyle(.plain)
             }
+            .padding(.horizontal, 12)
+
+            LearnedWordsRow(vocab: state.vocabulary)
 
             Divider()
 
-            VStack(alignment: .leading, spacing: 5) {
-                Toggle(isOn: $state.conversationModeEnabled) {
-                    Label("Conversation Mode", systemImage: "bubble.left.and.bubble.right")
-                }
-                .toggleStyle(.switch)
-
-                ForEach(Array(ShortcutReference.items(in: .conversation, yapperKey: settings.yapperKey).enumerated()),
-                        id: \.offset) { _, item in
-                    ShortcutLine(caps: item.caps, label: "Yapper reads, then listens for your answer")
-                }
-                .opacity(state.hasAccessibilityPermission ? 1 : 0.4)
+            HStack {
+                Label("Conversation Mode", systemImage: "bubble.left.and.bubble.right")
+                Spacer()
+                Toggle("Conversation Mode", isOn: $state.conversationModeEnabled)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
             }
             .padding(.horizontal, 12)
 
@@ -124,16 +102,6 @@ struct MenuBarContent: View {
             .buttonStyle(.plain)
             .padding(.horizontal, 12)
 
-            Button {
-                updater.checkForUpdates()
-            } label: {
-                Label("Check for Updates…", systemImage: "arrow.triangle.2.circlepath")
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .buttonStyle(.plain)
-            .disabled(!updater.canCheckForUpdates)
-            .padding(.horizontal, 12)
-
             Divider()
 
             Button(role: .destructive) {
@@ -146,28 +114,9 @@ struct MenuBarContent: View {
             .padding(.horizontal, 12)
             .padding(.bottom, 8)
         }
-        .frame(width: 280)   // widened for the shortcut strip's key column + label
+        .frame(width: 260)
     }
 
-    /// One direction's block: its heading, its keys, then what it can do from here.
-    private func group<Actions: View>(_ group: ShortcutReference.Group,
-                                      @ViewBuilder actions: () -> Actions) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            ShortcutGroupHeading(group.rawValue)
-
-            ForEach(Array(ShortcutReference.items(in: group, yapperKey: settings.yapperKey).enumerated()),
-                    id: \.offset) { _, item in
-                ShortcutLine(caps: item.caps, label: item.label)
-            }
-            // Without Accessibility these keys are inert; showing them at full strength would
-            // promise something the app can't currently do.
-            .opacity(state.hasAccessibilityPermission ? 1 : 0.4)
-
-            actions()
-                .padding(.top, 3)
-        }
-        .padding(.horizontal, 12)
-    }
 }
 
 /// A button that opens the Settings scene and brings it to the front.
