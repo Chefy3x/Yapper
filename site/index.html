@@ -231,7 +231,15 @@ kbd{
   content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
   background:radial-gradient(60% 50% at 50% 42%,rgba(227,185,58,.22),transparent 70%);
 }
-.deck-zone{position:relative;margin:0 auto;width:var(--deckw)}
+.deck-zone{position:relative;margin:0;width:var(--deckw);flex:none}
+/* deck and Loud Mouth side by side on wide screens; stacked below 960 */
+.stage-row{display:flex;align-items:center;justify-content:center;gap:36px}
+.hero-mouth{position:relative;margin:0;flex:0 0 280px;padding-top:26px;text-align:center}
+.hero-mouth video{display:block;width:100%;height:auto;filter:drop-shadow(0 16px 20px rgba(20,20,18,.24))}
+.hero-mouth figcaption{margin:6px auto 0;max-width:30ch;font-size:13px;line-height:1.5;color:var(--muted)}
+.hero-mouth figcaption b{color:var(--ink);font-weight:600}
+@media (min-width:961px){ .stage{--deckw:min(600px,56vw)} }
+
 .deck-note{
   position:absolute;z-index:6;left:-8px;top:-52px;
   font-family:var(--marker);font-size:20px;color:var(--ink);
@@ -358,26 +366,6 @@ kbd{
 .sect-head{margin:0 auto 40px;max-width:680px;text-align:center}
 .sect-head .lead{margin-top:14px}
 
-/* --- see it work --- */
-.film{
-  position:relative;max-width:1000px;margin:0 auto;aspect-ratio:16/9;
-  background:#141210;border:1px solid var(--line);border-radius:20px;overflow:hidden;
-  box-shadow:var(--shadow-md);
-}
-.film video{display:block;width:100%;height:100%;object-fit:cover}
-.film-snd{
-  position:absolute;right:16px;bottom:16px;
-  display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 14px;
-  font:600 13px/1 var(--sans);color:#F4F1E8;cursor:pointer;
-  background:rgba(20,20,18,.62);border:1px solid rgba(255,255,255,.18);border-radius:999px;
-  -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
-  transition:background .15s ease;
-}
-.film-snd:hover{background:rgba(20,20,18,.82)}
-.film-snd svg{width:15px;height:15px;flex:none}
-.film-snd:focus{outline:none}
-.film-snd:focus-visible{outline:2px solid var(--blue);outline-offset:3px}
-
 /* --- big three --- */
 .trio-zone{position:relative}
 #features .sect-head{margin-bottom:68px}   /* room for the margin note */
@@ -425,21 +413,11 @@ kbd{
 .vi-more p{color:var(--ink-2);font-size:14.5px;line-height:1.6}
 
 /* --- loud mouth (coming soon) --- */
-.lm{margin:0 auto;max-width:1000px}
-.lm-stage{
-  position:relative;display:grid;place-items:center;min-height:300px;padding:64px 28px 52px;
-  background:linear-gradient(180deg,#EFEEEA 0%,#E3E1DB 100%);
-  border:1px solid var(--line);border-radius:24px;box-shadow:var(--shadow-md);
-}
 .lm-tag{
-  position:absolute;top:20px;left:22px;
+  position:absolute;top:-4px;left:50%;transform:translateX(-50%);z-index:2;white-space:nowrap;
   font:600 10.5px/1 var(--sans);letter-spacing:.06em;text-transform:uppercase;
   color:#fff;background:var(--blue);border-radius:999px;padding:5px 9px 4px;
 }
-.lm-frames{display:flex;gap:clamp(8px,3vw,40px);align-items:center;justify-content:center;width:100%}
-.lm-frames img{width:min(260px,30%);height:auto;filter:drop-shadow(0 14px 18px rgba(20,20,18,.22))}
-.lm figcaption{padding:14px 4px 0;font-size:14px;color:var(--muted);text-align:center}
-
 /* --- two shells --- */
 .shells{display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:1000px;margin:0 auto}
 .shell{margin:0;display:flex;flex-direction:column}
@@ -556,6 +534,8 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
   .liner{grid-template-columns:1fr 1fr}
   .vi{grid-template-columns:minmax(0,1fr);gap:32px;max-width:560px}
   .shells{grid-template-columns:1fr;max-width:560px}
+  .stage-row{flex-direction:column;gap:20px}
+  .hero-mouth{flex:none;width:min(300px,80%)}
   .vi-more{grid-template-columns:1fr;max-width:560px;margin-top:40px}
   .note--pencil{right:4px}
 }
@@ -574,14 +554,9 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
   .hk-keys{min-width:0}
   .cta{padding:48px 20px 56px;border-radius:20px}
   .sect{padding-top:80px}
-  .film{border-radius:14px}
-  .film-snd{right:10px;bottom:10px;height:32px;padding:0 12px;font-size:12.5px}
   .vi-demo{padding:18px;border-radius:20px}
   .shell-stage{min-height:220px;padding:28px 18px}
   .vi-more{grid-template-columns:1fr}
-  .lm-stage{min-height:0;padding:52px 12px 32px;border-radius:20px}
-  .lm-frames img{width:47%}
-  .lm-frames img:first-child{display:none}
   .note--pencil{font-size:16px;top:-58px}
   .faq summary{font-size:16px}
 }
@@ -644,6 +619,7 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
 
     <!-- the working deck -->
     <div class="stage">
+      <div class="stage-row">
       <div class="deck-zone">
         <div class="deck-note" id="deckNote">this page talks —<br>press play
           <svg width="46" height="34" viewBox="0 0 46 34" fill="none" aria-hidden="true">
@@ -670,6 +646,17 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
         </div>
       </div>
 
+      <!-- the Loud Mouth, screen-recorded from the app lip-syncing a voice; it talks while you scroll,
+           hover it, or play the deck -->
+      <figure class="hero-mouth" id="heroMouth">
+        <span class="lm-tag">Coming soon</span>
+        <video id="mouthVid" muted playsinline preload="auto" loop poster="media/loud-mouth-poster.webp" width="640" height="320"
+          aria-label="The Loud Mouth: red cartoon lips with a gold tooth, lip-syncing on the Voice In pill"></video>
+        <figcaption><b>Loud Mouth</b> — the next Voice In skin. A 3D mouth that lip-syncs to you,
+        live from your mic.</figcaption>
+      </figure>
+      </div>
+
       <div class="counter" id="counter" aria-live="polite"><span class="led"></span><span class="txt" id="counterTxt">TRK 1/9 · ■ STOPPED — PRESS ▶</span></div>
       <p class="deck-caption">In the app, REW/FF seek ±10 s — here they skip tracks. Artistic license.<br>
       Yes, that's the real voice: ElevenLabs River, the preset Yapper ships. No network? Your browser's voice steps in.</p>
@@ -692,70 +679,10 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
 
 <div class="wrap">
 
-  <!-- ======================= see it work ======================= -->
-  <section class="sect" id="demo">
-    <div class="sect-head">
-      <span class="eyebrow"><span class="ctr">004</span>see it work</span>
-      <h2>One tap. It's talking.</h2>
-      <p class="lead">Right ⌥ pulls the newest reply straight out of the chat and the deck starts reading.
-      No copy, no paste, no switching windows.</p>
-    </div>
-    <div class="film">
-      <video id="film" src="media/flow.mp4" poster="media/flow-poster.webp" muted autoplay loop playsinline preload="auto"
-        aria-label="Yapper at work: one tap of Right Option on a long chat reply, the cassette deck slides in and reads it aloud"></video>
-      <button class="film-snd" id="filmSnd" type="button" aria-pressed="false">
-        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 6v4h2.6L8.5 13V3L5.1 6H2.5Z" fill="currentColor"/><path d="M11 5.5a3.5 3.5 0 0 1 0 5M12.8 3.6a6 6 0 0 1 0 8.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-        <span id="filmLbl">Sound on</span>
-      </button>
-    </div>
-  </section>
-
-  <!-- ======================= big three ======================= -->
-  <section class="sect" id="features">
-    <div class="sect-head">
-      <span class="eyebrow"><span class="ctr">012</span>what's on the tape</span>
-      <h2>Three moves. That's the manual.</h2>
-    </div>
-    <div class="trio-zone">
-      <div class="note note--new" aria-hidden="true">just shipped
-        <svg class="flip" width="46" height="34" viewBox="0 0 46 34" fill="none">
-          <path d="M6 2 C 14 16, 26 24, 40 27" stroke="#141412" stroke-width="2.4" stroke-linecap="round"/>
-          <path d="M32 28.5 L 41 27.6 L 35.5 20.5" stroke="#141412" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-        </svg>
-      </div>
-      <div class="trio">
-        <div class="card">
-          <div class="card-combo"><kbd>Right ⌥</kbd><span class="plus">tap</span></div>
-          <h3>Listen</h3>
-          <p class="card-body">One tap pulls the newest reply out of the focused chat and starts talking.
-          Tap again to pause, again to resume. Or highlight anything, anywhere, and hit
-          <b>Right ⌥ + S</b> — every article is a podcast now.</p>
-          <div class="card-tag">works while you make coffee</div>
-        </div>
-        <div class="card">
-          <div class="card-combo"><kbd>Right ⌥</kbd><span class="plus">hold</span></div>
-          <h3>Talk back<span class="new">New</span></h3>
-          <p class="card-body">Hold the key and say it. Your Mac transcribes it and types it into
-          whatever's focused — lists laid out, names spelled your way. Yapper never presses Return;
-          sending stays yours.</p>
-          <div class="card-tag">your voice never leaves the Mac</div>
-        </div>
-        <div class="card">
-          <div class="card-combo"><kbd>Right ⌥</kbd><span class="plus">+</span><kbd>⏎</kbd></div>
-          <h3><span class="rec-dot"></span>Conversation mode<span class="beta">Beta</span></h3>
-          <p class="card-body">Press REC and every new AI reply auto-plays the moment it finishes
-          generating. Replies queue in order and never talk over each other; skip ahead with
-          <b>Right ⌥ + →</b>. Toggle off, the queue clears.</p>
-          <div class="card-tag">stay hands-off all session</div>
-        </div>
-      </div>
-    </div>
-  </section>
-
   <!-- ======================= voice in ======================= -->
   <section class="sect" id="voice-in">
     <div class="sect-head">
-      <span class="eyebrow"><span class="ctr">019</span>side two · voice in</span>
+      <span class="eyebrow"><span class="ctr">004</span>side two · voice in</span>
       <h2>You talk. It types.</h2>
       <p class="lead">Reading aloud is half of Yapper. The other half runs the other way: hold
       <b>Right ⌥</b>, say it the way you'd say it, let go — and it lands typed the way you'd type it.
@@ -809,27 +736,46 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
     </div>
   </section>
 
-  <!-- ======================= loud mouth (coming soon) ======================= -->
-  <section class="sect" id="loud-mouth">
+  <!-- ======================= big three ======================= -->
+  <section class="sect" id="features">
     <div class="sect-head">
-      <span class="eyebrow"><span class="ctr">021</span>coming soon · skins</span>
-      <h2>Meet the Loud Mouth.</h2>
-      <p class="lead">The next skin for the Voice In pill: a 3D mouth that lip-syncs to you while you
-      talk. It's driven live by your mic and drawn on your Mac, no transcript needed. The cassette
-      stays the free signature skin.</p>
+      <span class="eyebrow"><span class="ctr">012</span>what's on the tape</span>
+      <h2>Three moves. That's the manual.</h2>
     </div>
-    <figure class="lm">
-      <div class="lm-stage">
-        <span class="lm-tag">Coming soon</span>
-        <div class="lm-frames">
-          <img src="media/mouth-rest.webp" width="304" height="152" alt="The Loud Mouth at rest on the Voice In pill: red cartoon lips, closed" loading="lazy" draggable="false">
-          <img src="media/mouth-talk.webp" width="304" height="152" alt="The Loud Mouth mid-word, teeth showing, one gold tooth" loading="lazy" draggable="false">
-          <img src="media/mouth-wide.webp" width="304" height="152" alt="The Loud Mouth wide open on a loud syllable" loading="lazy" draggable="false">
+    <div class="trio-zone">
+      <div class="note note--new" aria-hidden="true">just shipped
+        <svg class="flip" width="46" height="34" viewBox="0 0 46 34" fill="none">
+          <path d="M6 2 C 14 16, 26 24, 40 27" stroke="#141412" stroke-width="2.4" stroke-linecap="round"/>
+          <path d="M32 28.5 L 41 27.6 L 35.5 20.5" stroke="#141412" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        </svg>
+      </div>
+      <div class="trio">
+        <div class="card">
+          <div class="card-combo"><kbd>Right ⌥</kbd><span class="plus">tap</span></div>
+          <h3>Listen</h3>
+          <p class="card-body">One tap pulls the newest reply out of the focused chat and starts talking.
+          Tap again to pause, again to resume. Or highlight anything, anywhere, and hit
+          <b>Right ⌥ + S</b> — every article is a podcast now.</p>
+          <div class="card-tag">works while you make coffee</div>
+        </div>
+        <div class="card">
+          <div class="card-combo"><kbd>Right ⌥</kbd><span class="plus">hold</span></div>
+          <h3>Talk back<span class="new">New</span></h3>
+          <p class="card-body">Hold the key and say it. Your Mac transcribes it and types it into
+          whatever's focused — lists laid out, names spelled your way. Yapper never presses Return;
+          sending stays yours.</p>
+          <div class="card-tag">your voice never leaves the Mac</div>
+        </div>
+        <div class="card">
+          <div class="card-combo"><kbd>Right ⌥</kbd><span class="plus">+</span><kbd>⏎</kbd></div>
+          <h3><span class="rec-dot"></span>Conversation mode<span class="beta">Beta</span></h3>
+          <p class="card-body">Press REC and every new AI reply auto-plays the moment it finishes
+          generating. Replies queue in order and never talk over each other; skip ahead with
+          <b>Right ⌥ + →</b>. Toggle off, the queue clears.</p>
+          <div class="card-tag">stay hands-off all session</div>
         </div>
       </div>
-      <figcaption>Frames from one live capture of a development build. It grins when your words land
-      and grimaces when there's nothing to type.</figcaption>
-    </figure>
+    </div>
   </section>
 
   <!-- ======================= two shells ======================= -->
@@ -1185,6 +1131,7 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
     deck.classList.toggle("is-playing", state.speaking && !state.paused);
     deck.classList.toggle("is-rec", state.rec);
     spin(state.speaking && !state.paused);
+    mouthDeck(state.speaking && !state.paused);
     setStatus();
   }
 
@@ -1197,7 +1144,6 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
     if(hasSpeech) window.speechSynthesis.cancel();
     if(audioEl) audioEl.pause();
     clearTimeout(visualT);
-    filmQuiet();                              // one voice at a time: the deck wins over the demo clip
     if(audioReady) startAudio(i, myGen);
     else startSpeech(i, myGen);
     paint();
@@ -1299,49 +1245,40 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
   }
 
   /* ---------- the demo clip: muted loop, one button for sound ---------- */
-  var film = document.getElementById("film");
-  var filmSnd = document.getElementById("filmSnd");
-  var filmLbl = document.getElementById("filmLbl");
-  function filmLabel(){
-    var loud = !film.muted && !film.paused;
-    filmLbl.textContent = loud ? "Mute" : (film.paused ? "Play with sound" : "Sound on");
-    filmSnd.setAttribute("aria-pressed", loud ? "true" : "false");
+  /* ---------- Loud Mouth: talks while the page scrolls, while hovered, or while the deck plays ---------- */
+  var mouthVid = document.getElementById("mouthVid");
+  var mouthDeckOn = false, mouthHover = false, mouthScrollT = null, mouthSeen = false, mouthShown = false;
+  function mouthDeck(on){ mouthDeckOn = on; mouthSync(); }
+  function mouthSync(){
+    if(!mouthVid || reduceMotion) return;
+    var talk = mouthShown && (mouthDeckOn || mouthHover || mouthScrollT !== null);
+    if(talk && mouthVid.paused){ var mp = mouthVid.play(); if(mp && mp.catch) mp.catch(function(){}); }
+    else if(!talk && !mouthVid.paused) mouthVid.pause();
   }
-  function filmQuiet(){                        // back to the silent loop (or a still, for reduced motion)
-    if(!film || film.muted) return;
-    film.muted = true; film.loop = true;
-    if(reduceMotion) film.pause();
-    filmLabel();
-  }
-  if(film){
-    if(reduceMotion){ film.removeAttribute("autoplay"); film.pause(); }
-    filmSnd.addEventListener("click", function(){
-      if(film.muted || film.paused){
-        stop();                                // hush the deck first
-        film.muted = false; film.loop = false; film.currentTime = 0;
-        var fp = film.play(); if(fp && fp.catch) fp.catch(function(){});
-      } else {
-        filmQuiet();
-      }
-      filmLabel();
-    });
-    film.addEventListener("ended", function(){ // one pass with sound, then back to the quiet loop
-      filmQuiet();
-      if(!reduceMotion){ film.currentTime = 0; var fp = film.play(); if(fp && fp.catch) fp.catch(function(){}); }
-      filmLabel();
-    });
-    film.addEventListener("play", filmLabel);
-    film.addEventListener("pause", filmLabel);
-    if(!reduceMotion && "IntersectionObserver" in window){   // don't burn CPU on a loop nobody can see
+  if(mouthVid && !reduceMotion){
+    // Safari draws alpha from HEVC only; everyone else gets VP9 with alpha
+    var apple = /Apple/.test(navigator.vendor) && !/Chrome|CriOS|Edg/.test(navigator.userAgent);
+    mouthVid.src = apple ? "media/loud-mouth-hevc.mp4" : "media/loud-mouth.webm";
+    var hm = document.getElementById("heroMouth");
+    hm.addEventListener("mouseenter", function(){ mouthHover = true; mouthSync(); });
+    hm.addEventListener("mouseleave", function(){ mouthHover = false; mouthSync(); });
+    window.addEventListener("scroll", function(){
+      clearTimeout(mouthScrollT);
+      mouthScrollT = setTimeout(function(){ mouthScrollT = null; mouthSync(); }, 450);
+      mouthSync();
+    }, {passive: true});
+    if("IntersectionObserver" in window){
       new IntersectionObserver(function(es){
         es.forEach(function(e){
-          if(!film.muted) return;
-          if(e.isIntersecting){ var fp = film.play(); if(fp && fp.catch) fp.catch(function(){}); }
-          else film.pause();
+          mouthShown = e.isIntersecting;
+          if(mouthShown && !mouthSeen){               // say hello once when it first comes into view
+            mouthSeen = true; mouthHover = true; mouthSync();
+            setTimeout(function(){ mouthHover = false; mouthSync(); }, 3500);
+          }
+          mouthSync();
         });
-      }, {threshold: 0.15}).observe(film);
-    }
-    filmLabel();
+      }, {threshold: 0.2}).observe(hm);
+    } else { mouthShown = true; }
   }
 
   /* ---------- Voice In demo: the real pill runs one turn, then the words land in the box ---------- */
