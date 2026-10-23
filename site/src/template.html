@@ -394,34 +394,45 @@ kbd{
 .vi-list p{padding-left:18px;border-left:2px solid var(--line-2);color:var(--ink-2);font-size:15px;line-height:1.6}
 .vi-list b{display:block;font-weight:600;color:var(--ink);margin-bottom:4px;letter-spacing:-.01em}
 .vi-demo{
-  background:linear-gradient(180deg,#EFEEEA 0%,#E3E1DB 100%);
+  background:#ECEAE6;     /* flat, the colour the pill recording decodes to */
   border:1px solid var(--line);border-radius:24px;padding:28px;box-shadow:var(--shadow-md);
 }
-.lcd{
-  background:#1B1A17;border:1px solid rgba(0,0,0,.4);border-radius:12px;padding:14px 16px 12px;
-  font:600 11.5px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--blue-lcd);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 1px 2px rgba(20,20,18,.2);
-}
-.lcd-top{display:flex;align-items:center;gap:10px;white-space:nowrap}
-.lcd .led{width:8px;height:8px;border-radius:50%;background:#3a352b;flex:none}
-.lcd.listening .led{background:var(--red);box-shadow:0 0 8px var(--red);animation:blink 1.1s steps(2,start) infinite}
-.lcd.done .led{background:var(--led);box-shadow:0 0 8px var(--led)}
-.lcd-state{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
-.lcd-app{color:rgba(125,151,255,.5)}
-.wave{display:flex;align-items:center;gap:3px;height:36px;margin-top:12px}
-.wave i{flex:1;height:3px;border-radius:2px;background:rgba(125,151,255,.28)}
-.lcd.listening .wave i{background:var(--blue-lcd);animation:wv .7s ease-in-out infinite alternate}
-@keyframes wv{from{height:4px}to{height:var(--h,24px)}}
+.pill-zone{display:flex;flex-direction:column;align-items:center;gap:6px;margin-top:22px}
+.pill-zone video{display:block;width:260px;max-width:100%;height:auto;transition:opacity .35s ease}
+.pill-zone video.gone{opacity:0}
+.pill-state{font:600 11px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
 .composer{
   margin-top:14px;background:var(--surface);border:1px solid var(--line-2);border-radius:16px;
   padding:14px 14px 12px 16px;box-shadow:var(--shadow-sm);
 }
-.composer-text{min-height:48px;font-size:15px;line-height:1.5;color:var(--ink)}
+.composer-text{min-height:96px;font-size:15px;line-height:1.5;color:var(--ink);white-space:pre-line}
 .composer-text .ph{color:var(--faint)}
 .caret{display:inline-block;width:2px;height:1.1em;margin-left:1px;vertical-align:-3px;background:var(--ink);animation:blink 1s steps(2,start) infinite}
 .composer-foot{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:8px;font-size:12.5px;color:var(--muted)}
 .send{width:30px;height:30px;flex:none;border-radius:50%;display:grid;place-items:center;color:var(--faint);background:var(--surface-2);border:1px solid var(--line-2)}
 .send svg{width:14px;height:14px}
+
+.vi-list b.inl{display:inline;margin:0;font-family:var(--mono);font-size:13px;letter-spacing:0}
+.vi-more{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;max-width:1000px;margin:56px auto 0}
+.vi-more .card{padding:24px 26px 22px}
+.vi-more h3{margin-bottom:8px}
+.vi-more p{color:var(--ink-2);font-size:14.5px;line-height:1.6}
+
+/* --- loud mouth (coming soon) --- */
+.lm{margin:0 auto;max-width:1000px}
+.lm-stage{
+  position:relative;display:grid;place-items:center;min-height:300px;padding:64px 28px 52px;
+  background:linear-gradient(180deg,#EFEEEA 0%,#E3E1DB 100%);
+  border:1px solid var(--line);border-radius:24px;box-shadow:var(--shadow-md);
+}
+.lm-tag{
+  position:absolute;top:20px;left:22px;
+  font:600 10.5px/1 var(--sans);letter-spacing:.06em;text-transform:uppercase;
+  color:#fff;background:var(--blue);border-radius:999px;padding:5px 9px 4px;
+}
+.lm-frames{display:flex;gap:clamp(8px,3vw,40px);align-items:center;justify-content:center;width:100%}
+.lm-frames img{width:min(260px,30%);height:auto;filter:drop-shadow(0 14px 18px rgba(20,20,18,.22))}
+.lm figcaption{padding:14px 4px 0;font-size:14px;color:var(--muted);text-align:center}
 
 /* --- two shells --- */
 .shells{display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:1000px;margin:0 auto}
@@ -539,6 +550,7 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
   .liner{grid-template-columns:1fr 1fr}
   .vi{grid-template-columns:minmax(0,1fr);gap:32px;max-width:560px}
   .shells{grid-template-columns:1fr;max-width:560px}
+  .vi-more{grid-template-columns:1fr;max-width:560px;margin-top:40px}
   .note--pencil{right:4px}
 }
 @media (max-width:760px){
@@ -559,15 +571,18 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
   .film{border-radius:14px}
   .film-snd{right:10px;bottom:10px;height:32px;padding:0 12px;font-size:12.5px}
   .vi-demo{padding:18px;border-radius:20px}
-  .lcd-app{display:none}
   .shell-stage{min-height:220px;padding:28px 18px}
+  .vi-more{grid-template-columns:1fr}
+  .lm-stage{min-height:0;padding:52px 12px 32px;border-radius:20px}
+  .lm-frames img{width:47%}
+  .lm-frames img:first-child{display:none}
   .note--pencil{font-size:16px;top:-58px}
   .faq summary{font-size:16px}
 }
 @media (prefers-reduced-motion:reduce){
   html{scroll-behavior:auto}
   .marquee-track{animation:none}
-  .counter.rec .led,.rec-dot,.lcd.listening .led,.lcd.listening .wave i,.caret{animation:none}
+  .counter.rec .led,.rec-dot,.caret{animation:none}
   .faq summary::after,.badge .arr{transition:none}
   .reel img{transition:none!important}
   .cap img,.cap .recess,.speed-mark{transition:none!important}
@@ -602,12 +617,13 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
 
   <!-- ======================= hero ======================= -->
   <header class="hero">
-    <a class="badge" href="#voice-in"><span class="tag">New</span>Voice In — talk back to your AI <span class="arr" aria-hidden="true">→</span></a>
+    <a class="badge" href="#voice-in"><span class="tag">New</span>Voice In — talk, and Yapper types it <span class="arr" aria-hidden="true">→</span></a>
     <h1><span class="l1">Your AI won't</span><br><span class="l2">shut up.</span></h1>
     <div class="hero-hook">good — <span class="strike">stop reading</span> start listening.</div>
     <p class="lead hero-sub">Yapper reads <b>Claude, ChatGPT, Codex</b> — or anything you highlight — out loud
-    in a real voice. Tap <b>Right ⌥</b> and walk away: the answer follows you across the room
-    while the screen stays where it belongs. Hold it to talk back.</p>
+    in a real voice. Tap <b>Right ⌥</b> and walk away: the answer follows you across the room.
+    When it's your turn, <b>hold Right ⌥ and talk</b> — Yapper types what you said, on your Mac,
+    right where your cursor is.</p>
 
     <div class="btn-row" id="download">
       <a class="btn btn--primary" href="https://github.com/Chefy3x/Yapper/releases/latest/download/Yapper.dmg">
@@ -652,8 +668,8 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
     </div>
 
     <div class="hero-chips">
-      <span class="pill"><b>voices</b>macOS · ElevenLabs · OpenAI</span>
-      <span class="pill"><b>voice in</b>on-device Whisper</span>
+      <span class="pill"><b>read aloud</b>macOS · ElevenLabs · OpenAI</span>
+      <span class="pill"><b>voice in</b>Parakeet &amp; Whisper, on-device</span>
       <span class="pill"><b>code blocks</b>never read</span>
     </div>
   </header>
@@ -662,7 +678,7 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
 <!-- ======================= marquee ======================= -->
 <div class="marquee" aria-hidden="true">
   <div class="marquee-track" id="ribbonTrack">
-    <span>voice in<b>◦</b>voice out<b>◦</b>reads Claude<b>◦</b>reads ChatGPT<b>◦</b>reads Codex<b>◦</b>reads whatever you highlight<b>◦</b>no cloud middleman<b>◦</b>pauses like a walkman<b>◦</b></span><span>voice in<b>◦</b>voice out<b>◦</b>reads Claude<b>◦</b>reads ChatGPT<b>◦</b>reads Codex<b>◦</b>reads whatever you highlight<b>◦</b>no cloud middleman<b>◦</b>pauses like a walkman<b>◦</b></span>
+    <span>voice in<b>◦</b>voice out<b>◦</b>reads Claude<b>◦</b>reads ChatGPT<b>◦</b>reads Codex<b>◦</b>reads whatever you highlight<b>◦</b>you talk, it types<b>◦</b>lists come out as lists<b>◦</b>no cloud middleman<b>◦</b>pauses like a walkman<b>◦</b></span><span>voice in<b>◦</b>voice out<b>◦</b>reads Claude<b>◦</b>reads ChatGPT<b>◦</b>reads Codex<b>◦</b>reads whatever you highlight<b>◦</b>you talk, it types<b>◦</b>lists come out as lists<b>◦</b>no cloud middleman<b>◦</b>pauses like a walkman<b>◦</b></span>
   </div>
 </div>
 
@@ -711,8 +727,9 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
         <div class="card">
           <div class="card-combo"><kbd>Right ⌥</kbd><span class="plus">hold</span></div>
           <h3>Talk back<span class="new">New</span></h3>
-          <p class="card-body">Hold the key and say it. Whisper, running on your Mac, types your words
-          into whatever's focused. Yapper never presses Return — sending stays yours.</p>
+          <p class="card-body">Hold the key and say it. Your Mac transcribes it and types it into
+          whatever's focused — lists laid out, names spelled your way. Yapper never presses Return;
+          sending stays yours.</p>
           <div class="card-tag">your voice never leaves the Mac</div>
         </div>
         <div class="card">
@@ -730,32 +747,81 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
   <!-- ======================= voice in ======================= -->
   <section class="sect" id="voice-in">
     <div class="sect-head">
-      <span class="eyebrow"><span class="ctr">019</span>new · voice in</span>
-      <h2>Hold to talk back.</h2>
-      <p class="lead">The other half of the loop. Hold <b>Right ⌥</b>, say what you'd type, let go —
-      your words land in the chat box, ready when you are.</p>
+      <span class="eyebrow"><span class="ctr">019</span>side two · voice in</span>
+      <h2>You talk. It types.</h2>
+      <p class="lead">Reading aloud is half of Yapper. The other half runs the other way: hold
+      <b>Right ⌥</b>, say it the way you'd say it, let go — and it lands typed the way you'd type it.
+      In any app, all on your Mac.</p>
     </div>
     <div class="vi">
       <div class="vi-list">
-        <p><b>Whisper, on your Mac.</b> Speech is transcribed on-device. Your audio is never uploaded,
-        and once the model is downloaded it works offline.</p>
-        <p><b>Learns your words.</b> Add the names and jargon it keeps missing — and when you fix a
-        transcript, it learns the correction.</p>
-        <p><b>Hands-free, if you want it.</b> Switch it on and the mic opens by itself when a reply
-        finishes reading, then closes when you stop talking.</p>
+        <p><b>One key, both directions.</b> Hold Right ⌥ to talk, let go to type. Long one? Tap Space
+        mid-hold to lock the mic and keep going. <b class="inl">Right ⌥ + V</b> pastes your last
+        dictation again.</p>
+        <p><b>Transcribed on your Mac.</b> Parakeet on Apple silicon — a typical dictation is text in
+        about a tenth of a second — or Whisper on any Mac. One download, then it works offline.
+        Your audio is never uploaded.</p>
+        <p><b>Hands-free after replies.</b> With Conversation Mode on, the mic can open by itself when a
+        reply finishes reading, then close when you pause.</p>
         <p><b>Return is yours.</b> Yapper types; you send. It never presses Return for you.</p>
       </div>
       <div class="vi-demo" aria-hidden="true">
-        <div class="lcd" id="lcd">
-          <div class="lcd-top"><span class="led"></span><span class="lcd-state" id="lcdState">Hold right ⌥ to talk</span><span class="lcd-app">whisper · local</span></div>
-          <div class="wave" id="wave"></div>
-        </div>
         <div class="composer">
           <div class="composer-text" id="ctext"><span class="ph">Reply…</span></div>
           <div class="composer-foot"><span id="cfoot">Yapper types. You send.</span><span class="send"><svg viewBox="0 0 16 16" fill="none"><path d="M8 13V3m0 0L3.5 7.5M8 3l4.5 4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
         </div>
+        <div class="pill-zone">
+          <!-- the real Voice In pill, screen-recorded from the app through one whole turn -->
+          <video id="pillVid" src="media/pill-bars.mp4" poster="media/pill-bars-poster.webp" muted playsinline preload="auto" width="260" height="136"></video>
+          <span class="pill-state" id="pillState">Hold Right ⌥ to talk</span>
+        </div>
       </div>
     </div>
+    <div class="vi-more">
+      <div class="card">
+        <h3>Spelled your way</h3>
+        <p>Add the names and jargon you use. Yapper also picks up the names in the window you're
+        dictating into, and when you fix a word by hand, it learns the correction.</p>
+      </div>
+      <div class="card">
+        <h3>Sound-alikes, settled by context</h3>
+        <p>Heard “cloud” where you said Claude? It becomes Claude only where the sentence reads better
+        that way — “ask Claude to fix it” changes, “a cloud backup” stays put.</p>
+      </div>
+      <div class="card">
+        <h3>Typed like you'd type it</h3>
+        <p>“First… second…” comes out as a list, “three, no wait, four” as four, and the ums and
+        stutters drop out. A small Qwen model does the hard parts, locally.</p>
+      </div>
+      <div class="card">
+        <h3>Snippets</h3>
+        <p>Say “my calendar link” and get the whole URL. Say the trigger in any dictation and the
+        text drops in where you said it.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================= loud mouth (coming soon) ======================= -->
+  <section class="sect" id="loud-mouth">
+    <div class="sect-head">
+      <span class="eyebrow"><span class="ctr">021</span>coming soon · skins</span>
+      <h2>Meet the Loud Mouth.</h2>
+      <p class="lead">The next skin for the Voice In pill: a 3D mouth that lip-syncs to you while you
+      talk. It's driven live by your mic and drawn on your Mac, no transcript needed. The cassette
+      stays the free signature skin.</p>
+    </div>
+    <figure class="lm">
+      <div class="lm-stage">
+        <span class="lm-tag">Coming soon</span>
+        <div class="lm-frames">
+          <img src="media/mouth-rest.webp" width="304" height="152" alt="The Loud Mouth at rest on the Voice In pill: red cartoon lips, closed" loading="lazy" draggable="false">
+          <img src="media/mouth-talk.webp" width="304" height="152" alt="The Loud Mouth mid-word, teeth showing, one gold tooth" loading="lazy" draggable="false">
+          <img src="media/mouth-wide.webp" width="304" height="152" alt="The Loud Mouth wide open on a loud syllable" loading="lazy" draggable="false">
+        </div>
+      </div>
+      <figcaption>Frames from one live capture of a development build. It grins when your words land
+      and grimaces when there's nothing to type.</figcaption>
+    </figure>
   </section>
 
   <!-- ======================= two shells ======================= -->
@@ -809,7 +875,7 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
           <span class="meta">rec: '26 · mix 2 · lo-fi</span>
         </div>
         <div class="track"><span class="no">A1</span><span><span class="t">Three voices<span class="new">New</span></span><span class="d">the Mac's own voice, free and offline — or bring an ElevenLabs or OpenAI key for presets or any voice you own</span></span><span class="spec">free out of the box</span></div>
-        <div class="track"><span class="no">A2</span><span><span class="t">Voice in<span class="new">New</span></span><span class="d">hold the key and talk; Whisper on your Mac types it into the chat</span></span><span class="spec">Return is yours</span></div>
+        <div class="track"><span class="no">A2</span><span><span class="t">Voice in<span class="new">New</span></span><span class="d">hold the key and talk; Parakeet or Whisper on your Mac types it where your cursor is</span></span><span class="spec">Return is yours</span></div>
         <div class="track"><span class="no">A3</span><span><span class="t">Sentence streaming</span><span class="d">first sentence synthesized alone, the rest batched behind it</span></span><span class="spec">talks before it's done thinking</span></div>
         <div class="track"><span class="no">A4</span><span><span class="t">Prose only</span><span class="d">markdown stripped to prose, paragraph pauses kept, fenced code skipped without a word</span></span><span class="spec">silence &gt; syntax</span></div>
         <div class="track"><span class="no">A5</span><span><span class="t">The scrubber</span><span class="d">seek anywhere in a read; transport nudges ±10 s</span></span><span class="spec">re-hear that one sentence</span></div>
@@ -820,6 +886,9 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
         <div class="track"><span class="no">A10</span><span><span class="t">Your key<span class="new">New</span></span><span class="d">Right ⌥ by default — or fn, Right ⌃, Right ⌘, picked in Settings</span></span><span class="spec">your driver, your call</span></div>
         <div class="track"><span class="no">A11</span><span><span class="t">Updates itself<span class="new">New</span></span><span class="d">new builds arrive inside the app, signature-checked before they install</span></span><span class="spec">no re-downloading</span></div>
         <div class="track"><span class="no">A12</span><span><span class="t">Menu bar home</span><span class="d">a waveform that only moves when something's speaking</span></span><span class="spec">no dock icon, no clutter</span></div>
+        <div class="track"><span class="no">A13</span><span><span class="t">Smart formatting<span class="new">New</span></span><span class="d">spoken lists laid out, “no wait” corrections applied, ums and stutters gone</span></span><span class="spec">a small model, on your Mac</span></div>
+        <div class="track"><span class="no">A14</span><span><span class="t">Your words<span class="new">New</span></span><span class="d">your vocabulary, names on screen, fixes it learns, sound-alikes settled by context</span></span><span class="spec">spelled your way</span></div>
+        <div class="track"><span class="no">A15</span><span><span class="t">Snippets<span class="new">New</span></span><span class="d">say the trigger, get the text: links, addresses, templates</span></span><span class="spec">type less</span></div>
         <div class="tl-foot">
           <span>total running time: your whole workday</span>
           <span>recorded live · no overdubs</span>
@@ -832,7 +901,7 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
   <section class="sect" id="shortcuts">
     <div class="sect-head">
       <span class="eyebrow"><span class="ctr">048</span>the right ⌥ contract</span>
-      <h2>One key. Six moves.</h2>
+      <h2>One key. Eight moves.</h2>
       <p class="lead">The right Option key — the one nothing else wants.
       No two-hand chords, no collisions with app shortcuts. Rather use fn, Right ⌃ or Right ⌘?
       Swap it in Settings.</p>
@@ -841,7 +910,9 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
       <div class="card contract">
         <div class="hk-row"><span class="hk-keys"><kbd>Right ⌥</kbd></span><span class="hk-does"><b>Read latest</b> — or pause / resume whatever's playing</span></div>
         <div class="hk-row"><span class="hk-keys"><kbd>Right ⌥</kbd><span class="plus">×2</span></span><span class="hk-does"><b>Force-read</b> the focused chat, superseding current audio</span></div>
-        <div class="hk-row"><span class="hk-keys"><kbd>Right ⌥</kbd><span class="plus">hold</span></span><span class="hk-does"><b>Talk back</b> — speak, let go, and it's typed into the chat<span class="new">New</span></span></div>
+        <div class="hk-row"><span class="hk-keys"><kbd>Right ⌥</kbd><span class="plus">hold</span></span><span class="hk-does"><b>Talk back</b> — speak, let go, and it's typed where your cursor is<span class="new">New</span></span></div>
+        <div class="hk-row"><span class="hk-keys"><kbd>Right ⌥</kbd><span class="plus">hold +</span><kbd>Space</kbd></span><span class="hk-does"><b>Lock the mic</b> — let go and keep talking; press the key again to finish</span></div>
+        <div class="hk-row"><span class="hk-keys"><kbd>Right ⌥</kbd><span class="plus">+</span><kbd>V</kbd></span><span class="hk-does"><b>Paste last dictation</b> — again, wherever you are now</span></div>
         <div class="hk-row"><span class="hk-keys"><kbd>Right ⌥</kbd><span class="plus">+</span><kbd>S</kbd></span><span class="hk-does"><b>Read selection</b> — any highlighted text, any app</span></div>
         <div class="hk-row"><span class="hk-keys"><kbd>Right ⌥</kbd><span class="plus">+</span><kbd>⏎</kbd></span><span class="hk-does"><b>Conversation Mode</b> on / off<span class="beta">Beta</span></span></div>
         <div class="hk-row"><span class="hk-keys"><kbd>Right ⌥</kbd><span class="plus">+</span><kbd>→</kbd></span><span class="hk-does"><b>Skip</b> to the next queued reply</span></div>
@@ -861,8 +932,8 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
       <p><b>No cloud middleman.</b> API keys live in the macOS Keychain. With a voice provider, the only
       thing that leaves the machine is the cleaned text, sent straight to ElevenLabs or OpenAI on your key.
       With the built-in voice, nothing leaves at all. No relay server, no accounts, no telemetry.</p>
-      <p><b>Your voice stays here.</b> Voice In runs Whisper on your Mac. Your audio is never uploaded,
-      and nothing is sent anywhere until you press Return yourself.</p>
+      <p><b>Your voice stays here.</b> Voice In transcribes and formats on your Mac. Your audio is never
+      uploaded, and nothing is sent anywhere until you press Return yourself.</p>
       <p><b>Your words expire.</b> Spoken text exists only in local history — purged on your schedule,
       one hour to seven days, enforced hourly. The only dictation kept is your last one, so you can
       correct it — and it never leaves the Mac.</p>
@@ -896,6 +967,7 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
           <span class="name">YAPPER · C-90 · SIDE B</span>
           <span class="meta">rec: TBD · demos only</span>
         </div>
+        <div class="track"><span class="no">B0</span><span><span class="t">Loud Mouth</span><span class="d">the first skin for the Voice In pill: a 3D mouth that lip-syncs to you</span></span><span class="spec">up next</span></div>
         <div class="track"><span class="no">B1</span><span><span class="t">Headphone buttons</span><span class="d">your AirPods' pause button, wired straight to the tape</span></span><span class="spec">pause from the couch</span></div>
         <div class="track"><span class="no">B2</span><span><span class="t">Sentence skip</span><span class="d">step back one sentence, not ten seconds</span></span><span class="spec">±1 sentence</span></div>
         <div class="track"><span class="no">B3</span><span><span class="t">History search</span><span class="d">type three words, find the reply</span></span><span class="spec">grep for the tape</span></div>
@@ -937,9 +1009,10 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
       </details>
       <details>
         <summary>Does my voice leave my Mac?</summary>
-        <p>No. Voice In transcribes with Whisper on your Mac. The only download is the speech model
-        itself, once — about 80 MB to 1.5 GB, depending on which one you pick. After that it works
-        offline.</p>
+        <p>No. Voice In transcribes on your Mac with Parakeet or Whisper, and formats with a small
+        Qwen model that runs locally too. The only downloads are the models themselves, once: about
+        40 MB to 1.5 GB for speech, depending on which one you pick, and 530 MB for formatting.
+        After that it works offline.</p>
       </details>
       <details>
         <summary>What permissions does it need?</summary>
@@ -948,8 +1021,8 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
       </details>
       <details>
         <summary>Will it run on my Mac?</summary>
-        <p>macOS 14 Sonoma or later, on Apple silicon or Intel — it's one universal download. Voice In's
-        most accurate model wants Apple silicon; Intel Macs start on a lighter one.</p>
+        <p>macOS 14 Sonoma or later, on Apple silicon or Intel — it's one universal download. Parakeet
+        and smart formatting need Apple silicon; Intel Macs dictate with Whisper.</p>
       </details>
       <details>
         <summary>Is there a Windows version?</summary>
@@ -965,7 +1038,8 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
     <img class="cta-tape" src="__TAPE__" alt="The Yapper cassette — hand-labeled, Side A, C-90" draggable="false">
     <span class="eyebrow"><span class="ctr">090</span>end of the reel</span>
     <h2>Take the tape home.</h2>
-    <p class="lead">Free and open source. One download, one permission, and your AI starts talking.</p>
+    <p class="lead">Free and open source. One download, one permission, and your AI starts talking —
+    and you can talk back.</p>
     <div class="btn-row">
       <a class="btn btn--primary" href="https://github.com/Chefy3x/Yapper/releases/latest/download/Yapper.dmg">
         <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 2v8m0 0L4.5 6.5M8 10l3.5-3.5M3 13h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -1262,57 +1336,56 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
     filmLabel();
   }
 
-  /* ---------- Voice In demo: the deck's LCD listens, the words land in the box ---------- */
-  var lcd = document.getElementById("lcd");
-  if(lcd){
-    var lcdState = document.getElementById("lcdState");
+  /* ---------- Voice In demo: the real pill runs one turn, then the words land in the box ---------- */
+  var pillVid = document.getElementById("pillVid");
+  if(pillVid){
+    var pillState = document.getElementById("pillState");
     var ctext = document.getElementById("ctext");
     var cfoot = document.getElementById("cfoot");
-    var wave = document.getElementById("wave");
-    var SAID = "make it shorter, and skip the code sample";
-    for(var wi = 0; wi < 30; wi++){
-      var bar = document.createElement("i");
-      bar.style.setProperty("--h", (6 + (wi * 37 % 26)) + "px");
-      bar.style.animationDelay = (-(wi * 97 % 700)) + "ms";
-      wave.appendChild(bar);
-    }
-    var viGen = 0, viT = null;
-    function viShow(cls, stateTxt, typed, caret, foot){
-      lcd.className = "lcd" + (cls ? " " + cls : "");
-      lcdState.textContent = stateTxt;
+    // What Voice In really typed for the capture line (Parakeet, then the formatting step).
+    var SAID = "Okay, three things for the launch post.\n1. Lead with the demo\n2. Cut the pricing section\n3. End on the download link";
+    var RELEASED = 2.2, LANDS = 4.55;          // seconds into the pill recording
+    var viGen = 0, viT = null, viNext = null, typed = false;
+    function viText(t, caret, foot){
       ctext.innerHTML = "";
-      if(typed){ ctext.appendChild(document.createTextNode(typed)); }
+      if(t){ ctext.appendChild(document.createTextNode(t)); }
       else { var ph = document.createElement("span"); ph.className = "ph"; ph.textContent = "Reply…"; ctext.appendChild(ph); }
       if(caret){ var c = document.createElement("span"); c.className = "caret"; ctext.appendChild(c); }
       cfoot.textContent = foot;
     }
-    function viRun(){
-      var my = ++viGen;
-      function later(ms, fn){ viT = setTimeout(function(){ if(my === viGen) fn(); }, ms); }
-      viShow("", "Hold right ⌥ to talk", "", false, "Yapper types. You send.");
-      later(1400, function(){
-        viShow("listening", "Listening…", "", false, "Yapper types. You send.");
-        later(2600, function(){
-          viShow("", "Whisper · on this Mac", "", true, "Yapper types. You send.");
-          later(700, function type(n){
-            n = n || 1;
-            viShow("", "Typing into the chat", SAID.slice(0, n), true, "Yapper types. You send.");
-            if(n < SAID.length) later(34, function(){ type(n + 1); });
-            else later(250, function(){
-              viShow("done", "✓ Typed · Return is yours", SAID, true, "Your turn — Yapper never presses Return.");
-              later(3600, viRun);
-            });
-          });
-        });
-      });
+    function viType(my, n){
+      if(my !== viGen) return;
+      viText(SAID.slice(0, n), true, "Yapper types. You send.");
+      if(n < SAID.length) viT = setTimeout(function(){ viType(my, n + 2); }, 16);
+      else viText(SAID, true, "Your turn — Yapper never presses Return.");
     }
-    function viStop(){ viGen++; clearTimeout(viT); }
+    function viRun(){
+      var my = ++viGen; typed = false; clearTimeout(viT); clearTimeout(viNext);
+      viText("", false, "Yapper types. You send.");
+      pillState.textContent = "Listening…";
+      pillVid.classList.remove("gone");
+      pillVid.currentTime = 0;
+      var pp = pillVid.play(); if(pp && pp.catch) pp.catch(function(){});
+    }
+    pillVid.addEventListener("timeupdate", function(){
+      var t = pillVid.currentTime;
+      if(t >= LANDS && !typed){ typed = true; pillState.textContent = "✓ Typed · Return is yours"; viType(viGen, 2); }
+      else if(t >= RELEASED && !typed){ pillState.textContent = "Transcribing on this Mac…"; }
+    });
+    pillVid.addEventListener("ended", function(){
+      var my = viGen;
+      pillVid.classList.add("gone");
+      viNext = setTimeout(function(){ if(my === viGen) viRun(); }, 3600);
+    });
+    function viStop(){ viGen++; clearTimeout(viT); clearTimeout(viNext); pillVid.pause(); }
     if(reduceMotion){
-      viShow("done", "✓ Typed · Return is yours", SAID, false, "Your turn — Yapper never presses Return.");
+      pillVid.removeAttribute("preload");
+      viText(SAID, false, "Your turn — Yapper never presses Return.");
+      pillState.textContent = "✓ Typed · Return is yours";
     } else if("IntersectionObserver" in window){
       new IntersectionObserver(function(es){
         es.forEach(function(e){ if(e.isIntersecting) viRun(); else viStop(); });
-      }, {threshold: 0.3}).observe(lcd);
+      }, {threshold: 0.3}).observe(pillVid);
     } else {
       viRun();
     }
