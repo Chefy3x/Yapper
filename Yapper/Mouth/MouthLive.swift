@@ -175,22 +175,23 @@ struct MouthDriveSmoother: Sendable {
     }
 }
 
-/// Pose to pose, the way an animator times a mouth: the jaw holds still through the small wiggles in
-/// the voice, and when it really changes, makes one decisive move to the new pose that leaves at the
-/// speed it already had and lands without a bump. A change mid-move just redirects it.
+/// Pose to pose, eased: the jaw lets the smallest wiggles in the voice pass, and when it changes,
+/// glides to the new pose, leaving at the speed it already had and landing without a bump. A change
+/// mid-move just redirects it. Moves start on small changes and take long enough to glide; the
+/// snappier timing (bigger threshold, 50-110 ms moves) read as choppy, stop-motion.
 struct MouthMoveFollower: Sendable {
     /// A change this big starts (or redirects) a move.
-    var threshold: Float = 0.10
+    var threshold: Float = 0.04
     /// A smaller difference that lasts this long also gets a move, so slow drifts are followed.
-    var drift: Float = 0.03, driftAfter: Float = 0.12
+    var drift: Float = 0.015, driftAfter: Float = 0.05
     /// Moves take this long, plus more for bigger ones, up to `longest`.
-    var shortest: Float = 0.05, perUnit: Float = 0.08, longest: Float = 0.11
+    var shortest: Float = 0.09, perUnit: Float = 0.10, longest: Float = 0.18
 
     private var p: Float?, v: Float = 0
     private var move: (p0: Float, v0: Float, to: Float, d: Float, u: Float)?
     private var off: Float = 0
 
-    init(threshold: Float = 0.10, shortest: Float = 0.05, perUnit: Float = 0.08, longest: Float = 0.11) {
+    init(threshold: Float = 0.04, shortest: Float = 0.09, perUnit: Float = 0.10, longest: Float = 0.18) {
         self.threshold = threshold; self.shortest = shortest; self.perUnit = perUnit; self.longest = longest
     }
 

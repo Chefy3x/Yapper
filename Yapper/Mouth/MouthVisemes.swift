@@ -415,7 +415,7 @@ struct MouthShaper: Sendable {
     private var width = MouthMoveFollower()
     private var close = MouthMoveFollower(threshold: 0.15, shortest: 0.035, perUnit: 0.03, longest: 0.065)
     private var fv = MouthMoveFollower(threshold: 0.15, shortest: 0.035, perUnit: 0.03, longest: 0.065)
-    private var jaw = MouthMoveFollower(threshold: 0.08, shortest: 0.035, perUnit: 0.04, longest: 0.08)
+    private var jaw = MouthMoveFollower(threshold: 0.04, shortest: 0.06, perUnit: 0.06, longest: 0.13)
     private var open = MouthMoveFollower()
     private var part = MouthMoveFollower()
     private var upper = MouthMoveFollower(), lower = MouthMoveFollower()
