@@ -227,11 +227,46 @@ kbd{
 }
 .deck-zone{position:relative;margin:0 auto;width:var(--deckw)}
 /* the hero stage holds only the Loud Mouth; the deck has its own stage in #listen */
-.stage--mouth{padding:56px 24px 34px}
 .stage--deck{margin-top:0;text-align:center}
-.hero-mouth{position:relative;margin:0 auto;width:min(460px,100%);padding-top:30px;text-align:center}
-.hero-mouth video{display:block;width:100%;height:auto;filter:drop-shadow(0 16px 20px rgba(20,20,18,.24))}
-.hero-mouth figcaption{margin:10px auto 0;max-width:40ch;font-size:14px;line-height:1.55;color:var(--muted)}
+/* --- hero: the Loud Mouth on a Mac screen --- */
+.hero-mouth{margin:56px auto 0;max-width:1000px}
+.screen{
+  position:relative;aspect-ratio:16/10;overflow:hidden;border-radius:22px;
+  border:10px solid #121211;box-shadow:var(--shadow-md),0 0 0 1px rgba(20,20,18,.18);
+  background:
+    radial-gradient(80% 70% at 12% 108%,#FF9A6B 0%,rgba(255,154,107,0) 60%),
+    radial-gradient(70% 70% at 92% 100%,#D45BD8 0%,rgba(212,91,216,0) 62%),
+    radial-gradient(90% 80% at 70% 0%,#4F7BFF 0%,rgba(79,123,255,0) 70%),
+    radial-gradient(70% 60% at 20% 20%,#2236B8 0%,rgba(34,54,184,0) 75%),
+    linear-gradient(170deg,#1A2A93 0%,#4B37B5 50%,#C9579E 100%);
+}
+.menubar{
+  position:absolute;left:0;right:0;top:0;height:26px;display:flex;align-items:center;gap:18px;padding:0 16px;
+  font:500 12.5px/1 var(--sans);color:rgba(255,255,255,.92);
+  background:rgba(255,255,255,.14);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);
+}
+.menubar .mb-app{font-weight:700}
+.menubar .mb-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.menubar img{display:block;border-radius:4px}
+.screen .lm-tag{top:42px;left:18px;transform:none}
+.screen video{
+  position:absolute;left:50%;bottom:calc(4% + 64px);transform:translateX(-50%);
+  width:min(34%,340px);height:auto;filter:drop-shadow(0 14px 18px rgba(0,0,0,.28));
+}
+.dock{
+  position:absolute;left:50%;bottom:4%;transform:translateX(-50%);
+  display:flex;align-items:center;gap:10px;height:62px;padding:0 10px;border-radius:20px;
+  background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.28);
+  -webkit-backdrop-filter:blur(24px) saturate(1.4);backdrop-filter:blur(24px) saturate(1.4);
+}
+.dock i{display:block;width:44px;height:44px;border-radius:11px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.22),0 2px 6px rgba(0,0,0,.18);
+  background:linear-gradient(180deg,rgba(255,255,255,.28),rgba(255,255,255,0) 55%),var(--t,#8A8F9C)}
+.dock i:nth-child(1){--t:#3D7BF0}.dock i:nth-child(2){--t:#F2F2EF}.dock i:nth-child(3){--t:#34B36A}
+.dock i:nth-child(4){--t:#E8604C}.dock i:nth-child(5){--t:#1D1D1F}.dock i:nth-child(6){--t:#8E63E6}
+.dock i:nth-child(7){--t:#2BB3C9}
+.dock b{display:block;width:1px;height:40px;background:rgba(255,255,255,.35)}
+.dock img{display:block;width:44px;height:44px;filter:drop-shadow(0 2px 6px rgba(0,0,0,.18))}
+.hero-mouth figcaption{margin:14px auto 0;max-width:46ch;font-size:14px;line-height:1.55;color:var(--muted);text-align:center}
 .hero-mouth figcaption b{color:var(--ink);font-weight:600}
 
 .deck-note{
@@ -549,6 +584,14 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
   .vi-demo{padding:18px;border-radius:20px}
   .shell-stage{min-height:220px;padding:28px 18px}
   .vi-more{grid-template-columns:1fr}
+  .hero-mouth{margin-top:40px}
+  .screen{aspect-ratio:4/5;border-width:7px;border-radius:18px}
+  .screen video{width:78%;bottom:calc(4% + 50px)}
+  .dock{height:46px;gap:7px;padding:0 7px;border-radius:15px}
+  .dock i,.dock img{width:32px;height:32px;border-radius:8px}
+  .dock i:nth-child(n+6){display:none}
+  .dock b{height:28px}
+  .menubar span:not(.mb-app):not(.mb-right){display:none}
   .note--pencil{font-size:16px;top:-58px}
   .faq summary{font-size:16px}
 }
@@ -607,18 +650,20 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
     </div>
     <p class="fineprint">Free &amp; open source · macOS 14+ · Apple silicon &amp; Intel · notarized by Apple</p>
 
-    <!-- the Loud Mouth -->
-    <div class="stage stage--mouth">
-      <!-- the Loud Mouth, screen-recorded from the app lip-syncing a voice; it talks while you scroll,
-           hover it, or play the deck -->
-      <figure class="hero-mouth" id="heroMouth">
+    <!-- the Loud Mouth on a Mac screen: the pill sits just above the Dock, where the app puts it.
+         The mouth is screen-recorded from the app lip-syncing a voice; it talks while you scroll,
+         hover it, or play the deck. The wallpaper is CSS, not Apple's artwork. -->
+    <figure class="hero-mouth" id="heroMouth">
+      <div class="screen">
+        <div class="menubar" aria-hidden="true"><span class="mb-app">Claude</span><span>File</span><span>Edit</span><span>View</span><span class="mb-right"><img src="__MARK__" alt="" width="14" height="14">Thu 9:41</span></div>
         <span class="lm-tag">Coming soon</span>
         <video id="mouthVid" muted playsinline preload="auto" loop poster="media/loud-mouth-poster.webp" width="640" height="320"
-          aria-label="The Loud Mouth: red cartoon lips with a gold tooth, lip-syncing on the Voice In pill"></video>
-        <figcaption><b>Loud Mouth</b> — the next Voice In skin. A 3D mouth that lip-syncs to you,
-        live from your mic.</figcaption>
-      </figure>
-    </div>
+          aria-label="The Loud Mouth: red cartoon lips with a gold tooth, lip-syncing on the Voice In pill above the Dock"></video>
+        <div class="dock" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><b></b><img src="__MARK__" alt="" width="44" height="44"></div>
+      </div>
+      <figcaption><b>Loud Mouth</b> — the next Voice In skin. A 3D mouth that lip-syncs to you,
+      live from your mic.</figcaption>
+    </figure>
 
     <div class="hero-chips">
       <span class="pill"><b>read aloud</b>macOS · ElevenLabs · OpenAI</span>

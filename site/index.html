@@ -233,11 +233,46 @@ kbd{
 }
 .deck-zone{position:relative;margin:0 auto;width:var(--deckw)}
 /* the hero stage holds only the Loud Mouth; the deck has its own stage in #listen */
-.stage--mouth{padding:56px 24px 34px}
 .stage--deck{margin-top:0;text-align:center}
-.hero-mouth{position:relative;margin:0 auto;width:min(460px,100%);padding-top:30px;text-align:center}
-.hero-mouth video{display:block;width:100%;height:auto;filter:drop-shadow(0 16px 20px rgba(20,20,18,.24))}
-.hero-mouth figcaption{margin:10px auto 0;max-width:40ch;font-size:14px;line-height:1.55;color:var(--muted)}
+/* --- hero: the Loud Mouth on a Mac screen --- */
+.hero-mouth{margin:56px auto 0;max-width:1000px}
+.screen{
+  position:relative;aspect-ratio:16/10;overflow:hidden;border-radius:22px;
+  border:10px solid #121211;box-shadow:var(--shadow-md),0 0 0 1px rgba(20,20,18,.18);
+  background:
+    radial-gradient(80% 70% at 12% 108%,#FF9A6B 0%,rgba(255,154,107,0) 60%),
+    radial-gradient(70% 70% at 92% 100%,#D45BD8 0%,rgba(212,91,216,0) 62%),
+    radial-gradient(90% 80% at 70% 0%,#4F7BFF 0%,rgba(79,123,255,0) 70%),
+    radial-gradient(70% 60% at 20% 20%,#2236B8 0%,rgba(34,54,184,0) 75%),
+    linear-gradient(170deg,#1A2A93 0%,#4B37B5 50%,#C9579E 100%);
+}
+.menubar{
+  position:absolute;left:0;right:0;top:0;height:26px;display:flex;align-items:center;gap:18px;padding:0 16px;
+  font:500 12.5px/1 var(--sans);color:rgba(255,255,255,.92);
+  background:rgba(255,255,255,.14);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);
+}
+.menubar .mb-app{font-weight:700}
+.menubar .mb-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.menubar img{display:block;border-radius:4px}
+.screen .lm-tag{top:42px;left:18px;transform:none}
+.screen video{
+  position:absolute;left:50%;bottom:calc(4% + 64px);transform:translateX(-50%);
+  width:min(34%,340px);height:auto;filter:drop-shadow(0 14px 18px rgba(0,0,0,.28));
+}
+.dock{
+  position:absolute;left:50%;bottom:4%;transform:translateX(-50%);
+  display:flex;align-items:center;gap:10px;height:62px;padding:0 10px;border-radius:20px;
+  background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.28);
+  -webkit-backdrop-filter:blur(24px) saturate(1.4);backdrop-filter:blur(24px) saturate(1.4);
+}
+.dock i{display:block;width:44px;height:44px;border-radius:11px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.22),0 2px 6px rgba(0,0,0,.18);
+  background:linear-gradient(180deg,rgba(255,255,255,.28),rgba(255,255,255,0) 55%),var(--t,#8A8F9C)}
+.dock i:nth-child(1){--t:#3D7BF0}.dock i:nth-child(2){--t:#F2F2EF}.dock i:nth-child(3){--t:#34B36A}
+.dock i:nth-child(4){--t:#E8604C}.dock i:nth-child(5){--t:#1D1D1F}.dock i:nth-child(6){--t:#8E63E6}
+.dock i:nth-child(7){--t:#2BB3C9}
+.dock b{display:block;width:1px;height:40px;background:rgba(255,255,255,.35)}
+.dock img{display:block;width:44px;height:44px;filter:drop-shadow(0 2px 6px rgba(0,0,0,.18))}
+.hero-mouth figcaption{margin:14px auto 0;max-width:46ch;font-size:14px;line-height:1.55;color:var(--muted);text-align:center}
 .hero-mouth figcaption b{color:var(--ink);font-weight:600}
 
 .deck-note{
@@ -555,6 +590,14 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
   .vi-demo{padding:18px;border-radius:20px}
   .shell-stage{min-height:220px;padding:28px 18px}
   .vi-more{grid-template-columns:1fr}
+  .hero-mouth{margin-top:40px}
+  .screen{aspect-ratio:4/5;border-width:7px;border-radius:18px}
+  .screen video{width:78%;bottom:calc(4% + 50px)}
+  .dock{height:46px;gap:7px;padding:0 7px;border-radius:15px}
+  .dock i,.dock img{width:32px;height:32px;border-radius:8px}
+  .dock i:nth-child(n+6){display:none}
+  .dock b{height:28px}
+  .menubar span:not(.mb-app):not(.mb-right){display:none}
   .note--pencil{font-size:16px;top:-58px}
   .faq summary{font-size:16px}
 }
@@ -615,18 +658,20 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
     </div>
     <p class="fineprint">Free &amp; open source · macOS 14+ · Apple silicon &amp; Intel · notarized by Apple</p>
 
-    <!-- the Loud Mouth -->
-    <div class="stage stage--mouth">
-      <!-- the Loud Mouth, screen-recorded from the app lip-syncing a voice; it talks while you scroll,
-           hover it, or play the deck -->
-      <figure class="hero-mouth" id="heroMouth">
+    <!-- the Loud Mouth on a Mac screen: the pill sits just above the Dock, where the app puts it.
+         The mouth is screen-recorded from the app lip-syncing a voice; it talks while you scroll,
+         hover it, or play the deck. The wallpaper is CSS, not Apple's artwork. -->
+    <figure class="hero-mouth" id="heroMouth">
+      <div class="screen">
+        <div class="menubar" aria-hidden="true"><span class="mb-app">Claude</span><span>File</span><span>Edit</span><span>View</span><span class="mb-right"><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDI0IDEwMjQiIHdpZHRoPSIxMDI0IiBoZWlnaHQ9IjEwMjQiPgo8cmVjdCB3aWR0aD0iMTAyNCIgaGVpZ2h0PSIxMDI0IiByeD0iMTkwIiBmaWxsPSIjMzE1Q0Y1Ii8+CjxnIHRyYW5zZm9ybT0idHJhbnNsYXRlKDE1My42MCwyMTAuOTkpIHNjYWxlKDAuNzYwMTMpIHRyYW5zbGF0ZSgtNTI2LC0xNTgzKSI+CjxnIHRyYW5zZm9ybT0idHJhbnNsYXRlKDAuMDAwMDAwLDQwMDAuMDAwMDAwKSBzY2FsZSgwLjEwMDAwMCwtMC4xMDAwMDApIiBmaWxsPSIjRkZGRkZGIiBzdHJva2U9Im5vbmUiPgo8cGF0aCBkPSJNMTI1NDQgMjQxNDYgYy01NyAtMjkgLTY4IC00MyAtMTQ4IC0xNzkgLTMxIC01NCAtMTE3IC0xODkgLTE5MAotMzAwIC0yMTYgLTMyOSAtMzQ5IC01MzQgLTQzMSAtNjY3IC00MyAtNjkgLTEzNCAtMjEwIC0yMDMgLTMxNCAtNjkgLTEwNQotMTI5IC0yMDUgLTEzNCAtMjI0IC0xMiAtNDQgLTIgLTEyMSAyMiAtMTYwIDM0IC01NiAxMzIgLTkwIDIwMSAtNzIgbDM4IDExCjQzIDUxIGMxMTkgMTQyIDE4NCAyMTcgMjE3IDI1MyA4MCA4NyA0MDkgNDY0IDY0MSA3MzUgMTM0IDE1NyAyNzIgMzE1IDMwNwozNTIgNzYgODAgOTYgMTIyIDk2IDIwNSBsMCA2MiAtMjQgNDAgYy0yNyA0MyAtMTc3IDE4NCAtMjI0IDIwOCAtMTYgOSAtNTkgMTgKLTk1IDIwIGwtNjUgNSAtNTEgLTI2eiIvPgo8cGF0aCBkPSJNOTc5MSAyMzYxMCBjLTEwMyAtNDggLTE4MSAtMTQ4IC0xOTYgLTI1MyBsLTcgLTQyIDE1IC00MiAxNSAtNDMKLTY3IC04NiBjLTQxMyAtNTM4IC03NzkgLTk0MiAtMTU2MSAtMTcyMiAtNDYyIC00NjEgLTkzMiAtODc3IC0xNjU0IC0xNDYyCi0xNzQgLTE0MiAtMTg4IC0xNTIgLTI4NiAtMTkwIC0yMzQgLTkyIC00ODYgLTIwMiAtNTMwIC0yMzAgLTE4MCAtMTE2IC0yODcKLTM2MyAtMjUwIC01ODAgMTIgLTY5IDM1IC0xMzQgOTMgLTI2MCA0MiAtOTIgNjIgLTE0MCAxMTcgLTI3MCAxMDkgLTI2MSAxMzQKLTMyMSAyMjIgLTUyMCAxMjkgLTI5NiAxNDMgLTMyMiAyMTEgLTM5MCA5MiAtOTIgMjEyIC0xNDMgMzcyIC0xNTcgOTQgLTggMTQ4CjYgMjk5IDcyIDcwIDMxIDEzNiA1NSAxNDcgNTMgbDIxIC0zIDI0IC02MCBjMTQgLTMzIDQ1IC0xMjEgNzAgLTE5NSA4NCAtMjUxCjE5NSAtNDQwIDM0OSAtNTk2IDE4MiAtMTg1IDQ5MiAtMzQyIDc0MCAtMzc1IGw5MCAtMTIgMTMwIDYgMTMwIDYgODUgMjIgYzE1MwozOSA2NTYgMjYzIDc5NSAzNTUgMTA2IDcwIDI2MiAyMjEgMzM0IDMyNCAxMDIgMTQ2IDE5MyAzNjAgMjI3IDUzNiAxOSAxMDAgMTgKMzI1IC0yIDQzOCAtOCA0OSAtMTIgOTIgLTcgOTcgMTggMTggMzQwIDMwIDc3MyAzMCBsNDU1IDAgMjY1IC0xNSBjMzg0IC0yMwo3MDQgLTU1IDczMiAtNzIgNSAtMyAyNyAtMzQgNDkgLTY5IGw0MCAtNjQgNTcgLTI4IDU3IC0yOCA3NSAwIDc1IDAgNDAgMjIKYzkyIDQ5IDE1MyAxNDAgMTYyIDI0MiA2IDY1IC0zIDk4IC01NCAyMTEgLTE5IDQxIC01NyAxMjYgLTg1IDE5MCAtNjggMTU2Ci0yMDIgNDU2IC0yNTAgNTU5IC0yMSA0NiAtNTYgMTI1IC03OCAxNzUgLTIxIDUwIC02MCAxMzYgLTg1IDE5MSAtMjYgNTUgLTk4CjIxOSAtMTYyIDM2NCAtNjMgMTQ1IC0xMzIgMzAwIC0xNTIgMzQ1IC0yMSA0NCAtNjIgMTM1IC05MSAyMDEgLTI5IDY2IC02NAoxNDUgLTc3IDE3NSAtNzEgMTU3IC0xOTkgNDQ0IC0yMjggNTEwIC0xOCA0MSAtNTEgMTE2IC03NSAxNjUgLTIzIDUwIC02MCAxMzIKLTgxIDE4MyAtMjIgNTAgLTU1IDEyNyAtNzUgMTcwIC0yMCA0MiAtNTMgMTE4IC03NCAxNjggLTIyIDUwIC01OCAxMzEgLTgxCjE4MCAtMjIgNDkgLTU0IDEyMSAtNjkgMTU5IC0xNSAzOSAtNDEgOTkgLTU4IDEzNSAtNzQgMTYxIC0yMzkgNTQyIC0zMzcgNzgwCi0xODMgNDQyIC0yNTMgNTkxIC0yOTggNjM4IC0xOCAxOSAtNTAgNDMgLTcyIDU0IGwtNDAgMjEgLTcwIDQgLTcwIDQgLTQ0IC0yMXoKbS02NDQgLTU2MzIgYzE5IC0yNSAzNSAtMTQ0IDM1IC0yNjMgbDAgLTEyMSAtMjEgLTgzIGMtMTIgLTQ2IC00MCAtMTIwIC02MwotMTY1IGwtNDMgLTgxIC04NSAtODYgLTg1IC04NiAtNzcgLTM3IGMtNzUgLTM2IC0zODkgLTE2NyAtNDk4IC0yMDggbC01NSAtMjEKLTkyIC01IGMtMTY1IC05IC0zMTEgMzQgLTQ2OSAxMzYgLTEyNSA4MiAtMjEwIDE4MiAtMjc4IDMyNyAtNDQgOTMgLTEzNyAzMzYKLTE0MyAzNzEgbC01IDMxIDExOCAzMSBjMTMyIDM0IDMyMSA3NCA0NTkgOTYgNTAgOCAxMjggMjIgMTc1IDMwIDIzNyA0MiA0NjUKNzcgNjUwIDEwMSAzNzIgNDYgNDYyIDUyIDQ3NyAzM3oiLz4KPHBhdGggZD0iTTE0MjMwIDIyNTUzIGMtMjYgLTEwIC00OTcgLTI4MiAtNzAxIC00MDQgLTEwOCAtNjUgLTI1NCAtMTQ5IC0zMjUKLTE4NyAtNzEgLTM4IC0yMTAgLTExNyAtMzA5IC0xNzcgLTk5IC01OSAtMjMyIC0xMzYgLTI5NSAtMTcwIC0yMTEgLTExNCAtMzc1Ci0yMDcgLTM5NCAtMjI0IC0zMSAtMjYgLTU2IC05MiAtNTYgLTE0OSAwIC04NCAzOCAtMTM4IDExOSAtMTY3IDYzIC0yMiA4MwotMTkgMTY5IDIzIDk5IDUwIDI0MSAxMDggNDE1IDE3MiA3NiAyOCAyMDIgNzggMjgwIDExMSA3OCAzNCAyMTYgOTAgMzA3IDEyNgo5MSAzNSAyMzUgOTUgMzIwIDEzMiAyNDYgMTA5IDM2MyAxNTkgNTQ1IDIzMiBsMTY5IDY5IDM4IDM3IGMyMSAyMSA0OCA1NyA2MAo4MSBsMjEgNDQgMCA1MiAxIDUxIC01NyAxMzAgLTU2IDEzMCAtNDAgMzYgYy01NSA1MCAtMTUzIDc0IC0yMTEgNTJ6Ii8+CjxwYXRoIGQ9Ik0xNDI1MCAyMDI4NCBjLTg1IC03IC0yNjEgLTIwIC0zOTAgLTI5IC01ODcgLTM5IC02NzUgLTQ1IC04MzUgLTU1Ci05MyAtNiAtMjE4IC0xNSAtMjc3IC0yMCBsLTEwNyAtOCAtMzUgLTIxIGMtMTkgLTEyIC00NSAtMzggLTU3IC01NyBsLTIxIC0zNQo0IC02NCA0IC02NCAzMSAtMzggYzE2IC0yMSA0MyAtNDUgNTkgLTU1IGwyOSAtMTYgMjMwIC0yNiBjNTk1IC02NiA5NTAgLTEwNwoxMjU1IC0xNDYgNDEgLTUgMTMwIC0xNSAxOTcgLTIxIGwxMjMgLTEyIDQ2IDE4IGM2NCAyNCAxMTcgNzUgMTQ0IDEzOCBsMjMgNTIKOCAxMjAgOSAxMjAgLTE1IDUxIGMtOCAyNyAtMjggNjkgLTQ0IDkxIGwtMjkgNDAgLTUzIDI3IC01MyAyNiAtNDUgLTEgYy0yNgotMSAtMTE2IC04IC0yMDEgLTE1eiIvPgo8L2c+CjwvZz4KPC9zdmc+Cg==" alt="" width="14" height="14">Thu 9:41</span></div>
         <span class="lm-tag">Coming soon</span>
         <video id="mouthVid" muted playsinline preload="auto" loop poster="media/loud-mouth-poster.webp" width="640" height="320"
-          aria-label="The Loud Mouth: red cartoon lips with a gold tooth, lip-syncing on the Voice In pill"></video>
-        <figcaption><b>Loud Mouth</b> — the next Voice In skin. A 3D mouth that lip-syncs to you,
-        live from your mic.</figcaption>
-      </figure>
-    </div>
+          aria-label="The Loud Mouth: red cartoon lips with a gold tooth, lip-syncing on the Voice In pill above the Dock"></video>
+        <div class="dock" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><b></b><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDI0IDEwMjQiIHdpZHRoPSIxMDI0IiBoZWlnaHQ9IjEwMjQiPgo8cmVjdCB3aWR0aD0iMTAyNCIgaGVpZ2h0PSIxMDI0IiByeD0iMTkwIiBmaWxsPSIjMzE1Q0Y1Ii8+CjxnIHRyYW5zZm9ybT0idHJhbnNsYXRlKDE1My42MCwyMTAuOTkpIHNjYWxlKDAuNzYwMTMpIHRyYW5zbGF0ZSgtNTI2LC0xNTgzKSI+CjxnIHRyYW5zZm9ybT0idHJhbnNsYXRlKDAuMDAwMDAwLDQwMDAuMDAwMDAwKSBzY2FsZSgwLjEwMDAwMCwtMC4xMDAwMDApIiBmaWxsPSIjRkZGRkZGIiBzdHJva2U9Im5vbmUiPgo8cGF0aCBkPSJNMTI1NDQgMjQxNDYgYy01NyAtMjkgLTY4IC00MyAtMTQ4IC0xNzkgLTMxIC01NCAtMTE3IC0xODkgLTE5MAotMzAwIC0yMTYgLTMyOSAtMzQ5IC01MzQgLTQzMSAtNjY3IC00MyAtNjkgLTEzNCAtMjEwIC0yMDMgLTMxNCAtNjkgLTEwNQotMTI5IC0yMDUgLTEzNCAtMjI0IC0xMiAtNDQgLTIgLTEyMSAyMiAtMTYwIDM0IC01NiAxMzIgLTkwIDIwMSAtNzIgbDM4IDExCjQzIDUxIGMxMTkgMTQyIDE4NCAyMTcgMjE3IDI1MyA4MCA4NyA0MDkgNDY0IDY0MSA3MzUgMTM0IDE1NyAyNzIgMzE1IDMwNwozNTIgNzYgODAgOTYgMTIyIDk2IDIwNSBsMCA2MiAtMjQgNDAgYy0yNyA0MyAtMTc3IDE4NCAtMjI0IDIwOCAtMTYgOSAtNTkgMTgKLTk1IDIwIGwtNjUgNSAtNTEgLTI2eiIvPgo8cGF0aCBkPSJNOTc5MSAyMzYxMCBjLTEwMyAtNDggLTE4MSAtMTQ4IC0xOTYgLTI1MyBsLTcgLTQyIDE1IC00MiAxNSAtNDMKLTY3IC04NiBjLTQxMyAtNTM4IC03NzkgLTk0MiAtMTU2MSAtMTcyMiAtNDYyIC00NjEgLTkzMiAtODc3IC0xNjU0IC0xNDYyCi0xNzQgLTE0MiAtMTg4IC0xNTIgLTI4NiAtMTkwIC0yMzQgLTkyIC00ODYgLTIwMiAtNTMwIC0yMzAgLTE4MCAtMTE2IC0yODcKLTM2MyAtMjUwIC01ODAgMTIgLTY5IDM1IC0xMzQgOTMgLTI2MCA0MiAtOTIgNjIgLTE0MCAxMTcgLTI3MCAxMDkgLTI2MSAxMzQKLTMyMSAyMjIgLTUyMCAxMjkgLTI5NiAxNDMgLTMyMiAyMTEgLTM5MCA5MiAtOTIgMjEyIC0xNDMgMzcyIC0xNTcgOTQgLTggMTQ4CjYgMjk5IDcyIDcwIDMxIDEzNiA1NSAxNDcgNTMgbDIxIC0zIDI0IC02MCBjMTQgLTMzIDQ1IC0xMjEgNzAgLTE5NSA4NCAtMjUxCjE5NSAtNDQwIDM0OSAtNTk2IDE4MiAtMTg1IDQ5MiAtMzQyIDc0MCAtMzc1IGw5MCAtMTIgMTMwIDYgMTMwIDYgODUgMjIgYzE1MwozOSA2NTYgMjYzIDc5NSAzNTUgMTA2IDcwIDI2MiAyMjEgMzM0IDMyNCAxMDIgMTQ2IDE5MyAzNjAgMjI3IDUzNiAxOSAxMDAgMTgKMzI1IC0yIDQzOCAtOCA0OSAtMTIgOTIgLTcgOTcgMTggMTggMzQwIDMwIDc3MyAzMCBsNDU1IDAgMjY1IC0xNSBjMzg0IC0yMwo3MDQgLTU1IDczMiAtNzIgNSAtMyAyNyAtMzQgNDkgLTY5IGw0MCAtNjQgNTcgLTI4IDU3IC0yOCA3NSAwIDc1IDAgNDAgMjIKYzkyIDQ5IDE1MyAxNDAgMTYyIDI0MiA2IDY1IC0zIDk4IC01NCAyMTEgLTE5IDQxIC01NyAxMjYgLTg1IDE5MCAtNjggMTU2Ci0yMDIgNDU2IC0yNTAgNTU5IC0yMSA0NiAtNTYgMTI1IC03OCAxNzUgLTIxIDUwIC02MCAxMzYgLTg1IDE5MSAtMjYgNTUgLTk4CjIxOSAtMTYyIDM2NCAtNjMgMTQ1IC0xMzIgMzAwIC0xNTIgMzQ1IC0yMSA0NCAtNjIgMTM1IC05MSAyMDEgLTI5IDY2IC02NAoxNDUgLTc3IDE3NSAtNzEgMTU3IC0xOTkgNDQ0IC0yMjggNTEwIC0xOCA0MSAtNTEgMTE2IC03NSAxNjUgLTIzIDUwIC02MCAxMzIKLTgxIDE4MyAtMjIgNTAgLTU1IDEyNyAtNzUgMTcwIC0yMCA0MiAtNTMgMTE4IC03NCAxNjggLTIyIDUwIC01OCAxMzEgLTgxCjE4MCAtMjIgNDkgLTU0IDEyMSAtNjkgMTU5IC0xNSAzOSAtNDEgOTkgLTU4IDEzNSAtNzQgMTYxIC0yMzkgNTQyIC0zMzcgNzgwCi0xODMgNDQyIC0yNTMgNTkxIC0yOTggNjM4IC0xOCAxOSAtNTAgNDMgLTcyIDU0IGwtNDAgMjEgLTcwIDQgLTcwIDQgLTQ0IC0yMXoKbS02NDQgLTU2MzIgYzE5IC0yNSAzNSAtMTQ0IDM1IC0yNjMgbDAgLTEyMSAtMjEgLTgzIGMtMTIgLTQ2IC00MCAtMTIwIC02MwotMTY1IGwtNDMgLTgxIC04NSAtODYgLTg1IC04NiAtNzcgLTM3IGMtNzUgLTM2IC0zODkgLTE2NyAtNDk4IC0yMDggbC01NSAtMjEKLTkyIC01IGMtMTY1IC05IC0zMTEgMzQgLTQ2OSAxMzYgLTEyNSA4MiAtMjEwIDE4MiAtMjc4IDMyNyAtNDQgOTMgLTEzNyAzMzYKLTE0MyAzNzEgbC01IDMxIDExOCAzMSBjMTMyIDM0IDMyMSA3NCA0NTkgOTYgNTAgOCAxMjggMjIgMTc1IDMwIDIzNyA0MiA0NjUKNzcgNjUwIDEwMSAzNzIgNDYgNDYyIDUyIDQ3NyAzM3oiLz4KPHBhdGggZD0iTTE0MjMwIDIyNTUzIGMtMjYgLTEwIC00OTcgLTI4MiAtNzAxIC00MDQgLTEwOCAtNjUgLTI1NCAtMTQ5IC0zMjUKLTE4NyAtNzEgLTM4IC0yMTAgLTExNyAtMzA5IC0xNzcgLTk5IC01OSAtMjMyIC0xMzYgLTI5NSAtMTcwIC0yMTEgLTExNCAtMzc1Ci0yMDcgLTM5NCAtMjI0IC0zMSAtMjYgLTU2IC05MiAtNTYgLTE0OSAwIC04NCAzOCAtMTM4IDExOSAtMTY3IDYzIC0yMiA4MwotMTkgMTY5IDIzIDk5IDUwIDI0MSAxMDggNDE1IDE3MiA3NiAyOCAyMDIgNzggMjgwIDExMSA3OCAzNCAyMTYgOTAgMzA3IDEyNgo5MSAzNSAyMzUgOTUgMzIwIDEzMiAyNDYgMTA5IDM2MyAxNTkgNTQ1IDIzMiBsMTY5IDY5IDM4IDM3IGMyMSAyMSA0OCA1NyA2MAo4MSBsMjEgNDQgMCA1MiAxIDUxIC01NyAxMzAgLTU2IDEzMCAtNDAgMzYgYy01NSA1MCAtMTUzIDc0IC0yMTEgNTJ6Ii8+CjxwYXRoIGQ9Ik0xNDI1MCAyMDI4NCBjLTg1IC03IC0yNjEgLTIwIC0zOTAgLTI5IC01ODcgLTM5IC02NzUgLTQ1IC04MzUgLTU1Ci05MyAtNiAtMjE4IC0xNSAtMjc3IC0yMCBsLTEwNyAtOCAtMzUgLTIxIGMtMTkgLTEyIC00NSAtMzggLTU3IC01NyBsLTIxIC0zNQo0IC02NCA0IC02NCAzMSAtMzggYzE2IC0yMSA0MyAtNDUgNTkgLTU1IGwyOSAtMTYgMjMwIC0yNiBjNTk1IC02NiA5NTAgLTEwNwoxMjU1IC0xNDYgNDEgLTUgMTMwIC0xNSAxOTcgLTIxIGwxMjMgLTEyIDQ2IDE4IGM2NCAyNCAxMTcgNzUgMTQ0IDEzOCBsMjMgNTIKOCAxMjAgOSAxMjAgLTE1IDUxIGMtOCAyNyAtMjggNjkgLTQ0IDkxIGwtMjkgNDAgLTUzIDI3IC01MyAyNiAtNDUgLTEgYy0yNgotMSAtMTE2IC04IC0yMDEgLTE1eiIvPgo8L2c+CjwvZz4KPC9zdmc+Cg==" alt="" width="44" height="44"></div>
+      </div>
+      <figcaption><b>Loud Mouth</b> — the next Voice In skin. A 3D mouth that lip-syncs to you,
+      live from your mic.</figcaption>
+    </figure>
 
     <div class="hero-chips">
       <span class="pill"><b>read aloud</b>macOS · ElevenLabs · OpenAI</span>
