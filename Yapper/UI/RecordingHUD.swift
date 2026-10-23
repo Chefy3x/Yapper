@@ -20,6 +20,9 @@ final class RecordingHUDModel: ObservableObject {
     var live: MouthLive?
     /// The mouth's last word on a turn, shown for a moment before the pill closes.
     @Published var reaction: MouthReaction?
+    /// Once its shaders are compiled, the mouth is built on the hidden pill and stays there, only
+    /// shown and hidden: building it as the pill opened cost the pop its first frames.
+    @Published var mouthMounted = false
 
     func push(level rms: Float) { motion.hear(db: 20 * log10(max(Double(rms), 1e-7))) }
 
@@ -297,9 +300,10 @@ struct RecordingHUDView: View {
             .shadow(color: .black.opacity(0.28), radius: 10, y: 4)
             .padding(.bottom, RecordingHUDPresenter.pillInset)
             // The mouth sits on the pill, outside the pill's opening mask so it can spill past it.
-            if model.style == .mouth, model.phase != .hidden {
-                PillMouth(phase: model.phase, live: model.live, reaction: model.reaction)
-                    .transition(.mouthPop)                       // scales from the pill's centre
+            if model.style == .mouth, model.mouthMounted || model.phase != .hidden {
+                let shown = model.phase != .hidden
+                PillMouth(phase: model.phase, live: model.live, reaction: model.reaction, shown: shown)
+                    .modifier(MouthPop(shown: shown))            // scales from the pill's centre
                     .padding(.bottom, RecordingHUDPresenter.pillInset + RecordingPill.height / 2)
             }
         }
@@ -315,6 +319,8 @@ struct PillMouth: View {
     let live: MouthLive?
     var reaction: MouthReaction?
     var still: MouthPose?
+    /// Off while the pill is closed: the mouth stops drawing once it has popped away.
+    var shown = true
 
     /// The lip line's height above the pill's centre, and where it sits in the mouth's view
     /// (`MouthFraming`'s defaults: 37 pt down from the top of a 100 pt view).
@@ -322,7 +328,7 @@ struct PillMouth: View {
 
     var body: some View {
         let size = MouthStage.viewSize
-        MouthView(mode: mode, live: live)
+        MouthView(mode: mode, live: live, shown: shown)
             .frame(width: size.width, height: size.height)
             // bottom of this view = pill centre; the drawing hangs below it, past the panel if it must
             .frame(width: size.width, height: Self.lift + Self.lipFromTop, alignment: .top)
@@ -352,12 +358,17 @@ private extension AnyTransition {
     static var pillOpen: AnyTransition {
         .modifier(active: PillOpen(open: 0), identity: PillOpen(open: 1))
     }
-    /// The mouth springs up out of the pill and drops back into it, settling about when the pill does.
-    static var mouthPop: AnyTransition {
-        .asymmetric(insertion: .scale(scale: 0.3, anchor: .bottom).combined(with: .opacity)
-                        .animation(.spring(response: 0.26, dampingFraction: 0.8)),
-                    removal: .scale(scale: 0.5, anchor: .bottom).combined(with: .opacity)
-                        .animation(.easeIn(duration: 0.14)))
+}
+
+/// The mouth springs up out of the pill and drops back into it, settling about when the pill does.
+/// The mouth stays put between showings, so this animates it rather than inserting it.
+struct MouthPop: ViewModifier {
+    let shown: Bool
+    func body(content: Content) -> some View {
+        content
+            .scaleEffect(shown ? 1 : 0.3, anchor: .bottom)
+            .opacity(shown ? 1 : 0)
+            .animation(shown ? .spring(response: 0.26, dampingFraction: 0.8) : .easeIn(duration: 0.14), value: shown)
     }
 }
 

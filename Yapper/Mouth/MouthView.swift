@@ -85,6 +85,8 @@ final class MouthStage {
 struct MouthView: NSViewRepresentable {
     var mode: MouthMode
     var live: MouthLive?
+    /// Whether it's on show: hidden, it stops drawing (after the moment it takes to pop away).
+    var shown = true
 
     func makeNSView(context: Context) -> NSView {
         guard let (asset, renderer) = MouthStage.shared.prepare() else { return NSView() }
@@ -94,6 +96,7 @@ struct MouthView: NSViewRepresentable {
     func updateNSView(_ view: NSView, context: Context) {
         guard let view = view as? MouthMetalView else { return }
         view.frames.set(mode: mode, live: live)
+        view.shown = shown
     }
 }
 
@@ -128,10 +131,30 @@ final class MouthMetalView: NSView {
 
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
+    /// Off once the pill has closed. Drawing carries on a moment after, while the mouth pops away.
+    var shown = true {
+        didSet { if shown != oldValue { updateRunning() } }
+    }
+    private var stopping: DispatchWorkItem?
+
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         fitDrawable()
-        frames.setRunning(window != nil)
+        updateRunning()
+    }
+
+    private func updateRunning() {
+        stopping?.cancel()
+        stopping = nil
+        if window != nil && shown {
+            frames.setRunning(true)
+        } else if window == nil {
+            frames.setRunning(false)
+        } else {
+            let stop = DispatchWorkItem { [weak self] in self?.frames.setRunning(false, keepClock: true) }
+            stopping = stop
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: stop)
+        }
     }
 
     override func viewDidChangeBackingProperties() {
@@ -286,6 +309,7 @@ final class MouthFrames: NSObject, CAMetalDisplayLinkDelegate, @unchecked Sendab
     private var mode: MouthMode = .live
     private var live: MouthLive?
     private var running = false
+    private var keepClock = false
 
     // the render thread's own
     private var link: CAMetalDisplayLink?
@@ -309,8 +333,10 @@ final class MouthFrames: NSObject, CAMetalDisplayLinkDelegate, @unchecked Sendab
         if changed { refresh() }
     }
 
-    func setRunning(_ on: Bool) {
-        lock.lock(); running = on; lock.unlock()
+    /// Starts or stops drawing. `keepClock` pauses the display link rather than removing it, so the
+    /// next showing draws its first frame at once instead of waiting on a new link.
+    func setRunning(_ on: Bool, keepClock: Bool = false) {
+        lock.lock(); running = on; self.keepClock = keepClock; lock.unlock()
         refresh()
     }
 
@@ -318,19 +344,23 @@ final class MouthFrames: NSObject, CAMetalDisplayLinkDelegate, @unchecked Sendab
     func refresh() { MouthRenderThread.shared.run { self.sync() } }
 
     private func sync() {
-        lock.lock(); let mode = self.mode, running = self.running; lock.unlock()
+        lock.lock(); let mode = self.mode, running = self.running, keepClock = self.keepClock; lock.unlock()
         let still: Bool
         if case .still = mode { still = true } else { still = false }
         if running && !still {
-            guard link == nil else { return }
+            if let link { link.isPaused = false; return }
             let l = CAMetalDisplayLink(metalLayer: layer)
             l.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 240, preferred: 240)   // the screen's full rate: 120 on ProMotion, 144 on a gaming monitor
             l.delegate = self
             l.add(to: .current, forMode: .default)
             link = l
         } else {
-            link?.invalidate()
-            link = nil
+            if keepClock && !still {
+                link?.isPaused = true
+            } else {
+                link?.invalidate()
+                link = nil
+            }
             director.stop()                     // the next showing starts fresh, not eased from this one
             if running, still, let drawable = layer.nextDrawable() { render(drawable, at: CACurrentMediaTime()) }
         }

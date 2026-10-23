@@ -206,6 +206,7 @@ final class AppState: ObservableObject {
                     Task { @MainActor in
                         try? await Task.sleep(for: .seconds(1))
                         MouthStage.shared.warmUp()            // compile its shaders before the first open
+                        self.recordingHUD?.presenter.model.mouthMounted = true   // and build it on the hidden pill
                     }
                 }
             }
