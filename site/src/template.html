@@ -442,6 +442,14 @@ kbd{
 .step h3{margin-bottom:8px}
 .step p{color:var(--ink-2);font-size:15px;line-height:1.6}
 .step p b{font-weight:600;color:var(--ink)}
+.step p a,.first-open a,.fineprint a,.faq details p a{color:inherit;text-decoration:underline;text-underline-offset:3px;text-decoration-color:var(--line-2)}
+.first-open{margin-top:16px;padding:26px 28px 24px;scroll-margin-top:90px}
+.first-open h3{margin-bottom:8px}
+.first-open p,.first-open li{color:var(--ink-2);font-size:15px;line-height:1.6}
+.first-open p b,.first-open li b{font-weight:600;color:var(--ink)}
+.first-open ol{margin:12px 0 0;padding-left:22px;display:grid;gap:6px}
+.first-open li::marker{font:italic 400 17px var(--serif);color:var(--blue-deep)}
+.first-open__foot{margin-top:14px;font-size:14px!important;color:var(--muted)!important}
 
 /* --- tracklist --- */
 .tracklist{padding:8px 28px 14px}
@@ -617,7 +625,7 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
       </a>
       <a class="btn btn--secondary" href="https://github.com/Chefy3x/Yapper">Source on GitHub</a>
     </div>
-    <p class="fineprint">Free &amp; open source · macOS 14+ · Apple silicon &amp; Intel · notarized by Apple</p>
+    <p class="fineprint">Free &amp; open source · macOS 14+ · Apple silicon &amp; Intel · <a href="#first-open">one extra click the first time</a></p>
 
     <!-- the Loud Mouth on a real Mac screen: the bottom of a MacBook display with a Pexels desktop photo
          as wallpaper and a real Dock captured from the machine. The pill sits where the app puts it,
@@ -820,14 +828,27 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
     </div>
     <div class="steps">
       <div class="card step"><span class="n">1</span><h3>Download</h3>
-        <p>Drag Yapper into Applications. It's signed and notarized by Apple, so it opens like any
-        other app — and keeps itself up to date from then on.</p></div>
+        <p>Drag Yapper into Applications and open it. The first time, macOS asks you to OK it once
+        (<a href="#first-open">how</a>). From then on it keeps itself up to date.</p></div>
       <div class="card step"><span class="n">2</span><h3>Follow the guide</h3>
         <p>The first-run guide gets you through the Accessibility permission, has you read real text
         once so the first one lands, then sets up Voice In: the mic and a one-time speech model.</p></div>
       <div class="card step"><span class="n">3</span><h3>Tap Right ⌥</h3>
         <p>Out of the box it talks with the Mac's own voice — <b>free, offline, no account</b>.
         Paste an ElevenLabs or OpenAI key whenever you want one that sounds like a person.</p></div>
+    </div>
+
+    <div class="card first-open" id="first-open">
+      <h3>Opening it the first time</h3>
+      <p>Yapper is signed by its developer but not notarized by Apple, so the first launch shows
+      “Apple could not verify Yapper is free of malware.” That's expected. To let it in, once:</p>
+      <ol>
+        <li>Open Yapper from Applications. When the warning appears, click <b>Done</b> (not Move to Trash).</li>
+        <li>Open <b>System Settings → Privacy &amp; Security</b> and scroll down to Security.</li>
+        <li>Next to “Yapper was blocked”, click <b>Open Anyway</b>, then confirm with your password or Touch ID.</li>
+      </ol>
+      <p class="first-open__foot">Yapper is open source, so you can read every line or build it yourself
+      <a href="https://github.com/Chefy3x/Yapper">on GitHub</a>.</p>
     </div>
   </section>
 
@@ -910,7 +931,8 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
       then restores it byte-for-byte — images and files included.</p>
       <p><b>Permissions, asked once.</b> Accessibility, so Yapper can see the chat and type into it — the
       first-run guide walks you through it. Microphone only for Voice In, and you can switch that off.</p>
-      <p><b>Signed, sealed, self-updating.</b> Every build is signed and notarized by Apple. Updates
+      <p><b>Signed and self-updating.</b> Every build is signed with Yapper's developer certificate;
+      it isn't notarized by Apple yet, so macOS asks once before the first launch. Updates
       arrive in the app and are checked against Yapper's signing key before they install.</p>
     </div>
     <p class="fineprint"><a href="privacy.html">Read the full privacy policy and credits</a></p>
@@ -958,6 +980,13 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
       <h2>Before you press play.</h2>
     </div>
     <div class="faq">
+      <details>
+        <summary>Why does macOS say it can't verify Yapper?</summary>
+        <p>Yapper is signed with its developer's certificate, but this release isn't notarized by Apple,
+        so macOS asks you to OK it once. Click <b>Done</b> on the warning, then <b>System Settings →
+        Privacy &amp; Security → Open Anyway</b>. It's only the first launch; the
+        <a href="#first-open">setup section</a> has the steps.</p>
+      </details>
       <details>
         <summary>Do I need an ElevenLabs account?</summary>
         <p>No. Out of the box Yapper talks with the Mac's built-in voice — free, offline, no sign-up.
@@ -1016,7 +1045,7 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
       </a>
       <a class="btn btn--secondary" href="https://github.com/Chefy3x/Yapper">Source on GitHub</a>
     </div>
-    <p class="fineprint">Free &amp; open source · macOS 14+ · Apple silicon &amp; Intel · notarized by Apple</p>
+    <p class="fineprint">Free &amp; open source · macOS 14+ · Apple silicon &amp; Intel · <a href="#first-open">one extra click the first time</a></p>
   </section>
 
   <!-- ======================= footer ======================= -->

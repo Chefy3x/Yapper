@@ -6,6 +6,19 @@
         <description>Yapper release feed</description>
         <language>en</language>
         <item>
+            <title>Version 0.3.0</title>
+            <link>https://github.com/Chefy3x/Yapper/releases/tag/v0.3.0</link>
+            <pubDate>Fri, 23 Oct 2026 02:16:32 -0400</pubDate>
+            <sparkle:version>3</sparkle:version>
+            <sparkle:shortVersionString>0.3.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/Chefy3x/Yapper/releases/download/v0.3.0/Yapper.dmg"
+                type="application/octet-stream"
+                sparkle:edSignature="OTVMdMlUehWuxFSfpVDsyi3Ntsyq6AUM+NT2WHK/7PZrhmir7q4v3ZxokOTQA00XCbLTGNG+5lhDf2m9y+2rBw=="
+                length="34405344"/>
+        </item>
+        <item>
             <title>Version 0.2.0</title>
             <link>https://github.com/Chefy3x/Yapper/releases/tag/v0.2.0</link>
             <pubDate>Tue, 22 Sep 2026 11:10:17 -0400</pubDate>
