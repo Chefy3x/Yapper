@@ -244,8 +244,13 @@ final class MouthWavLM: MouthEar {
             let r = Self.windowFrames - la - Self.stepFrames + j
             switch frames.dataType {
             case .float16:
+                #if arch(arm64)
                 let p = frames.dataPointer.assumingMemoryBound(to: Float16.self)
                 for i in 0..<F { row[i] = Float(p[r * rs + i * cs]) }
+                #else
+                // Swift has no Float16 on Intel; the array's own accessor converts (slower, rare).
+                for i in 0..<F { row[i] = frames[[0, NSNumber(value: r), NSNumber(value: i)]].floatValue }
+                #endif
             default:
                 let p = frames.dataPointer.assumingMemoryBound(to: Float.self)
                 for i in 0..<F { row[i] = p[r * rs + i * cs] }
