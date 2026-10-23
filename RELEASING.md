@@ -43,7 +43,10 @@ The script:
    (and the version pill on the site), regenerates the Xcode project.
 2. Archives Release, exports with Developer ID signing.
 3. Notarizes and staples the app, wraps it in `build/release/Yapper.dmg`,
-   then notarizes and staples the DMG too.
+   then notarizes and staples the DMG too. With `NOTARIZE=0` it skips both
+   (no Apple Developer Program membership: notarytool answers 403); the DMG is
+   still Developer ID signed, and first launch needs *Open Anyway* in System
+   Settings → Privacy & Security, which the site's setup section walks through.
 4. Signs the DMG with the Sparkle key and prepends an entry to
    `site/appcast.xml`.
 5. Asks before publishing: commits the version bump + appcast, pushes, and
@@ -51,7 +54,7 @@ The script:
 
 Review the staged diff before answering yes at step 5. Updates go live the
 moment the appcast lands on `main`; running apps pick them up on their next
-scheduled check, or immediately via the menu's *Check for Updates…*.
+scheduled check, or immediately via Settings → About → *Check for Updates…*.
 
 ## If a release goes bad
 

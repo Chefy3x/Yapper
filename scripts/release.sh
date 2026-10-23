@@ -2,6 +2,9 @@
 # Release pipeline: build → sign → notarize → package → appcast → GitHub Release.
 #
 #   ./scripts/release.sh <version>        e.g. ./scripts/release.sh 0.2.0
+#   NOTARIZE=0 ./scripts/release.sh <version>   signed but not notarized: without an Apple
+#       Developer Program membership notarytool is refused, and first launch then needs
+#       System Settings → Privacy & Security → Open Anyway (the site explains it).
 #
 # One-time setup is documented in RELEASING.md. Requires: xcodegen, gh (authed), create-dmg,
 # a "Developer ID Application" certificate in the login keychain, and a notarytool
@@ -17,6 +20,7 @@ if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
 fi
 
 NOTARY_PROFILE="${NOTARY_PROFILE:-yapper-notary}"
+NOTARIZE="${NOTARIZE:-1}"
 SPARKLE_VERSION="2.9.4"
 OUT="build/release"
 APP="$OUT/export/Yapper.app"
@@ -101,14 +105,20 @@ notarize() { # <file>
 }
 
 ditto -c -k --keepParent "$APP" "$OUT/Yapper.zip"
-notarize "$OUT/Yapper.zip"
-xcrun stapler staple "$APP"
+if [[ "$NOTARIZE" == 1 ]]; then
+    notarize "$OUT/Yapper.zip"
+    xcrun stapler staple "$APP"
+else
+    echo "==> Skipping notarization (NOTARIZE=0): signed with Developer ID only"
+fi
 
 echo "==> Building DMG"
 scripts/make-dmg.sh "$APP" "$DMG"
 codesign --force --sign "Developer ID Application" "$DMG"
-notarize "$DMG"
-xcrun stapler staple "$DMG"
+if [[ "$NOTARIZE" == 1 ]]; then
+    notarize "$DMG"
+    xcrun stapler staple "$DMG"
+fi
 
 # --- Sparkle signature + appcast entry ---------------------------------------
 echo "==> Signing update for Sparkle"
@@ -148,7 +158,7 @@ echo "==> Appcast entry added to site/appcast.xml"
 # --- Publish -----------------------------------------------------------------
 echo
 echo "Ready to publish Yapper $VERSION:"
-echo "  - $DMG (notarized + stapled)"
+if [[ "$NOTARIZE" == 1 ]]; then echo "  - $DMG (notarized + stapled)"; else echo "  - $DMG (signed, NOT notarized)"; fi
 echo "  - version bump in project.yml, new entry in site/appcast.xml"
 echo
 read -r -p "Commit, push, and create the GitHub release now? [y/N] " reply
