@@ -25,9 +25,11 @@ update themselves via [Sparkle](https://sparkle-project.org), which reads
    created it; its public half is `SUPublicEDKey` in `project.yml`). If it is
    ever lost, shipped apps can no longer verify updates — back it up with
    `generate_keys -x <file>` somewhere safe (not the repo).
-4. **Tools** — `xcodegen` and `gh` (authenticated) on `PATH`. The script
+4. **Tools** — `xcodegen`, `create-dmg` and `gh` (authenticated) on `PATH`. The script
    downloads Sparkle's CLI tools on first run and caches them in
-   `~/Library/Caches/YapperRelease`.
+   `~/Library/Caches/YapperRelease`. The DMG window (background, arrow, icon spots) is
+   `scripts/make-dmg.sh` plus `scripts/dmg/`; run `scripts/make-dmg.sh <Yapper.app> <out.dmg>`
+   on any build to preview it, and `scripts/dmg/render-background.sh` after editing the art.
 
 ## Cutting a release
 

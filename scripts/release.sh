@@ -3,7 +3,7 @@
 #
 #   ./scripts/release.sh <version>        e.g. ./scripts/release.sh 0.2.0
 #
-# One-time setup is documented in RELEASING.md. Requires: xcodegen, gh (authed),
+# One-time setup is documented in RELEASING.md. Requires: xcodegen, gh (authed), create-dmg,
 # a "Developer ID Application" certificate in the login keychain, and a notarytool
 # keychain profile (default name "yapper-notary", override with NOTARY_PROFILE).
 set -euo pipefail
@@ -23,7 +23,7 @@ APP="$OUT/export/Yapper.app"
 DMG="$OUT/Yapper.dmg"
 
 # --- Preflight ---------------------------------------------------------------
-for tool in xcodegen gh xcrun; do
+for tool in xcodegen gh xcrun create-dmg; do
     command -v "$tool" >/dev/null || { echo "error: $tool not found" >&2; exit 1; }
 done
 if ! security find-identity -v -p codesigning | grep -q "Developer ID Application"; then
@@ -105,11 +105,7 @@ notarize "$OUT/Yapper.zip"
 xcrun stapler staple "$APP"
 
 echo "==> Building DMG"
-STAGING="$OUT/dmg-staging"
-mkdir -p "$STAGING"
-cp -R "$APP" "$STAGING/"
-ln -s /Applications "$STAGING/Applications"
-hdiutil create -volname "Yapper" -srcfolder "$STAGING" -ov -format UDZO -quiet "$DMG"
+scripts/make-dmg.sh "$APP" "$DMG"
 codesign --force --sign "Developer ID Application" "$DMG"
 notarize "$DMG"
 xcrun stapler staple "$DMG"

@@ -1,0 +1,48 @@
+<!doctype html>
+<!--
+  The DMG window's background. Render with scripts/dmg/render-background.sh, which writes
+  background.tiff (1x + 2x) next to this file; make-dmg.sh uses that.
+
+  The window is 600 × 400 points. The icons sit on it at the centres make-dmg.sh sets
+  (Yapper at 150,200, Applications at 450,200), so the arrow runs between them.
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif&family=DM+Sans:opsz,wght@9..40,400;9..40,500&display=block">
+<style>
+@font-face{font-family:'Permanent Marker';src:url('../../site/src/PermanentMarker.ttf') format('truetype');font-display:block}
+:root{--canvas:#F7F6F2;--ink:#141412;--muted:#77746B;--line:rgba(20,20,18,.08)}
+html,body{margin:0;width:600px;height:400px;overflow:hidden;background:var(--canvas)}
+body{position:relative;font-family:'DM Sans',system-ui,sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased}
+
+h1{
+  position:absolute;top:40px;left:0;right:0;margin:0;text-align:center;
+  font:400 31px/1.1 'Instrument Serif',serif;letter-spacing:-.2px;
+}
+
+/* The same marker and arrow as the site's margin notes, stretched between the two icons. */
+.note{
+  position:absolute;left:0;right:0;top:150px;text-align:center;
+  font:19px/1 'Permanent Marker',cursive;transform:rotate(-3deg);
+}
+.arrow{position:absolute;left:222px;top:174px}
+
+.foot{
+  position:absolute;left:0;right:0;bottom:30px;text-align:center;
+  font-size:12.5px;color:var(--muted);
+}
+</style>
+</head>
+<body>
+  <h1>Drag Yapper into Applications</h1>
+
+  <div class="note">drag me over</div>
+  <svg class="arrow" width="156" height="44" viewBox="0 0 156 44" fill="none" aria-hidden="true">
+    <path d="M6 30 C 48 8, 104 6, 146 24" stroke="#141412" stroke-width="2.6" stroke-linecap="round"/>
+    <path d="M136 28.5 L 147 24.6 L 139.5 15.5" stroke="#141412" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>
+
+  <div class="foot">Then open it once. It lives in your menu bar, not the Dock.</div>
+</body>
+</html>
