@@ -147,6 +147,7 @@ final class AccessibilityReader {
         let priorChangeCount = pb.changeCount
 
         guard let src = CGEventSource(stateID: .combinedSessionState) else { return nil }
+        src.userData = HotkeyManager.ownEventTag
         // Cmd down + C down + C up + Cmd up
         let cKeyDown = CGEvent(keyboardEventSource: src, virtualKey: 8 /* C */, keyDown: true)
         let cKeyUp = CGEvent(keyboardEventSource: src, virtualKey: 8, keyDown: false)

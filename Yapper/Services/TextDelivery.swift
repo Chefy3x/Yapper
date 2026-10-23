@@ -154,6 +154,7 @@ struct PasteDelivery: TextDelivering {
             AccessibilityReader.restorePasteboard(pb, from: prior)
             throw DeliveryError.eventSourceUnavailable
         }
+        src.userData = HotkeyManager.ownEventTag
         // Keep physical keystrokes out of the brief window around the synthetic ones.
         src.setLocalEventsFilterDuringSuppressionState([.permitLocalMouseEvents, .permitSystemDefinedEvents],
                                                        state: .eventSuppressionStateSuppressionInterval)
@@ -280,8 +281,9 @@ enum ReturnKey {
         // A private source carries only the flags set here, so the modifiers of the shortcut
         // that asked for it, still held, don't turn it into ⌘↩ or ⇧↩.
         let code = CGKeyCode(KeyShortcut.Code.returnKey)
-        guard let src = CGEventSource(stateID: .privateState),
-              let down = CGEvent(keyboardEventSource: src, virtualKey: code, keyDown: true),
+        guard let src = CGEventSource(stateID: .privateState) else { return }
+        src.userData = HotkeyManager.ownEventTag
+        guard let down = CGEvent(keyboardEventSource: src, virtualKey: code, keyDown: true),
               let up = CGEvent(keyboardEventSource: src, virtualKey: code, keyDown: false) else { return }
         down.flags = []
         up.flags = []

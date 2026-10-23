@@ -142,6 +142,11 @@ final class HotkeyManager {
             if let tap = eventTap { CGEvent.tapEnable(tap: tap, enable: true) }
             return Unmanaged.passUnretained(event)
         }
+        // Yapper's own keystrokes (its ⌘V, ⌘C, Return) are for the focused app, never a chord.
+        // With the key's state stale, its paste read as Key + V and was swallowed.
+        if event.getIntegerValueField(.eventSourceUserData) == Self.ownEventTag {
+            return Unmanaged.passUnretained(event)
+        }
 
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
         let flags = event.flags
@@ -202,6 +207,9 @@ final class HotkeyManager {
                 fire(action, code: keyCode, isMouse: false)
                 return nil
             }
+            // The key's release can go missing (the tap disabled for a beat), leaving it "held"
+            // and every keystroke after it a chord. The event's own flags say whether it's down.
+            if gesture.isDown, !key.isDown(flags) { recoverMissedRelease() }
             // If the Yapper key is held, watch for our chords. Otherwise pass through.
             guard gesture.isDown else {
                 return Unmanaged.passUnretained(event)
@@ -315,6 +323,20 @@ final class HotkeyManager {
     /// own actions. Idempotent on the receiving side.
     private func notifyAbandoned() {
         DispatchQueue.main.async { [weak self] in self?.onKeyAbandoned?() }
+    }
+
+    /// Marks the keystrokes Yapper posts itself (set as their source's `userData`), so this tap
+    /// lets them through. "YAPP".
+    nonisolated static let ownEventTag: Int64 = 0x5941_5050
+
+    /// The key came up while the tap wasn't looking. A talk hold ends as if released; anything
+    /// else is abandoned, never a tap.
+    private func recoverMissedRelease() {
+        holdTimer?.cancel()
+        holdTimer = nil
+        Log.hotkey.notice("\(self.key.displayName, privacy: .public) release was missed; treating it as up")
+        let action = gesture.handle(.commandUp)
+        if action == .holdEnded { dispatch(action) } else { notifyAbandoned() }
     }
 
     /// The tap callback runs on the main run loop but not inside a main-actor context; hop the
