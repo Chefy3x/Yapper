@@ -225,14 +225,14 @@ kbd{
   content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
   background:radial-gradient(60% 50% at 50% 42%,rgba(227,185,58,.22),transparent 70%);
 }
-.deck-zone{position:relative;margin:0;width:var(--deckw);flex:none}
-/* deck and Loud Mouth side by side on wide screens; stacked below 960 */
-.stage-row{display:flex;align-items:center;justify-content:center;gap:36px}
-.hero-mouth{position:relative;margin:0;flex:0 0 280px;padding-top:26px;text-align:center}
+.deck-zone{position:relative;margin:0 auto;width:var(--deckw)}
+/* the hero stage holds only the Loud Mouth; the deck has its own stage in #listen */
+.stage--mouth{padding:56px 24px 34px}
+.stage--deck{margin-top:0;text-align:center}
+.hero-mouth{position:relative;margin:0 auto;width:min(460px,100%);padding-top:30px;text-align:center}
 .hero-mouth video{display:block;width:100%;height:auto;filter:drop-shadow(0 16px 20px rgba(20,20,18,.24))}
-.hero-mouth figcaption{margin:6px auto 0;max-width:30ch;font-size:13px;line-height:1.5;color:var(--muted)}
+.hero-mouth figcaption{margin:10px auto 0;max-width:40ch;font-size:14px;line-height:1.55;color:var(--muted)}
 .hero-mouth figcaption b{color:var(--ink);font-weight:600}
-@media (min-width:961px){ .stage{--deckw:min(600px,56vw)} }
 
 .deck-note{
   position:absolute;z-index:6;left:-8px;top:-52px;
@@ -528,8 +528,6 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
   .liner{grid-template-columns:1fr 1fr}
   .vi{grid-template-columns:minmax(0,1fr);gap:32px;max-width:560px}
   .shells{grid-template-columns:1fr;max-width:560px}
-  .stage-row{flex-direction:column;gap:20px}
-  .hero-mouth{flex:none;width:min(300px,80%)}
   .vi-more{grid-template-columns:1fr;max-width:560px;margin-top:40px}
   .note--pencil{right:4px}
 }
@@ -609,35 +607,8 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
     </div>
     <p class="fineprint">Free &amp; open source · macOS 14+ · Apple silicon &amp; Intel · notarized by Apple</p>
 
-    <!-- the working deck -->
-    <div class="stage">
-      <div class="stage-row">
-      <div class="deck-zone">
-        <div class="deck-note" id="deckNote">this page talks —<br>press play
-          <svg width="46" height="34" viewBox="0 0 46 34" fill="none" aria-hidden="true">
-            <path d="M6 2 C 14 16, 26 24, 40 27" stroke="#141412" stroke-width="2.4" stroke-linecap="round"/>
-            <path d="M32 28.5 L 41 27.6 L 35.5 20.5" stroke="#141412" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-          </svg>
-        </div>
-
-        <div class="deck" id="deck" role="group" aria-label="Yapper cassette transport — plays a spoken tour of this page">
-          <img class="deck-img" src="__DECK__" alt="Yapper cassette deck — a black lo-fi tape player with a hand-labeled YAPPER cassette" draggable="false">
-          <div class="reel reel--l"><div class="backing"></div><img id="reelL" src="__REELL__" alt="" draggable="false"></div>
-          <div class="reel reel--r"><div class="backing"></div><img id="reelR" src="__REELR__" alt="" draggable="false"></div>
-          <div class="cap" data-i="0"><span class="recess"></span><img src="__CAPREW__"  alt="" draggable="false"></div>
-          <div class="cap" data-i="1"><span class="recess"></span><img src="__CAPPLAY__" alt="" draggable="false"></div>
-          <div class="cap" data-i="2"><span class="recess"></span><img src="__CAPSTOP__" alt="" draggable="false"></div>
-          <div class="cap" data-i="3"><span class="recess"></span><img src="__CAPFF__"   alt="" draggable="false"></div>
-          <div class="cap" data-i="4"><span class="recess"></span><img src="__CAPREC__"  alt="" draggable="false"></div>
-          <button class="hot" data-i="0" aria-label="Rewind — previous track"    title="Rewind — previous track"></button>
-          <button class="hot" data-i="1" aria-label="Play / pause"               title="Play / pause"></button>
-          <button class="hot" data-i="2" aria-label="Stop"                       title="Stop"></button>
-          <button class="hot" data-i="3" aria-label="Fast-forward — next track"  title="Fast-forward — next track"></button>
-          <button class="hot" data-i="4" aria-label="Record — conversation mode" title="REC — conversation mode"></button>
-          <button class="speed-mark" id="speedMark" aria-label="Cycle playback speed" title="Playback speed">1×</button>
-        </div>
-      </div>
-
+    <!-- the Loud Mouth -->
+    <div class="stage stage--mouth">
       <!-- the Loud Mouth, screen-recorded from the app lip-syncing a voice; it talks while you scroll,
            hover it, or play the deck -->
       <figure class="hero-mouth" id="heroMouth">
@@ -647,11 +618,6 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
         <figcaption><b>Loud Mouth</b> — the next Voice In skin. A 3D mouth that lip-syncs to you,
         live from your mic.</figcaption>
       </figure>
-      </div>
-
-      <div class="counter" id="counter" aria-live="polite"><span class="led"></span><span class="txt" id="counterTxt">TRK 1/9 · ■ STOPPED — PRESS ▶</span></div>
-      <p class="deck-caption">In the app, REW/FF seek ±10 s — here they skip tracks. Artistic license.<br>
-      Yes, that's the real voice: ElevenLabs River, the preset Yapper ships. No network? Your browser's voice steps in.</p>
     </div>
 
     <div class="hero-chips">
@@ -725,6 +691,47 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding:28px 0 40px}
         <p>Say “my calendar link” and get the whole URL. Say the trigger in any dictation and the
         text drops in where you said it.</p>
       </div>
+    </div>
+  </section>
+
+  <!-- ======================= side one: the cassette ======================= -->
+  <section class="sect" id="listen">
+    <div class="sect-head">
+      <span class="eyebrow"><span class="ctr">008</span>side one · read aloud</span>
+      <h2>One tap. It's talking.</h2>
+      <p class="lead">Right ⌥ pulls the newest reply straight out of the chat and the deck starts reading.
+      No copy, no paste, no switching windows. Press play — this one reads you the page.</p>
+    </div>
+    <div class="stage stage--deck">
+      <div class="deck-zone">
+        <div class="deck-note" id="deckNote">this page talks —<br>press play
+          <svg width="46" height="34" viewBox="0 0 46 34" fill="none" aria-hidden="true">
+            <path d="M6 2 C 14 16, 26 24, 40 27" stroke="#141412" stroke-width="2.4" stroke-linecap="round"/>
+            <path d="M32 28.5 L 41 27.6 L 35.5 20.5" stroke="#141412" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          </svg>
+        </div>
+
+        <div class="deck" id="deck" role="group" aria-label="Yapper cassette transport — plays a spoken tour of this page">
+          <img class="deck-img" src="__DECK__" alt="Yapper cassette deck — a black lo-fi tape player with a hand-labeled YAPPER cassette" draggable="false">
+          <div class="reel reel--l"><div class="backing"></div><img id="reelL" src="__REELL__" alt="" draggable="false"></div>
+          <div class="reel reel--r"><div class="backing"></div><img id="reelR" src="__REELR__" alt="" draggable="false"></div>
+          <div class="cap" data-i="0"><span class="recess"></span><img src="__CAPREW__"  alt="" draggable="false"></div>
+          <div class="cap" data-i="1"><span class="recess"></span><img src="__CAPPLAY__" alt="" draggable="false"></div>
+          <div class="cap" data-i="2"><span class="recess"></span><img src="__CAPSTOP__" alt="" draggable="false"></div>
+          <div class="cap" data-i="3"><span class="recess"></span><img src="__CAPFF__"   alt="" draggable="false"></div>
+          <div class="cap" data-i="4"><span class="recess"></span><img src="__CAPREC__"  alt="" draggable="false"></div>
+          <button class="hot" data-i="0" aria-label="Rewind — previous track"    title="Rewind — previous track"></button>
+          <button class="hot" data-i="1" aria-label="Play / pause"               title="Play / pause"></button>
+          <button class="hot" data-i="2" aria-label="Stop"                       title="Stop"></button>
+          <button class="hot" data-i="3" aria-label="Fast-forward — next track"  title="Fast-forward — next track"></button>
+          <button class="hot" data-i="4" aria-label="Record — conversation mode" title="REC — conversation mode"></button>
+          <button class="speed-mark" id="speedMark" aria-label="Cycle playback speed" title="Playback speed">1×</button>
+        </div>
+      </div>
+
+      <div class="counter" id="counter" aria-live="polite"><span class="led"></span><span class="txt" id="counterTxt">TRK 1/9 · ■ STOPPED — PRESS ▶</span></div>
+      <p class="deck-caption">In the app, REW/FF seek ±10 s — here they skip tracks. Artistic license.<br>
+      Yes, that's the real voice: ElevenLabs River, the preset Yapper ships. No network? Your browser's voice steps in.</p>
     </div>
   </section>
 
