@@ -104,8 +104,12 @@ final class VoiceInputCoordinator: ObservableObject {
     /// ends, and the engine's final partial buffer would otherwise be thrown away with it.
     private let releaseTail: TimeInterval
     /// A mic that delivers nothing but exact zeros this long after opening is broken, not quiet
-    /// (a room is never digitally silent). It gets one reopen before the user is told.
+    /// (a room is never digitally silent). It gets one reopen; the user is told only if the whole
+    /// turn stays silent.
     private let silentStartTimeout: TimeInterval
+    /// The same for a Bluetooth headset, which sends zeros for most of a second while it switches
+    /// into its call profile. Reopening it then only restarts the switch.
+    private let bluetoothSilentStartTimeout: TimeInterval
     /// TCC lookup, injectable so tests aren't hostage to the runner's microphone grant.
     private let permissionStatus: @MainActor () -> MicrophonePermission.Status
     /// Where the latest recording is kept for Transcribe Again. Nil keeps nothing (tests).
@@ -134,6 +138,9 @@ final class VoiceInputCoordinator: ObservableObject {
     private var firstSilentLevelAt: Date?
     private var heardSignal = false
     private var reopenedForSilence = false
+    private var silentGrace: TimeInterval = 0
+    /// The reopened capture went silent for a whole grace too (logged once).
+    private var stillSilentLogged = false
     /// When the capture now running was opened, and when this turn's start cue began playing:
     /// together they say where in the recording the cue sits.
     private var captureOpenedAt: Date?
@@ -150,6 +157,7 @@ final class VoiceInputCoordinator: ObservableObject {
          minUtterance: TimeInterval = 0.35,
          releaseTail: TimeInterval = 0.12,
          silentStartTimeout: TimeInterval = 0.5,
+         bluetoothSilentStartTimeout: TimeInterval = 1.5,
          permissionStatus: @escaping @MainActor () -> MicrophonePermission.Status = { MicrophonePermission.status() },
          lastRecording: LastRecording? = nil) {
         self.settings = settings
@@ -161,6 +169,7 @@ final class VoiceInputCoordinator: ObservableObject {
         self.minUtterance = minUtterance
         self.releaseTail = releaseTail
         self.silentStartTimeout = silentStartTimeout
+        self.bluetoothSilentStartTimeout = bluetoothSilentStartTimeout
         self.permissionStatus = permissionStatus
         self.lastRecording = lastRecording
 
@@ -447,6 +456,7 @@ final class VoiceInputCoordinator: ObservableObject {
             finishTurn(transcribe: true)
         case .timedOut?:
             Log.voice.info("Hands-free: nobody spoke; closing the mic")
+            if micStayedSilent { onEvent?(Self.silentMicWarning) }
             stopCapture(discard: true)
         case nil:
             break
@@ -466,26 +476,35 @@ final class VoiceInputCoordinator: ObservableObject {
         firstSilentLevelAt = nil
         heardSignal = false
         reopenedForSilence = false
+        stillSilentLogged = false
+        silentGrace = capture.isDisruptive(deviceUID: settings.inputDeviceUID)
+            ? bluetoothSilentStartTimeout : silentStartTimeout
     }
+
+    /// The mic was reopened for silence and still hasn't sent a single sound this turn.
+    private var micStayedSilent: Bool { reopenedForSilence && !heardSignal }
+    private static let silentMicWarning = "Your mic is sending silence. Check the input in Settings → Talk"
 
     /// Some devices open "successfully" and then deliver only zeros — a Bluetooth headset still
     /// switching profiles, an input another app grabbed. Everything said into that is lost, so
-    /// reopen once; if the second open is silent too, say so instead of transcribing nothing.
+    /// reopen once. A slow headset often comes good after that, so the user is warned only when
+    /// the turn ends without the mic ever sending a sound.
     private func watchForSilentStart(_ level: Float) {
         guard !heardSignal else { return }
         if level > 1e-7 { heardSignal = true; return }
         let now = Date()
         guard let since = firstSilentLevelAt else { firstSilentLevelAt = now; return }
-        guard now.timeIntervalSince(since) >= silentStartTimeout else { return }
+        guard now.timeIntervalSince(since) >= silentGrace else { return }
         if reopenedForSilence {
-            heardSignal = true   // stop watching; one warning per turn is enough
-            Log.voice.notice("Mic still delivering silence after a reopen")
-            onEvent?("Your mic is sending silence. Check the input in Settings → Talk")
+            if !stillSilentLogged {
+                stillSilentLogged = true
+                Log.voice.notice("Mic still delivering silence after a reopen")
+            }
             return
         }
         reopenedForSilence = true
         firstSilentLevelAt = nil
-        Log.voice.notice("Mic delivered only silence for \(Int(self.silentStartTimeout * 1000), privacy: .public)ms; reopening")
+        Log.voice.notice("Mic delivered only silence for \(Int(self.silentGrace * 1000), privacy: .public)ms; reopening")
         _ = capture.stop()
         do {
             try capture.start(deviceUID: settings.inputDeviceUID)
@@ -619,11 +638,13 @@ final class VoiceInputCoordinator: ObservableObject {
         releasedAt = nil
         let store = lastRecording
         let started = turnStartedAt
+        let silentMic = micStayedSilent
         turnTask = Task { [weak self] in
             // Kept alongside the decode, so one that fails or crashes can be run again.
             let saving = Task { await store?.save(samples) }
             await self?.transcribeAndDeliver(samples, using: transcriber, screenTask: screenTask,
-                                             targetTask: target, releasedAt: released, startedAt: started)
+                                             targetTask: target, releasedAt: released, startedAt: started,
+                                             silentMic: silentMic)
             await saving.value
             self?.state = .idle
         }
@@ -712,7 +733,7 @@ final class VoiceInputCoordinator: ObservableObject {
                                       screenTask: Task<ScreenReading, Never>?,
                                       targetTask: Task<DeliveryTarget?, Never>? = nil,
                                       releasedAt: Date? = nil, startedAt: Date = Date(),
-                                      isRetry: Bool = false) async {
+                                      isRetry: Bool = false, silentMic: Bool = false) async {
         let decodeStarted = Date()
         let againHint = lastRecording == nil ? "" : ". Menu → Transcribe Last Recording Again to retry"
         var report = TurnReport(outcome: .empty, samples: samples, startedAt: startedAt,
@@ -731,7 +752,12 @@ final class VoiceInputCoordinator: ObservableObject {
             report.heard = heard
             report.text = text
             guard !text.isEmpty else {   // silence, or nothing but "um"
-                onEvent?("Didn't catch that" + againHint)
+                if silentMic {
+                    Log.voice.notice("Mic sent only silence for the whole turn")
+                    onEvent?(Self.silentMicWarning)
+                } else {
+                    onEvent?("Didn't catch that" + againHint)
+                }
                 await finish(.empty)
                 return
             }
