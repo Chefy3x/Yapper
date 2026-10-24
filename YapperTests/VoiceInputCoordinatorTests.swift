@@ -54,6 +54,7 @@ struct VoiceInputCoordinatorTests {
 
     private func makeRig(handsFree: Bool = false, minUtterance: TimeInterval = 0.35,
                          releaseTail: TimeInterval = 0, silentStartTimeout: TimeInterval = 0.5,
+                         bluetoothSilentStartTimeout: TimeInterval = 1.5,
                          lastRecording: LastRecording? = nil) -> Rig {
         let settings = SettingsStore()
         settings.voiceInputEnabled = true
@@ -73,7 +74,7 @@ struct VoiceInputCoordinatorTests {
             settings: settings, vocabulary: vocabulary, capture: capture, delivery: FakeDelivery(log: log),
             makeTranscriber: { _, onStatus in onStatus(.ready); return transcriber },
             vadConfig: vad, minUtterance: minUtterance, releaseTail: releaseTail,
-            silentStartTimeout: silentStartTimeout,
+            silentStartTimeout: silentStartTimeout, bluetoothSilentStartTimeout: bluetoothSilentStartTimeout,
             permissionStatus: { .granted }, lastRecording: lastRecording)
         coordinator.downloadModel()   // installs the fake and flips status to .ready
         return Rig(coordinator: coordinator, capture: capture, transcriber: transcriber, delivered: log,
@@ -390,11 +391,12 @@ struct VoiceInputCoordinatorTests {
     }
     // MARK: Silent mic
 
-    @Test func silentMicIsReopenedOnceThenReported() async {
+    @Test func silentMicIsReopenedOnceThenReportedWhenTheTurnEnds() async {
         let rig = makeRig(silentStartTimeout: 0.05)
         await settle()
         var events: [String] = []
         rig.coordinator.onEvent = { events.append($0) }
+        rig.transcriber.result = ""
         rig.coordinator.beginPushToTalk()
         #expect(rig.capture.startCount == 1)
 
@@ -408,7 +410,49 @@ struct VoiceInputCoordinatorTests {
         await settle(0.07)
         rig.capture.onLevel?(0)
         #expect(rig.capture.startCount == 2)   // only one reopen
-        #expect(events.contains { $0.contains("sending silence") })
+        #expect(!events.contains { $0.contains("sending silence") })   // not while still talking
+
+        await settle(0.3)
+        rig.coordinator.endPushToTalk()
+        await waitUntil(rig.coordinator.state == .idle && rig.transcriber.calls == 1)
+        #expect(events.last?.contains("sending silence") == true)
+        #expect(!events.contains { $0.hasPrefix("Didn't catch that") })
+    }
+
+    @Test func aMicThatWakesUpAfterTheReopenIsNotReported() async {
+        let rig = makeRig(silentStartTimeout: 0.05)
+        await settle()
+        var events: [String] = []
+        rig.coordinator.onEvent = { events.append($0) }
+        rig.coordinator.beginPushToTalk()
+        rig.capture.onLevel?(0)
+        await settle(0.07)
+        rig.capture.onLevel?(0)
+        #expect(rig.capture.startCount == 2)   // reopened
+        rig.capture.onLevel?(0)
+        await settle(0.07)
+        rig.capture.onLevel?(0)                // a slow headset, still silent…
+        rig.capture.onLevel?(0.0004)           // …then talking
+
+        await settle(0.3)
+        rig.coordinator.endPushToTalk()
+        await waitUntil(rig.delivered.delivered.count == 1)
+        #expect(rig.delivered.delivered == ["hello world"])
+        #expect(!events.contains { $0.contains("sending silence") })
+    }
+
+    @Test func aBluetoothMicGetsALongerGraceBeforeTheReopen() async {
+        let rig = makeRig(silentStartTimeout: 0.05, bluetoothSilentStartTimeout: 0.3)
+        await settle()
+        rig.capture.disruptive = true
+        rig.coordinator.beginPushToTalk()
+        rig.capture.onLevel?(0)
+        await settle(0.07)
+        rig.capture.onLevel?(0)
+        #expect(rig.capture.startCount == 1)   // a wired mic would have been reopened by now
+        await settle(0.3)
+        rig.capture.onLevel?(0)
+        #expect(rig.capture.startCount == 2)
     }
 
     @Test func realRoomNoiseIsNotSilence() async {
