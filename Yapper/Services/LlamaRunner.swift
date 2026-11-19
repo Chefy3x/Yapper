@@ -38,6 +38,10 @@ final class LlamaRunner: @unchecked Sendable {
     /// Model state after each fixed prompt prefix (instructions + examples), so a request only
     /// pays for its own few dozen tokens. Keyed by the prefix text; cleared on unload.
     private var prefixStates: [String: [UInt8]] = [:]
+    /// Oldest first. The context check's prefix carries the names on screen, so it changes every
+    /// dictation; only the last few are kept.
+    private var prefixOrder: [String] = []
+    private static let maxPrefixStates = 6
 
     private static let backend: Void = {
         // llama.cpp logs every tensor at load; Yapper's own log says what matters.
@@ -123,6 +127,7 @@ final class LlamaRunner: @unchecked Sendable {
         if let model { llama_model_free(model) }
         context = nil; model = nil; vocab = nil
         prefixStates.removeAll()
+        prefixOrder.removeAll()
     }
 
     private func loadOnQueue() throws {
@@ -260,7 +265,12 @@ final class LlamaRunner: @unchecked Sendable {
         let size = llama_state_seq_get_size(context, 0)
         var state = [UInt8](repeating: 0, count: size)
         let written = state.withUnsafeMutableBufferPointer { llama_state_seq_get_data(context, $0.baseAddress, size, 0) }
-        if written > 0 { prefixStates[prefix] = Array(state.prefix(written)) }
+        if written > 0 {
+            prefixStates[prefix] = Array(state.prefix(written))
+            prefixOrder.removeAll { $0 == prefix }
+            prefixOrder.append(prefix)
+            while prefixOrder.count > Self.maxPrefixStates { prefixStates[prefixOrder.removeFirst()] = nil }
+        }
         return tokens.count
     }
 

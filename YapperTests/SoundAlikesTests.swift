@@ -65,4 +65,51 @@ struct SoundAlikesTests {
         #expect(prefix.contains("Claude, Qwen"))
         #expect(prefix.hasSuffix("<|im_start|>user\n"))
     }
+
+    // MARK: found by sound
+
+    @Test func soundKeysMatchCommonMishearings() {
+        #expect(SoundAlikes.soundKey("Claude") == SoundAlikes.soundKey("cloud"))
+        #expect(SoundAlikes.soundKey("Claude") == SoundAlikes.soundKey("clawed"))
+        #expect(SoundAlikes.soundKey("Qwen") == SoundAlikes.soundKey("Quinn"))
+        #expect(SoundAlikes.soundKey("Grok") == SoundAlikes.soundKey("groc"))
+        #expect(SoundAlikes.soundKey("Vercel") != SoundAlikes.soundKey("parcel"))
+    }
+
+    @Test func findsWordsThatSoundLikeANameOnScreen() {
+        let found = SoundAlikes.phoneticSpots(in: "let the cloud model check it and ask groc", names: ["Claude", "Grok"])
+        #expect(found.map(\.heard) == ["cloud", "groc"])
+        #expect(found.map(\.term) == ["Claude", "Grok"])
+        #expect(found.allSatisfy { !$0.hinted })
+    }
+
+    @Test func oneConsonantOffForLongerNames() {
+        let found = SoundAlikes.phoneticSpots(in: "switch it to parakey now", names: ["Parakeet"])
+        #expect(found.map(\.heard) == ["parakey"])
+    }
+
+    @Test func runsTwoWordsTogether() {
+        let found = SoundAlikes.phoneticSpots(in: "use whisper kit for it", names: ["WhisperKit"])
+        #expect(found.map(\.heard) == ["whisper kit"])
+    }
+
+    @Test func leavesTheNameItselfAndCommonWordsAlone() {
+        #expect(SoundAlikes.phoneticSpots(in: "Claude called it cold", names: ["Claude"]).isEmpty)
+        #expect(SoundAlikes.phoneticSpots(in: "can you pull the people", names: ["Qwen", "Marta"]).isEmpty)
+    }
+
+    @Test func skipsAWordThatSoundsLikeTwoNames() {
+        #expect(SoundAlikes.phoneticSpots(in: "the cloud", names: ["Claude", "Clawd"]).isEmpty)
+    }
+
+    @Test func namesDropOrdinaryWordsAndPhrases() {
+        let names = SoundAlikes.names(["Claude", "Claude Code", "Signal", "ok", "Qwen", "claude"]) { $0 == "signal" }
+        #expect(names == ["Claude", "Qwen"])
+    }
+
+    @Test func prefixListsScreenNames() {
+        let prefix = ContextCheck.prefix(terms: ["Claude"], screen: ["Cloudflare", "Vercel"])
+        #expect(prefix.contains("On the speaker's screen right now: Cloudflare, Vercel."))
+        #expect(!ContextCheck.prefix(terms: ["Claude"]).contains("screen"))
+    }
 }

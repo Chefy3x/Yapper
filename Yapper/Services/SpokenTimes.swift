@@ -113,6 +113,12 @@ enum SpokenTimes {
             guard !looksLikeQuantity(after: end, in: ns), !isCode(before: match.range.location, in: ns) else { continue }
             let h = Int(substring(text, match.range(at: hour)))!
             let mm = substring(text, match.range(at: minute))
+            // "set it at 100" is a hundred, not 1:00: a bare round hundred after "at" or in a
+            // range is a quantity. With a.m./p.m. ("100 pm") it's still a time.
+            let hourRange = match.range(at: hour)
+            if prefixGroup != nil, mm == "00", hourRange.location + hourRange.length == match.range(at: minute).location {
+                continue
+            }
             let prefix = prefixGroup.map { substring(text, match.range(at: $0)) } ?? ""
             result += ns.substring(with: NSRange(location: cursor, length: match.range.location - cursor))
             result += prefix + "\(h):\(mm)" + (suffix?(match, text) ?? "")

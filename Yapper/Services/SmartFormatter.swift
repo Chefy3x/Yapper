@@ -188,11 +188,11 @@ final class SmartFormatter: ObservableObject {
     }
 
     /// How much better `text` reads with the term at `spot`. Nil without the model.
-    func termAdvantage(in text: String, at spot: SoundAlike, terms: [String]) async -> Double? {
+    func termAdvantage(in text: String, at spot: SoundAlike, terms: [String], screen: [String] = []) async -> Double? {
         guard status == .ready else { return nil }
         let runner = self.runner ?? LlamaRunner(modelURL: FormatterModel.fileURL)
         self.runner = runner
-        let advantage = await ContextCheck.advantage(runner, in: text, at: spot, terms: terms)
+        let advantage = await ContextCheck.advantage(runner, in: text, at: spot, terms: terms, screen: screen)
         scheduleUnload()
         return advantage
     }

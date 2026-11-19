@@ -2,6 +2,7 @@ import Testing
 import Foundation
 import SQLite3
 import FluidAudio
+import NaturalLanguage
 
 /// Opt-in: Whisper (Yapper's full pipeline) against Parakeet on the user's own recordings.
 /// YAPPER_ASR_EVAL=<copy of Wispr Flow's flow.sqlite>, YAPPER_ASR_EVAL_N=<sample size>.
@@ -184,6 +185,57 @@ struct SpeechModelEval {
         }
     }
 
+    /// Ultra (25 languages) against v2 (English only) on Yapper's own saved dictations.
+    /// YAPPER_ASR_EVAL_YAPPER=<Yapper's Application Support folder>, YAPPER_ASR_EVAL_N as above.
+    /// The reference is the text Yapper typed, which Ultra wrote, so word errors lean Ultra's way;
+    /// the number to watch is how many outputs aren't English.
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["YAPPER_ASR_EVAL_YAPPER"] != nil))
+    func englishOnlyOnSavedDictations() async throws {
+        let base = URL(fileURLWithPath: ProcessInfo.processInfo.environment["YAPPER_ASR_EVAL_YAPPER"]!)
+        let json = try JSONSerialization.jsonObject(with: Data(contentsOf: base.appendingPathComponent("dictations.json")))
+        let rows = ((json as? [[String: Any]]) ?? []).compactMap { row -> (String, String)? in
+            guard let file = row["audioFileName"] as? String, let text = row["text"] as? String, !text.isEmpty else { return nil }
+            return (file, text)
+        }
+        let picked = rows.count <= Self.sample ? rows
+            : (0..<Self.sample).map { rows[Int(Double($0) * Double(rows.count) / Double(Self.sample))] }
+        let converter = AudioConverter()
+        let clips = picked.compactMap { file, text -> Clip? in
+            let path = base.appendingPathComponent("Dictations").appendingPathComponent(file).path
+            guard let audio = try? converter.resampleAudioFile(path: path), audio.count > 16_000 else { return nil }
+            return Clip(audio: audio, seconds: Double(audio.count) / 16_000, reference: text)
+        }
+        print(String(format: "EVAL %d dictations, %.1f minutes", clips.count, clips.reduce(0) { $0 + $1.seconds } / 60))
+
+        func foreign(_ text: String) -> Bool {
+            if text.unicodeScalars.contains(where: { $0.value > 0x7F && CharacterSet.letters.contains($0) }) { return true }
+            guard Self.words(text).count >= 4 else { return false }
+            let recognizer = NLLanguageRecognizer()
+            recognizer.processString(text)
+            return recognizer.dominantLanguage != .english
+        }
+        var results: [Score] = []
+        for (name, version) in [("Parakeet Ultra", AsrModelVersion.ultra), ("Parakeet v2 (English)", .v2)] {
+            let models = try await AsrModels.downloadAndLoad(version: version)
+            let manager = AsrManager(config: .default)
+            try await manager.loadModels(models)
+            var warm = TdtDecoderState.make(decoderLayers: version.decoderLayers)
+            _ = try await manager.transcribe(clips[0].audio, decoderState: &warm)
+            results.append(try await score(name, clips) { clip in
+                var state = TdtDecoderState.make(decoderLayers: version.decoderLayers)
+                return try await manager.transcribe(clip.audio, decoderState: &state).text
+            })
+        }
+        for r in results {
+            print(r.report() + "  | not English \(r.outputs.filter(foreign).count)")
+        }
+        var shown = 0
+        for i in clips.indices where shown < 10 && foreign(results[0].outputs[i]) {
+            print("EVAL  ultra: \(results[0].outputs[i])\nEVAL  v2:    \(results[1].outputs[i])")
+            shown += 1
+        }
+    }
+
     /// YAPPER_NUMBERS_PROBE=1: the real normaliser plus Yapper's restraint, on known sentences.
     @Test(.enabled(if: ProcessInfo.processInfo.environment["YAPPER_NUMBERS_PROBE"] != nil))
     func numberStyle() {
@@ -192,7 +244,7 @@ struct SpeechModelEval {
                     "we have twenty five users and it costs five dollars", "it went up five percent in two thousand twenty five",
                     "let's meet at four thirty tomorrow", "the second one with the blue paint looks better"] {
             let spoken = SpokenTimes.normalizeSpoken(raw)
-            print("PROBE \(raw)\nPROBE   → \(NumberStyle.restrain(spoken: spoken, written: TextNormalizer.shared.normalizeSentence(spoken)))")
+            print("PROBE \(raw)\nPROBE   → \(SpokenNumbers.write(spoken))")
         }
     }
 
@@ -200,16 +252,113 @@ struct SpeechModelEval {
     @Test(.enabled(if: ProcessInfo.processInfo.environment["YAPPER_RAW_FILES"] != nil))
     func rawParakeet() async throws {
         let paths = ProcessInfo.processInfo.environment["YAPPER_RAW_FILES"]!.split(separator: ",").map(String.init)
-        let models = try await AsrModels.downloadAndLoad(version: .ultra)
+        let version = ParakeetTranscriber.version
+        let models = try await AsrModels.downloadAndLoad(version: version)
         let manager = AsrManager(config: .default)
         try await manager.loadModels(models)
         for path in paths {
             let audio = try AudioConverter().resampleAudioFile(path: path)
-            var state = TdtDecoderState.make(decoderLayers: AsrModelVersion.ultra.decoderLayers)
+            var state = TdtDecoderState.make(decoderLayers: version.decoderLayers)
             let raw = try await manager.transcribe(audio, decoderState: &state).text
             let spoken = SpokenTimes.normalizeSpoken(raw)
             let itn = TextNormalizer.shared.normalizeSentence(spoken)
-            print("PROBE raw:  \(raw)\nPROBE itn:  \(itn)\nPROBE kept: \(NumberStyle.restrain(spoken: spoken, written: itn))")
+            print("PROBE file: \(path)\nPROBE raw:  \(raw)\nPROBE itn:  \(itn)\nPROBE new:  \(SpokenNumbers.write(spoken))")
         }
+    }
+
+    /// Late-night dictations the user corrected by ear: does levelling the audio, or handing
+    /// Parakeet's unsure clips to Whisper, fix mumbled words? YAPPER_LATE_EVAL=<labels.json>
+    /// ([{file, text, status}], status "ok" = checked), YAPPER_LATE_AUDIO=<Yapper's Dictations folder>.
+    /// The labels are the user's speech: keep them out of the repo.
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["YAPPER_LATE_EVAL"] != nil))
+    func lateNightMumbles() async throws {
+        let env = ProcessInfo.processInfo.environment
+        let rows = try JSONSerialization.jsonObject(with: Data(contentsOf: URL(fileURLWithPath: env["YAPPER_LATE_EVAL"]!))) as? [[String: Any]] ?? []
+        let dir = URL(fileURLWithPath: env["YAPPER_LATE_AUDIO"]!)
+        let converter = AudioConverter()
+        let clips = rows.compactMap { row -> Clip? in
+            guard row["status"] as? String == "ok", let file = row["file"] as? String, let text = row["text"] as? String,
+                  let audio = try? converter.resampleAudioFile(path: dir.appendingPathComponent(file).path) else { return nil }
+            return Clip(audio: audio, seconds: Double(audio.count) / 16_000, reference: text)
+        }
+        print(String(format: "EVAL %d checked late-night dictations, %.1f minutes", clips.count, clips.reduce(0) { $0 + $1.seconds } / 60))
+
+        // Parakeet v2 as Yapper runs it, keeping each clip's lowest word confidence.
+        let models = try await AsrModels.downloadAndLoad(version: .v2)
+        let manager = AsrManager(config: .default)
+        try await manager.loadModels(models)
+        var lowest: [Float] = []
+        func parakeet(_ audio: [Float], keep: Bool = false) async throws -> String {
+            var state = TdtDecoderState.make(decoderLayers: AsrModelVersion.v2.decoderLayers)
+            let result = try await manager.transcribe(audio, decoderState: &state)
+            if keep { lowest.append((result.tokenTimings ?? []).map(\.confidence).min() ?? 1) }
+            return result.text
+        }
+        _ = try await parakeet(clips[0].audio)
+        let plain = try await score("Parakeet v2", clips) { try await parakeet($0.audio, keep: true) }
+        let levelled = try await score("Parakeet v2 levelled", clips) { try await parakeet(AudioConditioner.condition($0.audio).samples) }
+
+        let whisper = WhisperTranscriber(model: .named(WhisperModel.formerDefaultID)) { _ in }
+        try await whisper.prepare()
+        _ = try await whisper.transcribe(samples: clips[0].audio, prompt: nil)
+        let turbo = try await score("Whisper L3 Turbo", clips) { try await whisper.transcribe(samples: $0.audio, prompt: nil) }
+        for r in [plain, levelled, turbo] { print(r.report()) }
+
+        // Whisper only where Parakeet was unsure, at a few confidence lines; then the best either could do.
+        let refs = clips.map { Self.words($0.reference) }
+        let total = refs.reduce(0) { $0 + $1.count }
+        func errors(_ outputs: [String], _ i: Int) -> Int { Self.edits(refs[i], Self.words(outputs[i])) }
+        for line: Float in [0.3, 0.5, 0.7, 0.8, 0.9] {
+            let switched = clips.indices.filter { lowest[$0] < line }
+            let e = clips.indices.reduce(0) { $0 + errors(lowest[$1] < line ? turbo.outputs : plain.outputs, $1) }
+            print(String(format: "EVAL Whisper below %.1f       word errors %5.1f%%  | %d of %d clips re-run", line, 100 * Double(e) / Double(total), switched.count, clips.count))
+        }
+        let best = clips.indices.reduce(0) { $0 + min(errors(plain.outputs, $1), errors(turbo.outputs, $1), errors(levelled.outputs, $1)) }
+        print(String(format: "EVAL best of the three per clip word errors %5.1f%%", 100 * Double(best) / Double(total)))
+
+        for i in clips.indices where errors(plain.outputs, i) > 0 {
+            print(String(format: "EVAL [%d] lowest %.2f  errors parakeet %d levelled %d whisper %d", i, lowest[i],
+                         errors(plain.outputs, i), errors(levelled.outputs, i), errors(turbo.outputs, i)))
+            print("EVAL   said:     \(clips[i].reference)\nEVAL   parakeet: \(plain.outputs[i])\nEVAL   levelled: \(levelled.outputs[i])\nEVAL   whisper:  \(turbo.outputs[i])")
+        }
+    }
+
+    /// Side by side for the user to judge: what Parakeet v2 heard on each saved dictation, next to
+    /// Whisper Large v3 Turbo given the same vocabulary prompt Yapper gives it. No answer key; the
+    /// user reads the differences. YAPPER_ASR_SIDE=<Yapper's Application Support folder>,
+    /// YAPPER_ASR_SIDE_OUT=<json to write>, YAPPER_ASR_EVAL_N as above.
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["YAPPER_ASR_SIDE"] != nil))
+    func sideBySideOnSavedDictations() async throws {
+        let env = ProcessInfo.processInfo.environment
+        let base = URL(fileURLWithPath: env["YAPPER_ASR_SIDE"]!)
+        let out = URL(fileURLWithPath: env["YAPPER_ASR_SIDE_OUT"] ?? NSTemporaryDirectory() + "asr-side.json")
+        let json = try JSONSerialization.jsonObject(with: Data(contentsOf: base.appendingPathComponent("dictations.json")))
+        let rows = ((json as? [[String: Any]]) ?? []).filter {
+            ($0["audioFileName"] as? String) != nil && !(($0["heard"] as? String) ?? "").isEmpty
+        }
+        let picked = rows.count <= Self.sample ? rows
+            : (0..<Self.sample).map { rows[Int(Double($0) * Double(rows.count) / Double(Self.sample))] }
+        let vocab = (try? JSONSerialization.jsonObject(with: Data(contentsOf: base.appendingPathComponent("vocabulary.json")))) as? [String: Any]
+        let prompt = TranscriptCorrector.prompt(terms: (vocab?["terms"] as? [String]) ?? [])
+        let converter = AudioConverter()
+        let whisper = WhisperTranscriber(model: .named(WhisperModel.formerDefaultID)) { _ in }
+        try await whisper.prepare()
+        var results: [[String: Any]] = []
+        var warmed = false
+        for row in picked {
+            let file = row["audioFileName"] as! String
+            let path = base.appendingPathComponent("Dictations").appendingPathComponent(file).path
+            guard let audio = try? converter.resampleAudioFile(path: path), audio.count > 16_000 else { continue }
+            if !warmed { _ = try await whisper.transcribe(samples: audio, prompt: prompt); warmed = true }
+            let started = Date()
+            let heard = try await whisper.transcribe(samples: audio, prompt: prompt)
+            results.append([
+                "id": row["id"] ?? file, "at": row["at"] ?? "", "app": row["appName"] ?? "",
+                "seconds": Double(audio.count) / 16_000, "whisperCompute": Date().timeIntervalSince(started),
+                "parakeet": row["heard"] ?? "", "whisper": heard, "pasted": row["text"] ?? "",
+            ])
+        }
+        try JSONSerialization.data(withJSONObject: results, options: [.prettyPrinted]).write(to: out)
+        print("EVAL side by side: \(results.count) dictations written to \(out.path)")
     }
 }

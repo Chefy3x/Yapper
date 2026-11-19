@@ -72,7 +72,7 @@ final class VoiceInputCoordinator: ObservableObject {
     var format: (@MainActor (String) async -> String)?
     /// How much better the transcript reads with one of the user's terms in place of a word that
     /// sounds like it ("Claude" for "cloud"), in nats. Nil when it can't tell.
-    var termAdvantage: (@MainActor (_ text: String, _ spot: SoundAlike, _ terms: [String]) async -> Double?)?
+    var termAdvantage: (@MainActor (_ text: String, _ spot: SoundAlike, _ terms: [String], _ screen: [String]) async -> Double?)?
     /// Swaps spoken snippet triggers for their text: the last step before the paste.
     var expandSnippets: (@MainActor (String) -> String)?
     /// The mic level of every buffer while a turn is listening. Drives the recording HUD.
@@ -697,7 +697,7 @@ final class VoiceInputCoordinator: ObservableObject {
         let heard = try await transcriber.transcribe(samples: samples, prompt: prompt)
         let decoded = Date()
         guard !heard.isEmpty, !Task.isCancelled else { return (heard, "", decoded) }
-        let sensed = await settleSoundAlikes(in: heard, terms: terms)
+        let sensed = await settleSoundAlikes(in: heard, terms: terms, screen: screen)
         let corrected = TranscriptCorrector.apply(sensed, replacements: replacements)
         let respelled = TranscriptCorrector.respell(corrected, candidates: screen + terms) {
             WordKnowledge.isDictionaryWord($0)
@@ -714,15 +714,25 @@ final class VoiceInputCoordinator: ObservableObject {
     /// Words the speech model may have written for one of the user's terms ("cloud" for Claude)
     /// become the term only where the sentence reads clearly better with it, so "that cloud
     /// session" stays and "ask cloud to fix it" doesn't. Without the model they stay as heard.
-    private func settleSoundAlikes(in text: String, terms: [String]) async -> String {
-        let spots = SoundAlikes.spots(in: text, heardAs: vocabulary.heardAs, terms: terms)
+    private func settleSoundAlikes(in text: String, terms: [String], screen: [String]) async -> String {
+        // Hinted spots first: the vocabulary vouches for those. Then anything that sounds like one
+        // of your terms or a name on screen.
+        var spots = SoundAlikes.spots(in: text, heardAs: vocabulary.heardAs, terms: terms)
+        let names = SoundAlikes.names(terms + screen) { WordKnowledge.isDictionaryWord($0) }
+        for s in SoundAlikes.phoneticSpots(in: text, names: names) where !spots.contains(where: { $0.utf8.overlaps(s.utf8) }) {
+            spots.append(s)
+        }
         guard !spots.isEmpty, let termAdvantage else { return text }
         let started = Date()
         var taken: [SoundAlike] = []
-        for spot in spots.prefix(ContextCheck.maxQuestions) {
-            if let advantage = await termAdvantage(text, spot, terms), advantage > ContextCheck.margin { taken.append(spot) }
+        let checked = Array(spots.prefix(ContextCheck.maxQuestions))
+        for spot in checked {
+            let needed = spot.hinted ? ContextCheck.margin : ContextCheck.unhintedMargin
+            if let advantage = await termAdvantage(text, spot, terms, screen), advantage > needed { taken.append(spot) }
         }
-        Log.voice.notice("Context check: \(taken.count, privacy: .public) of \(spots.count, privacy: .public) spot(s) took the term in \(String(format: "%.2f", Date().timeIntervalSince(started)), privacy: .public)s")
+        let bySound = checked.filter { !$0.hinted }.count
+        Log.voice.notice("Context check: \(taken.count, privacy: .public) of \(checked.count, privacy: .public) spot(s) took the term (\(bySound, privacy: .public) found by sound, \(screen.count, privacy: .public) screen names) in \(String(format: "%.2f", Date().timeIntervalSince(started)), privacy: .public)s")
+        for spot in taken { Log.voice.info("Context check: \(spot.heard, privacy: .private) → \(spot.term, privacy: .private)") }
         return SoundAlikes.apply(taken, to: text)
     }
 

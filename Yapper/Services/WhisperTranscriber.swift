@@ -6,7 +6,7 @@ import WhisperKit
 struct WhisperModel: Identifiable, Hashable, Sendable {
     enum Engine: Sendable { case whisper, parakeet }
 
-    let id: String            // WhisperKit variant name in the argmaxinc/whisperkit-coreml repo, or "parakeet-ultra"
+    let id: String            // WhisperKit variant name in the argmaxinc/whisperkit-coreml repo, or "parakeet-v2"
     let displayName: String
     let blurb: String
     let approxSize: String
@@ -15,8 +15,8 @@ struct WhisperModel: Identifiable, Hashable, Sendable {
     static let repo = "argmaxinc/whisperkit-coreml"
 
     static let parakeet = WhisperModel(
-        id: "parakeet-ultra", displayName: "Parakeet (fastest)",
-        blurb: "As accurate as Large v3 Turbo and about ten times faster. 25 languages, most of them European. NVIDIA Parakeet, CC-BY-4.0.",
+        id: "parakeet-v2", displayName: "Parakeet (fastest)",
+        blurb: "As accurate as Large v3 Turbo and about ten times faster. English only. NVIDIA Parakeet, CC-BY-4.0.",
         approxSize: "≈ 600 MB", engine: .parakeet)
 
     /// Parakeet runs on the Neural Engine, so it's offered on Apple Silicon only.

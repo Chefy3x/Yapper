@@ -246,6 +246,11 @@ final class SettingsStore: ObservableObject {
                 defaults.set(modelID, forKey: Key.whisperModelID.rawValue)
             }
         }
+        // Parakeet Ultra was the multilingual build; its English-only successor replaces it.
+        if modelID == "parakeet-ultra" {
+            modelID = WhisperModel.parakeet.id
+            defaults.set(modelID, forKey: Key.whisperModelID.rawValue)
+        }
         self.whisperModelID = modelID
         self.handsFreeEnabled = defaults.bool(forKey: Key.handsFreeEnabled.rawValue)
         self.pauseMediaWhileTalking = defaults.object(forKey: Key.pauseMediaWhileTalking.rawValue) as? Bool ?? true

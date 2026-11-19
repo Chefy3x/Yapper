@@ -11,7 +11,9 @@ import FluidAudio
 actor ParakeetTranscriber: Transcribing {
     let model: WhisperModel
     nonisolated var modelID: String { model.id }
-    static let version: AsrModelVersion = .ultra
+    /// English only. Ultra knows 25 languages and picks one per dictation with no way to pin it,
+    /// so mumbled or fast English came out as words from other languages.
+    static let version: AsrModelVersion = .v2
 
     private var manager: AsrManager?
     private var loadTask: Task<Void, Error>?
@@ -138,10 +140,8 @@ actor ParakeetTranscriber: Transcribing {
         }
         // After the text is back, so learning the voice never adds to the wait.
         Task { self.learnVoice(words: words, levels: levels, samples: samples) }
-        // Times first ("at four thirty" → 4:30), which the general conversion gets wrong; then
-        // numbers to digits, held back to the ones people write as digits.
-        let spoken = SpokenTimes.normalizeSpoken(raw)
-        let text = NumberStyle.restrain(spoken: spoken, written: TextNormalizer.shared.normalizeSentence(spoken))
+        // Times first ("at four thirty" → 4:30), then the other numbers to the digits people type.
+        let text = SpokenNumbers.write(SpokenTimes.normalizeSpoken(raw))
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let seconds = Double(samples.count) / AudioCapture.targetSampleRate
         Log.voice.notice("Parakeet transcribed \(String(format: "%.1f", seconds), privacy: .public)s of audio in \(String(format: "%.2f", Date().timeIntervalSince(started)), privacy: .public)s → \(text.count, privacy: .public) chars")

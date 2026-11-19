@@ -64,9 +64,7 @@ struct SoundCheckEval {
         try await manager.loadModels(asr)
 
         func written(_ raw: String) -> String {
-            let spoken = SpokenTimes.normalizeSpoken(raw)
-            return NumberStyle.restrain(spoken: spoken, written: TextNormalizer.shared.normalizeSentence(spoken))
-                .trimmingCharacters(in: .whitespacesAndNewlines)
+            SpokenNumbers.write(SpokenTimes.normalizeSpoken(raw)).trimmingCharacters(in: .whitespacesAndNewlines)
         }
         func finish(_ text: String) -> String {
             let corrected = TranscriptCorrector.apply(text, replacements: vocabulary.replacements)
