@@ -455,6 +455,16 @@ struct VoiceInputCoordinatorTests {
         #expect(rig.capture.startCount == 2)
     }
 
+    @Test func strayNearZeroSamplesStillCountAsSilence() async {
+        let rig = makeRig(silentStartTimeout: 0.05)
+        await settle()
+        rig.coordinator.beginPushToTalk()
+        rig.capture.onLevel?(2e-5)   // a stuck mic: zeros with the odd stray sample
+        await settle(0.07)
+        rig.capture.onLevel?(0)
+        #expect(rig.capture.startCount == 2)   // reopened
+    }
+
     @Test func realRoomNoiseIsNotSilence() async {
         let rig = makeRig(silentStartTimeout: 0.05)
         await settle()

@@ -22,6 +22,11 @@ enum NumberStyle {
                 // "three and five" → "35", "four and eight" → "48": two numbers joined into a
                 // different one. The words as spoken are right; the conversion isn't.
                 out += spanA
+            } else if !spanA.isEmpty, inventsTime(spoken: spanA + a[ma..<min(ma + 1, a.count)], written: spanB) {
+                // "order like six fifty five boxes" → "06:55 boxes". Times with a reason to be
+                // times are already written by SpokenTimes before this conversion runs, so a
+                // clock that appears only here has nothing behind it.
+                out += spanA
             } else if !spanB.isEmpty, spanA.count == spanB.count, spanB.allSatisfy(isSmall) {
                 // Each small number back to its word ("the 2nd 1" → "the second one"), with the
                 // punctuation the written form carries.
@@ -52,6 +57,20 @@ enum NumberStyle {
             if !andJoins.contains(words[i - 1]) { return true }
         }
         return words.count >= 2 && words.allSatisfy(units.contains)
+    }
+
+    private static let clockToken = try! NSRegularExpression(pattern: #"^\d+:\d\d$"#)
+    /// Spoken words that do make a clock time: "five o'clock", "seven thirty a.m.".
+    private static let timeWords: Set<String> = ["o'clock", "oclock", "am", "pm", "a.m", "p.m", "a", "p"]
+
+    /// The conversion wrote a clock time ("06:55", "4999:45") for words that never said one.
+    /// `spoken` includes the word after the span, where an "am" or "pm" would be.
+    static func inventsTime(spoken: [String], written: [String]) -> Bool {
+        guard written.contains(where: { token in
+            let core = parts(token).core
+            return clockToken.firstMatch(in: core, range: NSRange(core.startIndex..., in: core)) != nil
+        }) else { return false }
+        return !spoken.contains { timeWords.contains(key($0)) }
     }
 
     private static func isSmall(_ token: String) -> Bool {

@@ -41,6 +41,9 @@ struct DisfluencyTests {
         #expect(clean("I like it a lot") == "I like it a lot")
         #expect(clean("Do you know the way?") == "Do you know the way?")
         #expect(clean("I feel like it works") == "I feel like it works")
+        #expect(clean("So like I said, the plan is fine") == "So like I said, the plan is fine")
+        #expect(clean("so like we talked about before") == "so like we talked about before")
+        #expect(clean("so like five of them") == "so five of them")
     }
 
     @Test func leavesCleanTextAlone() {
@@ -77,5 +80,7 @@ struct RestartTests {
         #expect(clean("our CTRs are good, our CPCs are good") == "our CTRs are good, our CPCs are good")
         #expect(clean("should we keep this should we change this") == "should we keep this should we change this")
         #expect(clean("I like the drawing of like the car park") == "I like the drawing of like the car park")
+        #expect(clean("because it has the echo like it has that hum at the end")
+                == "because it has the echo like it has that hum at the end")
     }
 }

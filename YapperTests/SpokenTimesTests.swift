@@ -87,4 +87,13 @@ struct NumberStyleTests {
         #expect(r("about two hundred", "about 200") == "about 200")
         #expect(r("version twelve", "version 12") == "version 12")
     }
+
+    @Test func noClockTimeWithoutOneSaid() {
+        #expect(r("order like six fifty five boxes each week", "order like 06:55 boxes each week")
+                == "order like six fifty five boxes each week")
+        #expect(r("lower it to forty nine ninety nine", "lower it to 4999:45")
+                == "lower it to forty nine ninety nine")
+        #expect(r("meet at five o'clock", "meet at 5:00") == "meet at 5:00")
+        #expect(r("seven thirty pm works", "7:30 pm works") == "7:30 pm works")
+    }
 }

@@ -103,7 +103,7 @@ final class VoiceInputCoordinator: ObservableObject {
     /// Recording continues this long after the key comes up. People release as the last word
     /// ends, and the engine's final partial buffer would otherwise be thrown away with it.
     private let releaseTail: TimeInterval
-    /// A mic that delivers nothing but exact zeros this long after opening is broken, not quiet
+    /// A mic that delivers nothing but (near) zeros this long after opening is broken, not quiet
     /// (a room is never digitally silent). It gets one reopen; the user is told only if the whole
     /// turn stays silent.
     private let silentStartTimeout: TimeInterval
@@ -483,6 +483,11 @@ final class VoiceInputCoordinator: ObservableObject {
 
     /// The mic was reopened for silence and still hasn't sent a single sound this turn.
     private var micStayedSilent: Bool { reopenedForSilence && !heardSignal }
+    /// Below this RMS (about −86 dBFS) a buffer is the mic's silence, not a room. A stuck built-in
+    /// mic sent zeros with a stray sample here and there (RMS up to 2e-5), which a bare "above
+    /// zero" test took for sound, so that turn was never reopened. The quietest real start in 300
+    /// recent dictations still reached 9e-5.
+    static let silentLevel: Float = 5e-5
     private static let silentMicWarning = "Your mic is sending silence. Check the input in Settings → Talk"
 
     /// Some devices open "successfully" and then deliver only zeros — a Bluetooth headset still
@@ -491,7 +496,7 @@ final class VoiceInputCoordinator: ObservableObject {
     /// the turn ends without the mic ever sending a sound.
     private func watchForSilentStart(_ level: Float) {
         guard !heardSignal else { return }
-        if level > 1e-7 { heardSignal = true; return }
+        if level > Self.silentLevel { heardSignal = true; return }
         let now = Date()
         guard let since = firstSilentLevelAt else { firstSilentLevelAt = now; return }
         guard now.timeIntervalSince(since) >= silentGrace else { return }

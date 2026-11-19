@@ -21,6 +21,16 @@ enum Disfluency {
     /// "like" right after these is filler for nearly everyone ("I have like three", "as like a").
     static let likeAfter: Set<String> = ["have", "as", "to", "right", "so"]
 
+    /// "so like I said", "as like we talked about": here "like" means "as", and dropping it turns
+    /// "So like I said" into "So I said".
+    private static let speakers: Set<String> = ["i", "we", "you", "he", "she", "they"]
+    private static let sayings: Set<String> = ["said", "say", "says", "mentioned", "told", "talked", "discussed", "showed"]
+
+    private static func introducesQuote(at i: Int, in tokens: [Token]) -> Bool {
+        guard i + 2 < tokens.count else { return false }
+        return speakers.contains(tokens[i + 1].key) && sayings.contains(tokens[i + 2].key)
+    }
+
     private struct Token {
         var lead: String
         var core: String
@@ -47,7 +57,8 @@ enum Disfluency {
                 drop[i] = true; continue
             }
 
-            if t.key == "like", let prev, likeAfter.contains(prev.key), prev.trail.isEmpty { drop[i] = true; continue }
+            if t.key == "like", let prev, likeAfter.contains(prev.key), prev.trail.isEmpty,
+               !introducesQuote(at: i, in: tokens) { drop[i] = true; continue }
             if t.key == "yeah", let prev, prev.key == "but", prev.trail.isEmpty || prev.trail == "," { drop[i] = true; continue }
             // ", you know," — bounded by commas, it's never the verb.
             if t.key == "you", let next, next.key == "know", t.trail.isEmpty,
@@ -112,6 +123,15 @@ enum Disfluency {
                         if abandoned.contains(where: { !$0.trail.isEmpty }) { continue }
                         if keys[(i + k)..<j].contains(where: joiners.contains) { continue }
                         guard restartEnders.contains(keys[j - 1]) else { continue }
+                        // "like" is also a comparison. Past a single swapped word ("the other
+                        // signs like the other sounds") it marks a restart only when the abandoned
+                        // words come straight back ("I like the thud like I like that little thud");
+                        // otherwise both halves are meant ("it has the echo like it has that hum").
+                        if keys[j - 1] == "like", tail > 2 {
+                            let abandonedWords = Set(keys[(i + k)..<(j - 1)]).subtracting(restartEnders)
+                            let resumed = keys[(j + k)..<min(j + k + 3, keys.count)]
+                            if !resumed.contains(where: abandonedWords.contains) { continue }
+                        }
                         hit = j
                         break search
                     }
